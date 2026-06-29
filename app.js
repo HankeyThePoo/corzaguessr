@@ -753,7 +753,7 @@
     requestAnimationFrame(() => {
       root.classList.add("tracklist-visible");
       setTracklistHeight();
-      ui.tracklistClose.focus();
+      ui.tracklistClose.focus({ preventScroll: true });
     });
   }
 
@@ -767,7 +767,7 @@
       root.classList.remove("tracklist-open");
       ui.tracklistModal.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
-      state.returnFocus?.focus?.();
+      state.returnFocus?.focus?.({ preventScroll: true });
     }, 450);
   }
 
