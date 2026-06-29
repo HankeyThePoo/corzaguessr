@@ -39,10 +39,13 @@
   opacity: 0.55;
 }
 
-#corzaguessr button:focus-visible,
-#corzaguessr input:focus-visible {
+#corzaguessr button:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 3px;
+}
+
+#corzaguessr input:focus-visible {
+  outline: 0;
 }
 
 #corzaguessr .modes,
@@ -363,7 +366,7 @@
   position: absolute;
   inset: 0;
   z-index: 4;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 1rem;
   border-radius: inherit;
