@@ -362,26 +362,15 @@
 }
 
 #corzaguessr .mode-prompt {
-  display: grid;
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  place-items: center;
-  margin: 0;
-  padding: 1rem;
-  color: white;
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 800;
-  letter-spacing: 0.045em;
-  text-align: center;
-  text-shadow: 0 2px 12px #000;
-  text-transform: uppercase;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  transition:
-    opacity 0.25s ease,
-    visibility 0s linear 0.25s;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 #corzaguessr .board,
@@ -389,12 +378,6 @@
   transition:
     opacity 0.25s ease,
     filter 0.25s ease;
-}
-
-#corzaguessr.awaiting-mode .mode-prompt {
-  opacity: 1;
-  visibility: visible;
-  transition-delay: 0s;
 }
 
 #corzaguessr.awaiting-mode .board,
@@ -405,7 +388,22 @@
 }
 
 #corzaguessr.mode-error .mode-prompt {
+  display: grid;
+  inset: 0;
+  z-index: 2;
+  place-items: center;
+  width: auto;
+  height: auto;
+  padding: 1rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
   color: #ffb4b4;
+  font-size: 1.15rem;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: normal;
 }
 
 #corzaguessr .tracklist-modal {
