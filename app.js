@@ -10,6 +10,8 @@
   const scriptUrl = document.currentScript?.src || location.href;
   const tracksUrl = new URL("tracks.json", scriptUrl).href;
   const steps = [1, 2, 4, 8, 16, 32];
+  const maxTimedClip = 60;
+  const maxTimedSlots = 50;
   const storageKey = "corzaguessrDiscoveredV1";
   const hiddenTitle = "???????????????????";
   const youtubeOrigin = "https://www.youtube-nocookie.com";
@@ -180,8 +182,10 @@
     elapsed: 0,
     time: modes.classic.initialTime,
     maxTime: modes.survival.initialTime,
+    rounds: 0,
     guesses: 0,
     correct: 0,
+    trackStarted: false,
     used: new Set(),
     discovered: loadDiscoveries(),
     playerReady: false,
@@ -193,6 +197,7 @@
     slotsTimer: 0,
     tracklistTimer: 0,
     returnFocus: null,
+    pageScrollStyles: null,
   };
 
   function formatTime(seconds) {
@@ -372,6 +377,7 @@
     state.session++;
     setPlaying(false, true);
     state.track = null;
+    state.trackStarted = false;
     ui.skip.disabled = true;
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
@@ -422,13 +428,18 @@
     item.textContent = text;
     if (!replace || !item.isConnected) {
       ui.slots.prepend(item);
+      if (state.mode !== "classic") {
+        while (ui.slots.children.length > maxTimedSlots) {
+          ui.slots.lastElementChild.remove();
+        }
+      }
       requestAnimationFrame(() => item.classList.remove("fade"));
     }
   }
 
   function renderPrompt() {
     if (state.mode !== "classic") {
-      addSlot(`GUESS #${ui.slots.children.length + 1}`);
+      addSlot(`GUESS #${state.rounds}`);
       return;
     }
 
@@ -518,9 +529,13 @@
   function startRound() {
     if (!state.tracks.length) return;
     const selected = selectTrack();
+    const timedSeconds = Math.min(
+      Math.ceil(state.time / 1000),
+      maxTimedClip,
+    );
     const seconds = state.mode === "classic"
       ? steps.at(-1)
-      : Math.min(Math.ceil(state.time / 1000), selected.duration);
+      : Math.min(timedSeconds, selected.duration);
     const available = Math.max(0, Math.floor(selected.duration - seconds));
 
     state.previousTrack = selected;
@@ -529,6 +544,8 @@
       at: Math.floor(Math.random() * (available + 1)),
     };
     state.used.clear();
+    state.rounds++;
+    state.trackStarted = false;
     state.session++;
     setPlaying(true);
     loadPlayerTrack(true);
@@ -559,8 +576,8 @@
     renderTracklist();
   }
 
-  function attempt(type, title = "") {
-    if (!state.track || isModalOpen()) return;
+  function attempt(type, title = "", allowDuringModal = false) {
+    if (!state.track || (!allowDuringModal && isModalOpen())) return;
 
     if (type === "skip") {
       if (state.mode !== "classic") {
@@ -632,6 +649,7 @@
     if (!state.track) return;
     if (state.mode !== "classic" || state.status === "playing") setPlaying(false, true);
     state.status = "ended";
+    state.trackStarted = false;
     state.session++;
     ui.play.disabled = true;
     ui.skip.disabled = true;
@@ -687,8 +705,10 @@
       elapsed: 0,
       time: modes[state.mode].initialTime,
       maxTime: modes.survival.initialTime,
+      rounds: 0,
       guesses: 0,
       correct: 0,
+      trackStarted: false,
       activeSuggestion: -1,
     });
     state.used.clear();
@@ -742,11 +762,36 @@
     ui.tracklistShell.style.height = `${ui.tracklistPanel.offsetHeight}px`;
   }
 
+  function lockPageScroll() {
+    if (state.pageScrollStyles) return;
+    const html = document.documentElement;
+    const body = document.body;
+    state.pageScrollStyles = {
+      htmlOverflow: html.style.overflow,
+      htmlScrollbarGutter: html.style.scrollbarGutter,
+      bodyOverflow: body.style.overflow,
+    };
+    html.style.scrollbarGutter = "stable";
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+  }
+
+  function unlockPageScroll() {
+    if (!state.pageScrollStyles) return;
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = state.pageScrollStyles.htmlOverflow;
+    html.style.scrollbarGutter = state.pageScrollStyles.htmlScrollbarGutter;
+    body.style.overflow = state.pageScrollStyles.bodyOverflow;
+    state.pageScrollStyles = null;
+  }
+
   function openTracklist() {
     clearTimeout(state.tracklistTimer);
     renderTracklist();
     state.returnFocus = document.activeElement;
     setBackgroundInert(true);
+    lockPageScroll();
     root.classList.add("tracklist-open");
     ui.tracklistModal.setAttribute("aria-hidden", "false");
     ui.tracklistShell.style.height = "0px";
@@ -767,6 +812,7 @@
       root.classList.remove("tracklist-open");
       ui.tracklistModal.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
+      unlockPageScroll();
       state.returnFocus?.focus?.({ preventScroll: true });
     }, 450);
   }
@@ -843,6 +889,10 @@
     if (!event.target.closest(".tracklist-panel")) closeTracklist();
   });
 
+  new ResizeObserver(() => {
+    if (root.classList.contains("tracklist-visible")) setTracklistHeight();
+  }).observe(ui.tracklistPanel);
+
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
       if (event.key === "Escape") {
@@ -892,11 +942,21 @@
       if (state.track) loadPlayerTrack(state.status === "playing");
     } else if (data.event === "onStateChange" && data.info === 1) {
       if (!state.track || isModalOpen() || state.status === "ended") return;
+      state.trackStarted = true;
       setPlaying(true);
       startClock();
       focusGuess();
     } else if (data.event === "onStateChange" && data.info === 3) {
       cancelClock();
+    } else if (
+      data.event === "onStateChange" &&
+      data.info === 0 &&
+      state.track &&
+      state.trackStarted &&
+      state.status !== "ended"
+    ) {
+      if (state.mode === "classic") setPlaying(false);
+      else attempt("skip", "", true);
     } else if (data.event === "onError") {
       handlePlayerError();
     }
