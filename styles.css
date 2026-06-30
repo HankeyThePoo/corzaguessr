@@ -392,10 +392,11 @@
 
 #corzaguessr .splash-panel {
   display: grid;
-  align-content: center;
-  gap: 1rem;
+  grid-template-rows: auto 1fr auto;
+  align-content: stretch;
+  gap: 1.35rem;
   min-height: 100%;
-  padding: 1.5rem;
+  padding: 1.75rem 1.5rem 1.5rem;
   text-align: center;
   text-transform: uppercase;
 }
@@ -407,12 +408,13 @@
 }
 
 #corzaguessr .splash-panel h3 {
-  font-size: 1.25rem;
+  font-size: 1.4rem;
 }
 
 #corzaguessr .splash-rules {
   display: grid;
   grid-template-columns: 1fr;
+  align-content: center;
   gap: 0.8rem;
 }
 
@@ -424,12 +426,12 @@
 }
 
 #corzaguessr .splash-rule h4 {
-  font-size: 1rem;
+  font-size: 1.1rem;
 }
 
 #corzaguessr .splash-rule p,
 #corzaguessr .splash-error {
-  font-size: 0.86rem;
+  font-size: 0.94rem;
   line-height: 1.45;
 }
 
@@ -439,12 +441,12 @@
 
 @media (max-width: 600px) {
   #corzaguessr .splash-panel {
-    gap: 0.85rem;
+    gap: 1rem;
     padding: 1rem;
   }
 
   #corzaguessr .splash-panel h3 {
-    font-size: 1.05rem;
+    font-size: 1.15rem;
   }
 
   #corzaguessr .splash-rules {
@@ -456,7 +458,7 @@
   }
 
   #corzaguessr .splash-rule p {
-    font-size: 0.78rem;
+    font-size: 0.84rem;
     line-height: 1.35;
   }
 }
