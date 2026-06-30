@@ -33,6 +33,7 @@
       initialProgress: 0,
       endTime: "0:01",
       skip: "ADD 1s",
+      rules: "Guess the track in six tries as more audio is revealed.",
     },
     blitz: {
       timed: true,
@@ -42,6 +43,7 @@
       initialProgress: 1,
       endTime: "1:00",
       skip: "SKIP",
+      rules: "Guess as many tracks as possible before the timer runs out.",
     },
     survival: {
       timed: true,
@@ -51,6 +53,7 @@
       initialProgress: 1,
       endTime: "0:30",
       skip: "SKIP",
+      rules: "Correct guesses add time; mistakes and skips drain it.",
       timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
     },
   };
@@ -284,6 +287,22 @@
     ui.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, scale))})`;
   }
 
+  function showRuleset() {
+    const mode = modes[state.mode];
+    if (!mode) return;
+    closeSuggestions();
+    ui.guess.value = mode.rules;
+    ui.guess.disabled = true;
+    ui.guess.setAttribute("aria-expanded", "false");
+  }
+
+  function enableGuessing() {
+    ui.guess.disabled = false;
+    ui.guess.value = "";
+    ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
+    closeSuggestions();
+  }
+
   function loadDiscoveries() {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -426,6 +445,7 @@
     state.track = null;
     state.trackStarted = false;
     ui.skip.disabled = true;
+    showRuleset();
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
     announce("The selected track could not be played. Try again.");
@@ -595,6 +615,7 @@
     state.rounds++;
     state.trackStarted = false;
     state.session++;
+    enableGuessing();
     setPlaying(true);
     loadPlayerTrack(true);
     renderPrompt();
@@ -781,7 +802,7 @@
     ui.result.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
     ui.play.disabled = false;
-    ui.guess.disabled = false;
+    showRuleset();
     ui.skip.disabled = true;
     clearSlots();
 
@@ -849,7 +870,6 @@
     ) return;
     root.classList.remove("awaiting-mode");
     ui.modePrompt.setAttribute("aria-hidden", "true");
-    ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
     setBackgroundInert(false);
     animateModeChange();
   }
