@@ -404,8 +404,6 @@
   top: var(--modal-y, 50%);
   left: 50%;
   width: min(96vw, 840px);
-  height: 0;
-  overflow: hidden;
   transform: translate(-50%, -50%);
 }
 
@@ -429,7 +427,7 @@
   white-space: pre-line;
 }
 
-#corzaguessr .personal-best {
+#corzaguessr .result-meta {
   padding-top: 0.75rem;
   border-top: 1px solid var(--line);
   font-weight: 800;
