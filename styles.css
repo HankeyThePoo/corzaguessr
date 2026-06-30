@@ -361,106 +361,51 @@
   color: transparent;
 }
 
-#corzaguessr .splash-modal {
-  display: flex;
+#corzaguessr .mode-prompt {
+  display: grid;
   position: absolute;
   inset: 0;
-  z-index: 3;
-  align-items: center;
-  justify-content: center;
-  border-radius: inherit;
-  background: rgba(0, 0, 0, 0);
+  z-index: 2;
+  place-items: center;
+  margin: 0;
+  padding: 1rem;
+  color: white;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-shadow: 0 2px 12px #000;
+  text-transform: uppercase;
+  opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  transition: background 0.35s ease;
+  transition:
+    opacity 0.25s ease,
+    visibility 0s linear 0.25s;
 }
 
-#corzaguessr.splash-open .splash-modal {
+#corzaguessr .board,
+#corzaguessr .slots {
+  transition:
+    opacity 0.25s ease,
+    filter 0.25s ease;
+}
+
+#corzaguessr.awaiting-mode .mode-prompt {
+  opacity: 1;
   visibility: visible;
+  transition-delay: 0s;
 }
 
-#corzaguessr.splash-visible .splash-modal {
-  background: rgba(0, 0, 0, 0.55);
+#corzaguessr.awaiting-mode .board,
+#corzaguessr.awaiting-mode .slots {
+  opacity: 0.28;
+  filter: saturate(0.45);
+  user-select: none;
 }
 
-#corzaguessr .splash-shell {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  transition: height 0.45s ease;
-}
-
-#corzaguessr .splash-panel {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  align-content: stretch;
-  gap: 1.35rem;
-  min-height: 100%;
-  padding: 1.75rem 1.5rem 1.5rem;
-  text-align: center;
-  text-transform: uppercase;
-}
-
-#corzaguessr .splash-panel h3,
-#corzaguessr .splash-panel h4,
-#corzaguessr .splash-panel p {
-  margin: 0;
-}
-
-#corzaguessr .splash-panel h3 {
-  font-size: 1.4rem;
-}
-
-#corzaguessr .splash-rules {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-content: center;
-  gap: 0.8rem;
-}
-
-#corzaguessr .splash-rule {
-  display: grid;
-  align-content: center;
-  gap: 0.35rem;
-  padding: 0;
-}
-
-#corzaguessr .splash-rule h4 {
-  font-size: 1.1rem;
-}
-
-#corzaguessr .splash-rule p,
-#corzaguessr .splash-error {
-  font-size: 0.94rem;
-  line-height: 1.45;
-}
-
-#corzaguessr .splash-error {
+#corzaguessr.mode-error .mode-prompt {
   color: #ffb4b4;
-}
-
-@media (max-width: 600px) {
-  #corzaguessr .splash-panel {
-    gap: 1rem;
-    padding: 1rem;
-  }
-
-  #corzaguessr .splash-panel h3 {
-    font-size: 1.15rem;
-  }
-
-  #corzaguessr .splash-rules {
-    gap: 0.75rem;
-  }
-
-  #corzaguessr .splash-rule {
-    gap: 0.2rem;
-  }
-
-  #corzaguessr .splash-rule p {
-    font-size: 0.84rem;
-    line-height: 1.35;
-  }
 }
 
 #corzaguessr .tracklist-modal {
