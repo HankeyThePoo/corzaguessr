@@ -29,26 +29,23 @@
     pause: "M6 5h4v14H6zM14 5h4v14h-4z",
     stop: "M7 7h10v10H7z",
   };
+  const classicRules = {
+    timed: false,
+    survival: false,
+    initialTime: 60000,
+    initialText: "0:00",
+    initialProgress: 0,
+    endTime: "0:01",
+    skip: "ADD 1S",
+  };
   const modes = {
     classic: {
-      timed: false,
-      survival: false,
-      initialTime: 60000,
-      initialText: "0:00",
-      initialProgress: 0,
-      endTime: "0:01",
-      skip: "ADD 1S",
+      ...classicRules,
       description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
     },
     daily: {
-      timed: false,
-      survival: false,
+      ...classicRules,
       daily: true,
-      initialTime: 60000,
-      initialText: "0:00",
-      initialProgress: 0,
-      endTime: "0:01",
-      skip: "ADD 1S",
       description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
     },
     blitz: {
@@ -150,12 +147,12 @@
               role="dialog"
               aria-modal="true"
               aria-labelledby="corzaguessr-result-title"
-              aria-describedby="corzaguessr-result-text corzaguessr-personal-best"
+              aria-describedby="corzaguessr-result-text corzaguessr-result-meta"
               aria-hidden="true"
             >
               <h3 id="corzaguessr-result-title" class="modal-title"></h3>
               <p id="corzaguessr-result-text" class="modal-text"></p>
-              <p id="corzaguessr-personal-best" class="personal-best"></p>
+              <p id="corzaguessr-result-meta" class="result-meta"></p>
               <div class="actions">
                 <button type="button" class="button next">NEW GAME</button>
                 <button type="button" class="button spotify">SPOTIFY</button>
@@ -224,10 +221,9 @@
     blitz: $(".blitz-button"),
     survival: $(".survival"),
     result: $(".corzaguessr-modal"),
-    resultShell: $(".result-shell"),
     resultTitle: $(".modal-title"),
     resultText: $(".modal-text"),
-    personalBest: $(".personal-best"),
+    resultMeta: $(".result-meta"),
     modePrompt: $(".mode-prompt"),
     tracklistButton: $(".tracklist-button"),
     tracklistModal: $(".tracklist-modal"),
@@ -332,8 +328,10 @@
     return isResultOpen() || isTracklistOpen();
   }
 
-  function modalTransitionDelay() {
-    return matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450;
+  function transitionDelay(milliseconds) {
+    return matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : milliseconds;
   }
 
   function setBackgroundInert(inert) {
@@ -348,21 +346,40 @@
     ui.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, scale))})`;
   }
 
-  function loadDiscoveries() {
+  function readStorage(key, fallback) {
     try {
-      const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      return new Set(Array.isArray(saved) ? saved.filter((title) => typeof title === "string") : []);
+      const saved = localStorage.getItem(key);
+      return saved === null ? fallback : JSON.parse(saved);
     } catch {
-      return new Set();
+      return fallback;
     }
   }
 
-  function saveDiscoveries() {
+  function writeStorage(key, value, errorMessage) {
     try {
-      localStorage.setItem(storageKey, JSON.stringify([...state.discovered]));
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
     } catch {
-      announce("DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
+      announce(errorMessage);
+      return false;
     }
+  }
+
+  function loadDiscoveries() {
+    const saved = readStorage(storageKey, []);
+    return new Set(
+      Array.isArray(saved)
+        ? saved.filter((title) => typeof title === "string")
+        : [],
+    );
+  }
+
+  function saveDiscoveries() {
+    writeStorage(
+      storageKey,
+      [...state.discovered],
+      "DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.",
+    );
   }
 
   function validRecord(value) {
@@ -370,72 +387,51 @@
   }
 
   function loadPersonalBests() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(personalBestStorageKey) || "{}");
-      const classicCurrent = validRecord(saved?.classic?.current);
-      const classicBest = validRecord(saved?.classic?.best);
-      return {
-        classic: {
-          current: classicCurrent,
-          best: Math.max(classicCurrent, classicBest),
-        },
-        blitz: validRecord(saved?.blitz),
-        survival: validRecord(saved?.survival),
-      };
-    } catch {
-      return {
-        classic: { current: 0, best: 0 },
-        blitz: 0,
-        survival: 0,
-      };
-    }
+    const saved = readStorage(personalBestStorageKey, {});
+    const classicCurrent = validRecord(saved?.classic?.current);
+    const classicBest = validRecord(saved?.classic?.best);
+    return {
+      classic: {
+        current: classicCurrent,
+        best: Math.max(classicCurrent, classicBest),
+      },
+      blitz: validRecord(saved?.blitz),
+      survival: validRecord(saved?.survival),
+    };
   }
 
   function savePersonalBests() {
-    try {
-      localStorage.setItem(
-        personalBestStorageKey,
-        JSON.stringify(state.personalBests),
-      );
-    } catch {
-      announce("PERSONAL BESTS COULD NOT BE SAVED IN THIS BROWSER.");
-    }
+    writeStorage(
+      personalBestStorageKey,
+      state.personalBests,
+      "PERSONAL BESTS COULD NOT BE SAVED IN THIS BROWSER.",
+    );
   }
 
   function loadDaily() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(dailyStorageKey) || "{}");
-      const started = saved?.started === true;
-      const completed = started && saved?.completed === true;
-      const step = Number.isSafeInteger(saved?.step) &&
-        saved.step >= 0 &&
-        saved.step < steps.length
-        ? saved.step
-        : 0;
-      return {
-        date: /^\d{4}-\d{2}-\d{2}$/.test(saved?.date) ? saved.date : "",
-        started,
-        completed,
-        won: completed && saved?.won === true,
-        step,
-      };
-    } catch {
-      return {
-        date: "",
-        started: false,
-        completed: false,
-        won: false,
-        step: 0,
-      };
-    }
+    const saved = readStorage(dailyStorageKey, {});
+    const started = saved?.started === true;
+    const completed = started && saved?.completed === true;
+    const step = Number.isSafeInteger(saved?.step) &&
+      saved.step >= 0 &&
+      saved.step < steps.length
+      ? saved.step
+      : 0;
+    return {
+      date: /^\d{4}-\d{2}-\d{2}$/.test(saved?.date) ? saved.date : "",
+      started,
+      completed,
+      won: completed && saved?.won === true,
+      step,
+    };
   }
 
   function saveDaily() {
-    try {
-      localStorage.setItem(dailyStorageKey, JSON.stringify(state.daily));
-    } catch {
-      announce("DAILY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
-    }
+    writeStorage(
+      dailyStorageKey,
+      state.daily,
+      "DAILY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.",
+    );
   }
 
   function isDailyDone(date = getBudapestDate()) {
@@ -967,23 +963,23 @@
     }
   }
 
-  function renderPersonalBest() {
+  function renderResultMeta() {
     const label = state.personalBestBeaten
       ? "NEW PERSONAL BEST"
       : "PERSONAL BEST";
 
     if (state.mode === "daily") {
-      ui.personalBest.textContent = getDailyDoneText();
+      ui.resultMeta.textContent = getDailyDoneText();
     } else if (state.mode === "classic") {
       const { current, best } = state.personalBests.classic;
-      ui.personalBest.textContent = state.personalBestBeaten
+      ui.resultMeta.textContent = state.personalBestBeaten
         ? `1S STREAK: ${current} · NEW PERSONAL BEST: ${best}`
         : `1S STREAK: ${current} · PERSONAL BEST: ${best}`;
     } else if (state.mode === "blitz") {
-      ui.personalBest.textContent =
+      ui.resultMeta.textContent =
         `${label}: ${state.personalBests.blitz} CORRECT`;
     } else {
-      ui.personalBest.textContent =
+      ui.resultMeta.textContent =
         `${label}: ${formatTime(state.personalBests.survival / 1000)}`;
     }
   }
@@ -1013,7 +1009,7 @@
         ? `TIME SURVIVED: ${formatTime(state.elapsed / 1000)}\nGUESSES MADE: ${state.guesses} (${percent}%)`
         : `GUESSES MADE: ${state.guesses}\nCORRECT GUESSES: ${state.correct} (${percent}%)`
       : `THE TRACK WAS\n${state.track.title}`;
-    renderPersonalBest();
+    renderResultMeta();
 
     const hasSpotify = !mode.timed && Boolean(state.track.spotify);
     ui.spotify.style.display = hasSpotify ? "inline-flex" : "none";
@@ -1027,12 +1023,8 @@
 
     openResult();
     announce(
-      `${ui.resultText.textContent.replace("\n", ". ")}. ${ui.personalBest.textContent}`,
+      `${ui.resultText.textContent.replace("\n", ". ")}. ${ui.resultMeta.textContent}`,
     );
-  }
-
-  function setResultHeight() {
-    ui.resultShell.style.height = `${ui.result.offsetHeight}px`;
   }
 
   function openResult() {
@@ -1044,11 +1036,9 @@
     state.returnFocus = document.activeElement;
     ui.card.classList.add("modal-open");
     ui.result.setAttribute("aria-hidden", "false");
-    ui.resultShell.style.height = "0px";
     setBackgroundInert(true);
     requestAnimationFrame(() => {
       ui.card.classList.add("modal-visible");
-      setResultHeight();
       ui.next.focus();
     });
   }
@@ -1057,9 +1047,6 @@
     if (!isResultOpen()) return;
     ui.card.classList.add("modal-closing");
     ui.card.classList.remove("modal-visible");
-    ui.resultShell.style.height = `${ui.resultShell.offsetHeight}px`;
-    void ui.resultShell.offsetHeight;
-    ui.resultShell.style.height = "0px";
     reset({ keepResultOpen: true });
     state.resultTimer = setTimeout(() => {
       state.resultTimer = 0;
@@ -1067,7 +1054,7 @@
       ui.result.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
       ui.play.focus({ preventScroll: true });
-    }, modalTransitionDelay());
+    }, transitionDelay(350));
   }
 
   function cancelProgressTransition() {
@@ -1103,7 +1090,6 @@
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
-      ui.resultShell.style.height = "0px";
     }
     setBackgroundInert(keepResultOpen);
     ui.play.disabled = false;
@@ -1280,7 +1266,7 @@
         setPlaying(true);
       }
       if (isAwaitingMode() && state.mode && state.tracks.length) activateMode();
-    }, modalTransitionDelay());
+    }, transitionDelay(450));
   }
 
   function toggleTracklist() {
@@ -1350,10 +1336,9 @@
   ui.play.addEventListener("click", togglePlay);
   ui.skip.addEventListener("click", () => attempt("skip"));
   ui.next.addEventListener("click", closeResult);
-  ui.daily.addEventListener("click", () => setMode("daily"));
-  ui.classic.addEventListener("click", () => setMode("classic"));
-  ui.blitz.addEventListener("click", () => setMode("blitz"));
-  ui.survival.addEventListener("click", () => setMode("survival"));
+  Object.entries(modeButtons).forEach(([name, button]) => {
+    button.addEventListener("click", () => setMode(name));
+  });
   ui.tracklistButton.addEventListener("click", toggleTracklist);
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
@@ -1364,10 +1349,6 @@
   new ResizeObserver(() => {
     if (root.classList.contains("tracklist-visible")) setTracklistHeight();
   }).observe(ui.tracklistPanel);
-
-  new ResizeObserver(() => {
-    if (ui.card.classList.contains("modal-visible")) setResultHeight();
-  }).observe(ui.result);
 
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
