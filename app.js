@@ -769,6 +769,12 @@
       return;
     }
 
+    animateModeChange();
+  }
+
+  // Initial mode selection --------------------------------------------------
+
+  function animateModeChange() {
     state.session++;
     setPlaying(false, true);
     clearTimeout(state.fillTimer);
@@ -782,8 +788,6 @@
     }, 120);
   }
 
-  // Initial mode selection --------------------------------------------------
-
   function activateMode() {
     if (
       !isAwaitingMode() ||
@@ -791,11 +795,10 @@
       !state.mode ||
       !state.tracks.length
     ) return;
-    reset();
     root.classList.remove("awaiting-mode");
     ui.modePrompt.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
-    focusGuess();
+    animateModeChange();
   }
 
   // Tracklist modal ---------------------------------------------------------
