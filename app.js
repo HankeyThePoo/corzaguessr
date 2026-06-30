@@ -33,7 +33,7 @@
       initialProgress: 0,
       endTime: "0:01",
       skip: "ADD 1s",
-      rules: "Guess the track in six tries as more audio is revealed.",
+      rules: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED.",
     },
     blitz: {
       timed: true,
@@ -43,7 +43,7 @@
       initialProgress: 1,
       endTime: "1:00",
       skip: "SKIP",
-      rules: "Guess as many tracks as possible before the timer runs out.",
+      rules: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT.",
     },
     survival: {
       timed: true,
@@ -53,7 +53,7 @@
       initialProgress: 1,
       endTime: "0:30",
       skip: "SKIP",
-      rules: "Correct guesses add time; mistakes and skips drain it.",
+      rules: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT.",
       timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
     },
   };
@@ -316,7 +316,7 @@
     try {
       localStorage.setItem(storageKey, JSON.stringify([...state.discovered]));
     } catch {
-      announce("Discovery progress could not be saved in this browser.");
+      announce("DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
     }
   }
 
@@ -448,7 +448,7 @@
     showRuleset();
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
-    announce("The selected track could not be played. Try again.");
+    announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
   }
 
   // Rendering ---------------------------------------------------------------
@@ -696,7 +696,7 @@
 
     state.step++;
     renderPrompt();
-    announce(type === "wrong" ? "Incorrect. Try again." : "Skipped. More time added.");
+    announce(type === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
     if (state.status !== "playing") {
       if (type === "skip") startClassic();
       else togglePlay();
@@ -954,7 +954,7 @@
     state.discovered.clear();
     saveDiscoveries();
     renderTracklist();
-    announce("Discovered tracks reset.");
+    announce("DISCOVERED TRACKS RESET.");
   }
 
   function trapFocus(event, container) {
@@ -1103,7 +1103,7 @@
   });
 
   function validateTracks(value) {
-    if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
+    if (!Array.isArray(value)) throw new Error("TRACK CATALOG IS NOT AN ARRAY.");
     const titles = new Set();
     const valid = [];
     for (const item of value) {
@@ -1122,13 +1122,13 @@
       titles.add(title);
       valid.push({ title, id, duration, spotify });
     }
-    if (!valid.length) throw new Error("Track catalog has no valid tracks.");
+    if (!valid.length) throw new Error("TRACK CATALOG HAS NO VALID TRACKS.");
     return valid;
   }
 
   fetch(tracksUrl, { headers: { Accept: "application/json" } })
     .then((response) => {
-      if (!response.ok) throw new Error(`Track catalog returned ${response.status}.`);
+      if (!response.ok) throw new Error(`TRACK CATALOG RETURNED ${response.status}.`);
       return response.json();
     })
     .then((tracks) => {
@@ -1138,7 +1138,7 @@
       else state.status = "ready";
     })
     .catch((error) => {
-      console.error("Corzaguessr could not load its track catalog.", error);
+      console.error("CORZAGUESSR COULD NOT LOAD ITS TRACK CATALOG.", error);
       state.status = "error";
       ui.play.disabled = true;
       ui.skip.disabled = true;
@@ -1148,6 +1148,6 @@
       ui.survival.disabled = true;
       ui.modePrompt.textContent = "COULD NOT LOAD TRACKLIST, PLEASE REFRESH!";
       root.classList.add("mode-error");
-      announce("Could not load the tracklist. Please refresh.");
+      announce("COULD NOT LOAD THE TRACKLIST. PLEASE REFRESH.");
     });
 })();
