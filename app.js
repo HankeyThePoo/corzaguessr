@@ -810,14 +810,16 @@
 
   function closeResult() {
     if (!isResultOpen()) return;
-    clearTimeout(state.resultTimer);
     ui.card.classList.remove("modal-visible");
     ui.resultShell.style.height = `${ui.resultShell.offsetHeight}px`;
     void ui.resultShell.offsetHeight;
     ui.resultShell.style.height = "0px";
+    reset({ keepResultOpen: true });
     state.resultTimer = setTimeout(() => {
       state.resultTimer = 0;
-      reset();
+      ui.card.classList.remove("modal-open");
+      ui.result.setAttribute("aria-hidden", "true");
+      setBackgroundInert(false);
       ui.play.focus({ preventScroll: true });
     }, modalTransitionDelay());
   }
@@ -828,7 +830,7 @@
     ui.fill.style.transition = "";
   }
 
-  function resetSession() {
+  function resetSession({ keepResultOpen = false } = {}) {
     const mode = modes[state.mode];
     clearTimeout(state.slotsTimer);
     state.session++;
@@ -850,10 +852,12 @@
     });
     state.used.clear();
     ui.status.textContent = "";
-    ui.card.classList.remove("modal-open", "modal-visible");
-    ui.result.setAttribute("aria-hidden", "true");
-    ui.resultShell.style.height = "0px";
-    setBackgroundInert(false);
+    if (!keepResultOpen) {
+      ui.card.classList.remove("modal-open", "modal-visible");
+      ui.result.setAttribute("aria-hidden", "true");
+      ui.resultShell.style.height = "0px";
+    }
+    setBackgroundInert(keepResultOpen);
     ui.play.disabled = false;
     ui.skip.disabled = true;
     showRules(mode.description);
@@ -866,11 +870,11 @@
     setPlaying(false);
   }
 
-  function reset() {
+  function reset(options) {
     clearTimeout(state.resultTimer);
     state.resultTimer = 0;
     cancelProgressTransition();
-    resetSession();
+    resetSession(options);
   }
 
   function renderModeSelection() {
