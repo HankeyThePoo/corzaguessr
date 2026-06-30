@@ -33,7 +33,7 @@
       initialProgress: 0,
       endTime: "0:01",
       skip: "ADD 1S",
-      description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED.",
+      description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
     },
     blitz: {
       timed: true,
@@ -43,7 +43,7 @@
       initialProgress: 1,
       endTime: "1:00",
       skip: "SKIP",
-      description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT.",
+      description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
     },
     survival: {
       timed: true,
@@ -53,7 +53,7 @@
       initialProgress: 1,
       endTime: "0:30",
       skip: "SKIP",
-      description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT.",
+      description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT",
       timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
     },
   };
