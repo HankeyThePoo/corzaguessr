@@ -373,12 +373,6 @@
   border: 0;
 }
 
-#corzaguessr.awaiting-mode input::placeholder {
-  color: white;
-  font-weight: 800;
-  letter-spacing: 0.045em;
-}
-
 #corzaguessr.mode-error .mode-prompt {
   display: grid;
   inset: 0;
