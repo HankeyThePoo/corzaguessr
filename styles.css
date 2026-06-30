@@ -154,7 +154,7 @@
 
 #corzaguessr .tracklist-button {
   width: calc((720px - 2.25rem) / 4);
-  max-width: calc((100% - 1.5rem) / 3);
+  max-width: calc((100% - 2.25rem) / 4);
   margin: -1rem auto 1rem;
   padding: 0.55rem 0.9rem;
 }
