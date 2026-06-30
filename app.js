@@ -1122,7 +1122,7 @@
     const seconds = steps[state.daily.step] || steps[0];
     ui.endtime.textContent = formatTime(seconds);
     ui.snippet.style.width = `${seconds / steps.at(-1) * 100}%`;
-    setProgress(formatTime(seconds), seconds / steps.at(-1));
+    setProgress(formatTime(seconds), seconds / steps.at(-1) + 0.0025);
   }
 
   function applyModeAvailability() {
