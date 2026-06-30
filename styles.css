@@ -373,18 +373,10 @@
   border: 0;
 }
 
-#corzaguessr .board,
-#corzaguessr .slots {
-  transition:
-    opacity 0.25s ease,
-    filter 0.25s ease;
-}
-
-#corzaguessr.awaiting-mode .board,
-#corzaguessr.awaiting-mode .slots {
-  opacity: 0.28;
-  filter: saturate(0.45);
-  user-select: none;
+#corzaguessr.awaiting-mode input::placeholder {
+  color: white;
+  font-weight: 800;
+  letter-spacing: 0.045em;
 }
 
 #corzaguessr.mode-error .mode-prompt {
