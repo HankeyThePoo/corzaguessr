@@ -92,7 +92,6 @@
             </div>
             <div class="auto">
               <label class="sr-only" for="corzaguessr-guess">Search for a track</label>
-              <div class="ruleset" aria-live="polite" hidden></div>
               <input
                 id="corzaguessr-guess"
                 class="guess"
@@ -175,7 +174,6 @@
     slots: $(".slots"),
     play: $(".play"),
     skip: $(".skip"),
-    ruleset: $(".ruleset"),
     guess: $(".guess"),
     suggest: $(".suggest"),
     fill: $(".fill"),
@@ -293,18 +291,12 @@
     const mode = modes[state.mode];
     if (!mode) return;
     closeSuggestions();
-    ui.ruleset.textContent = mode.rules;
-    ui.ruleset.hidden = false;
-    ui.ruleset.scrollLeft = 0;
-    ui.guess.hidden = true;
-    ui.guess.value = "";
+    ui.guess.value = mode.rules;
     ui.guess.disabled = true;
     ui.guess.setAttribute("aria-expanded", "false");
   }
 
   function enableGuessing() {
-    ui.ruleset.hidden = true;
-    ui.guess.hidden = false;
     ui.guess.disabled = false;
     ui.guess.value = "";
     ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
