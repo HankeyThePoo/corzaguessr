@@ -1505,6 +1505,7 @@
       ui.play.disabled = true;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
+      ui.daily.disabled = true;
       ui.classic.disabled = true;
       ui.blitz.disabled = true;
       ui.survival.disabled = true;
