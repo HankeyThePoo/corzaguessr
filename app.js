@@ -32,7 +32,8 @@
       initialText: "0:00",
       initialProgress: 0,
       endTime: "0:01",
-      skip: "ADD 1s",
+      skip: "ADD 1S",
+      description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED.",
     },
     blitz: {
       timed: true,
@@ -42,6 +43,7 @@
       initialProgress: 1,
       endTime: "1:00",
       skip: "SKIP",
+      description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT.",
     },
     survival: {
       timed: true,
@@ -51,6 +53,7 @@
       initialProgress: 1,
       endTime: "0:30",
       skip: "SKIP",
+      description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT.",
       timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
     },
   };
@@ -59,7 +62,12 @@
     <div class="wrap">
       <h1>CORZAGUESSR&#10022;</h1>
       <div class="row header-action">
-        <button type="button" class="button tracklist-button">TRACKLIST</button>
+        <button
+          type="button"
+          class="button tracklist-button"
+          aria-controls="corzaguessr-tracklist"
+          aria-expanded="false"
+        >TRACKLIST</button>
       </div>
       <div class="modes" aria-label="Game mode">
         <button type="button" class="mode blitz-button" aria-pressed="false">BLITZ</button>
@@ -92,7 +100,7 @@
               <input
                 id="corzaguessr-guess"
                 class="guess"
-                placeholder="SELECT A MODE TO BEGIN"
+                placeholder="HAVE A GUESS? SEARCH FOR IT HERE!"
                 autocomplete="off"
                 role="combobox"
                 aria-autocomplete="list"
@@ -100,6 +108,12 @@
                 aria-expanded="false"
                 disabled
               >
+              <div class="ruleset" aria-hidden="true">
+                <div class="ruleset-track">
+                  <span class="ruleset-text">SELECT A MODE TO BEGIN</span>
+                  <span class="ruleset-copy">SELECT A MODE TO BEGIN</span>
+                </div>
+              </div>
               <div
                 id="corzaguessr-suggestions"
                 class="suggest"
@@ -107,7 +121,7 @@
               ></div>
             </div>
             <div class="row">
-              <button type="button" class="button skip" disabled>ADD 1s</button>
+              <button type="button" class="button skip" disabled>ADD 1S</button>
             </div>
           </div>
           <div class="slots" aria-live="polite" aria-relevant="additions text"></div>
@@ -128,9 +142,10 @@
           </div>
         </div>
         <p class="mode-prompt" role="status" aria-hidden="false">
-          CHOOSE A MODE TO BEGIN
+          SELECT A MODE TO BEGIN
         </p>
         <div
+          id="corzaguessr-tracklist"
           class="tracklist-modal"
           role="dialog"
           aria-modal="true"
@@ -173,6 +188,9 @@
     skip: $(".skip"),
     guess: $(".guess"),
     suggest: $(".suggest"),
+    ruleset: $(".ruleset"),
+    rulesetText: $(".ruleset-text"),
+    rulesetCopy: $(".ruleset-copy"),
     fill: $(".fill"),
     snippet: $(".snippet"),
     now: $(".now"),
@@ -236,7 +254,7 @@
     endedDuringTracklist: false,
   };
 
-  root.classList.add("awaiting-mode");
+  root.classList.add("awaiting-mode", "rules-visible");
   setBackgroundInert(false);
 
   function formatTime(seconds) {
@@ -297,7 +315,7 @@
     try {
       localStorage.setItem(storageKey, JSON.stringify([...state.discovered]));
     } catch {
-      announce("Discovery progress could not be saved in this browser.");
+      announce("DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
     }
   }
 
@@ -426,9 +444,10 @@
     state.track = null;
     state.trackStarted = false;
     ui.skip.disabled = true;
+    showRules(modes[state.mode].description);
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
-    announce("The selected track could not be played. Try again.");
+    announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
   }
 
   // Rendering ---------------------------------------------------------------
@@ -444,6 +463,23 @@
     ui.suggest.style.display = "none";
     ui.guess.setAttribute("aria-expanded", "false");
     ui.guess.removeAttribute("aria-activedescendant");
+  }
+
+  function showRules(text) {
+    clearGuess();
+    ui.guess.disabled = true;
+    ui.rulesetText.textContent = text;
+    ui.rulesetCopy.textContent = text;
+    ui.ruleset.classList.remove("scroll");
+    void ui.ruleset.offsetWidth;
+    ui.ruleset.classList.add("scroll");
+    root.classList.add("rules-visible");
+  }
+
+  function showGuess() {
+    root.classList.remove("rules-visible");
+    ui.ruleset.classList.remove("scroll");
+    ui.guess.disabled = false;
   }
 
   function clearSlots(animate = true) {
@@ -496,7 +532,7 @@
     ui.snippet.style.width = `${seconds / steps.at(-1) * 100}%`;
     ui.skip.textContent = last
       ? "GIVE UP"
-      : `ADD ${steps[state.step + 1] - seconds}s`;
+      : `ADD ${steps[state.step + 1] - seconds}S`;
     addSlot(
       last ? "LAST CHANCE TO GUESS" : `GUESS ${state.step + 1} OUT OF ${steps.length}`,
       last ? "blink" : "",
@@ -604,7 +640,6 @@
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
     const mode = modes[state.mode];
     if (!state.track) {
-      ui.skip.disabled = false;
       startRound();
     } else if (state.status === "playing") {
       setPlaying(false, true);
@@ -657,7 +692,7 @@
       setProgress(formatTime(state.elapsed / 1000), state.time / state.maxTime);
     }
     setPlaying(false);
-    announce(type === "correct" ? "Correct." : type === "wrong" ? "Incorrect." : "Skipped.");
+    announce(type === "correct" ? "CORRECT." : type === "wrong" ? "INCORRECT." : "SKIPPED.");
     if (!state.time) endGame();
     else startRound();
   }
@@ -675,7 +710,7 @@
 
     state.step++;
     renderPrompt();
-    announce(type === "wrong" ? "Incorrect. Try again." : "Skipped. More time added.");
+    announce(type === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
     if (state.status !== "playing") {
       if (type === "skip") startClassic();
       else togglePlay();
@@ -775,14 +810,13 @@
       activeSuggestion: -1,
     });
     state.used.clear();
-    clearGuess();
     ui.status.textContent = "";
     ui.card.classList.remove("modal-open");
     ui.result.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
     ui.play.disabled = false;
-    ui.guess.disabled = false;
     ui.skip.disabled = true;
+    showRules(mode.description);
     clearSlots();
 
     ui.endtime.textContent = mode.endTime;
@@ -790,7 +824,6 @@
     ui.snippet.style.width = `${100 / steps.at(-1)}%`;
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
-    focusGuess();
   }
 
   function reset() {
@@ -812,6 +845,8 @@
     if (!modes[mode] || (!isAwaitingMode() && state.mode === mode)) return;
     state.mode = mode;
     renderModeSelection();
+    showRules(modes[mode].description);
+    announce(modes[mode].description);
 
     if (isAwaitingMode()) {
       if (state.tracks.length) activateMode();
@@ -849,7 +884,6 @@
     ) return;
     root.classList.remove("awaiting-mode");
     ui.modePrompt.setAttribute("aria-hidden", "true");
-    ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
     setBackgroundInert(false);
     animateModeChange();
   }
@@ -892,8 +926,10 @@
     state.endedDuringTracklist = false;
     if (state.resumeAfterTracklist) setPlaying(false, true);
     setBackgroundInert(true);
+    ui.headerAction.inert = false;
     lockPageScroll();
     root.classList.add("tracklist-open");
+    ui.tracklistButton.setAttribute("aria-expanded", "true");
     ui.tracklistModal.setAttribute("aria-hidden", "false");
     ui.tracklistShell.style.height = "0px";
     requestAnimationFrame(() => {
@@ -906,6 +942,7 @@
   function closeTracklist() {
     clearTimeout(state.tracklistTimer);
     root.classList.remove("tracklist-visible");
+    ui.tracklistButton.setAttribute("aria-expanded", "false");
     ui.tracklistShell.style.height = `${ui.tracklistShell.offsetHeight}px`;
     void ui.tracklistShell.offsetHeight;
     ui.tracklistShell.style.height = "0px";
@@ -929,12 +966,17 @@
     }, 450);
   }
 
+  function toggleTracklist() {
+    if (isTracklistOpen()) closeTracklist();
+    else openTracklist();
+  }
+
   function resetTracklist() {
-    if (!window.confirm("Reset discovered tracks?")) return;
+    if (!window.confirm("RESET DISCOVERED TRACKS?")) return;
     state.discovered.clear();
     saveDiscoveries();
     renderTracklist();
-    announce("Discovered tracks reset.");
+    announce("DISCOVERED TRACKS RESET.");
   }
 
   function trapFocus(event, container) {
@@ -994,7 +1036,7 @@
   ui.classic.addEventListener("click", () => setMode("classic"));
   ui.blitz.addEventListener("click", () => setMode("blitz"));
   ui.survival.addEventListener("click", () => setMode("survival"));
-  ui.tracklistButton.addEventListener("click", openTracklist);
+  ui.tracklistButton.addEventListener("click", toggleTracklist);
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
   ui.tracklistModal.addEventListener("click", (event) => {
@@ -1055,6 +1097,8 @@
     } else if (data.event === "onStateChange" && data.info === 1) {
       if (!state.track || isModalOpen() || state.status === "ended") return;
       state.trackStarted = true;
+      showGuess();
+      ui.skip.disabled = false;
       setPlaying(true);
       startClock();
       focusGuess();
@@ -1128,6 +1172,6 @@
       ui.survival.disabled = true;
       ui.modePrompt.textContent = "COULD NOT LOAD TRACKLIST, PLEASE REFRESH!";
       root.classList.add("mode-error");
-      announce("Could not load the tracklist. Please refresh.");
+      announce("COULD NOT LOAD THE TRACKLIST. PLEASE REFRESH.");
     });
 })();
