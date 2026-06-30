@@ -198,6 +198,8 @@
     tracklistTimer: 0,
     returnFocus: null,
     pageScrollStyles: null,
+    resumeAfterTracklist: false,
+    endedDuringTracklist: false,
   };
 
   function formatTime(seconds) {
@@ -322,6 +324,7 @@
     if (!state.track) return;
     rewindClassic();
     state.elapsed = 0;
+    state.trackStarted = false;
     setPlaying(true);
     loadPlayerTrack(true);
     focusGuess();
@@ -576,8 +579,8 @@
     renderTracklist();
   }
 
-  function attempt(type, title = "", allowDuringModal = false) {
-    if (!state.track || (!allowDuringModal && isModalOpen())) return;
+  function attempt(type, title = "") {
+    if (!state.track || isModalOpen()) return;
 
     if (type === "skip") {
       if (state.mode !== "classic") {
@@ -643,6 +646,13 @@
     if (!title || !state.track) return;
     state.used.add(title);
     attempt(title === state.track.title ? "correct" : "wrong", title);
+  }
+
+  function handleTrackEnded() {
+    if (!state.track || !state.trackStarted || state.status === "ended") return;
+    state.trackStarted = false;
+    if (state.mode === "classic") setPlaying(false);
+    else attempt("skip");
   }
 
   function endGame(won) {
@@ -790,6 +800,9 @@
     clearTimeout(state.tracklistTimer);
     renderTracklist();
     state.returnFocus = document.activeElement;
+    state.resumeAfterTracklist = state.status === "playing";
+    state.endedDuringTracklist = false;
+    if (state.resumeAfterTracklist) setPlaying(false, true);
     setBackgroundInert(true);
     lockPageScroll();
     root.classList.add("tracklist-open");
@@ -814,6 +827,16 @@
       setBackgroundInert(false);
       unlockPageScroll();
       state.returnFocus?.focus?.({ preventScroll: true });
+      const ended = state.endedDuringTracklist;
+      const resume = state.resumeAfterTracklist;
+      state.endedDuringTracklist = false;
+      state.resumeAfterTracklist = false;
+      if (ended) {
+        handleTrackEnded();
+      } else if (resume && state.track && state.status !== "ended") {
+        sendPlayerCommand("playVideo");
+        setPlaying(true);
+      }
     }, 450);
   }
 
@@ -955,8 +978,8 @@
       state.trackStarted &&
       state.status !== "ended"
     ) {
-      if (state.mode === "classic") setPlaying(false);
-      else attempt("skip", "", true);
+      if (isTracklistOpen()) state.endedDuringTracklist = true;
+      else handleTrackEnded();
     } else if (data.event === "onError") {
       handlePlayerError();
     }
