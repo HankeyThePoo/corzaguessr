@@ -384,7 +384,7 @@
   background: rgba(0, 0, 0, 0);
   pointer-events: none;
   visibility: hidden;
-  transition: background 0.35s ease;
+  transition: background 0.25s ease;
 }
 
 #corzaguessr .modal-open .result-modal {
