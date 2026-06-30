@@ -7,13 +7,17 @@
   if (!root || root.dataset.corzaguessrReady) return;
   root.dataset.corzaguessrReady = "true";
 
-  const scriptUrl = document.currentScript?.src || location.href;
-  const tracksUrl = new URL("tracks.json", scriptUrl).href;
+  const scriptUrl = new URL(document.currentScript?.src || location.href);
+  const tracksUrl = new URL("tracks.json", scriptUrl);
+  tracksUrl.search = scriptUrl.search;
   const steps = [1, 2, 4, 8, 16, 32];
   const maxTimedClip = 60;
   const maxTimedSlots = 50;
   const storageKey = "corzaguessrDiscoveredV1";
   const personalBestStorageKey = "corzaguessrPersonalBestsV1";
+  const dailyStorageKey = "corzaguessrDailyV1";
+  const dailyTimeZone = "Europe/Budapest";
+  const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
   const hiddenTitle = "???????????????????";
   const youtubeOrigin = "https://www.youtube-nocookie.com";
   const youtubeOrigins = new Set([
@@ -35,6 +39,17 @@
       endTime: "0:01",
       skip: "ADD 1S",
       description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
+    },
+    daily: {
+      timed: false,
+      survival: false,
+      daily: true,
+      initialTime: 60000,
+      initialText: "0:00",
+      initialProgress: 0,
+      endTime: "0:01",
+      skip: "ADD 1S",
+      description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
     },
     blitz: {
       timed: true,
@@ -71,6 +86,7 @@
         >TRACKLIST</button>
       </div>
       <div class="modes" aria-label="Game mode">
+        <button type="button" class="mode daily" aria-pressed="false">DAILY</button>
         <button type="button" class="mode blitz-button" aria-pressed="false">BLITZ</button>
         <button type="button" class="mode classic" aria-pressed="false">CLASSIC</button>
         <button type="button" class="mode survival" aria-pressed="false">SURVIVAL</button>
@@ -203,6 +219,7 @@
     endtime: $(".endtime"),
     spotify: $(".spotify"),
     next: $(".next"),
+    daily: $(".daily"),
     classic: $(".classic"),
     blitz: $(".blitz-button"),
     survival: $(".survival"),
@@ -225,6 +242,7 @@
     icon: $(".icon path"),
   };
   const modeButtons = {
+    daily: ui.daily,
     classic: ui.classic,
     blitz: ui.blitz,
     survival: ui.survival,
@@ -250,6 +268,8 @@
     discovered: loadDiscoveries(),
     personalBests: loadPersonalBests(),
     personalBestBeaten: false,
+    daily: loadDaily(),
+    dailyDate: getBudapestDate(),
     playerReady: false,
     frame: 0,
     previousTick: 0,
@@ -270,6 +290,17 @@
 
   function formatTime(seconds) {
     return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, "0")}`;
+  }
+
+  function getBudapestDate(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("en", {
+      timeZone: dailyTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    return `${values.year}-${values.month}-${values.day}`;
   }
 
   function announce(message) {
@@ -369,6 +400,45 @@
     } catch {
       announce("PERSONAL BESTS COULD NOT BE SAVED IN THIS BROWSER.");
     }
+  }
+
+  function loadDaily() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(dailyStorageKey) || "{}");
+      return {
+        date: /^\d{4}-\d{2}-\d{2}$/.test(saved?.date) ? saved.date : "",
+        started: saved?.started === true,
+      };
+    } catch {
+      return { date: "", started: false };
+    }
+  }
+
+  function saveDaily() {
+    try {
+      localStorage.setItem(dailyStorageKey, JSON.stringify(state.daily));
+    } catch {
+      announce("DAILY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
+    }
+  }
+
+  function isDailyDone(date = getBudapestDate()) {
+    return state.daily.date === date && state.daily.started;
+  }
+
+  function markDailyStarted() {
+    if (state.mode !== "daily" || isDailyDone(state.dailyDate)) return;
+    state.daily = { date: state.dailyDate, started: true };
+    saveDaily();
+  }
+
+  function hashDaily(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
   }
 
   // YouTube player ----------------------------------------------------------
@@ -655,6 +725,15 @@
   // Game rules --------------------------------------------------------------
 
   function selectTrack() {
+    if (modes[state.mode].daily) {
+      return state.tracks.reduce((winner, track) => {
+        const score = hashDaily(
+          `corzaguessr-daily-v1:${state.dailyDate}:${track.dailyNumber}`,
+        );
+        return !winner || score > winner.score ? { track, score } : winner;
+      }, null).track;
+    }
+
     const pool = state.tracks.length > 1
       ? state.tracks.filter((track) => track !== state.previousTrack)
       : state.tracks;
@@ -677,7 +756,11 @@
     state.previousTrack = selected;
     state.track = {
       ...selected,
-      at: Math.floor(Math.random() * (available + 1)),
+      at: mode.daily
+        ? hashDaily(
+          `corzaguessr-daily-clip-v1:${state.dailyDate}:${selected.dailyNumber}`,
+        ) % (available + 1)
+        : Math.floor(Math.random() * (available + 1)),
     };
     state.used.clear();
     state.rounds++;
@@ -691,6 +774,10 @@
   function togglePlay() {
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
     const mode = modes[state.mode];
+    if (mode.daily && isDailyDone(state.dailyDate)) {
+      applyModeAvailability();
+      return;
+    }
     if (!state.track) {
       showGuess();
       startRound();
@@ -831,7 +918,9 @@
       ? "NEW PERSONAL BEST"
       : "PERSONAL BEST";
 
-    if (state.mode === "classic") {
+    if (state.mode === "daily") {
+      ui.personalBest.textContent = "DAILY COMPLETE · COME BACK TOMORROW";
+    } else if (state.mode === "classic") {
       const { current, best } = state.personalBests.classic;
       ui.personalBest.textContent = state.personalBestBeaten
         ? `1S STREAK: ${current} · NEW PERSONAL BEST: ${best}`
@@ -934,6 +1023,7 @@
 
   function resetSession({ keepResultOpen = false } = {}) {
     const mode = modes[state.mode];
+    if (mode.daily) state.dailyDate = getBudapestDate();
     clearTimeout(state.slotsTimer);
     state.session++;
     cancelClock();
@@ -963,7 +1053,7 @@
     setBackgroundInert(keepResultOpen);
     ui.play.disabled = false;
     ui.skip.disabled = true;
-    showRules(mode.description);
+    applyModeAvailability();
     clearSlots();
 
     ui.endtime.textContent = mode.endTime;
@@ -971,6 +1061,18 @@
     ui.snippet.style.width = `${100 / steps.at(-1)}%`;
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
+  }
+
+  function applyModeAvailability() {
+    const mode = modes[state.mode];
+    if (mode.daily && isDailyDone(state.dailyDate)) {
+      ui.play.disabled = true;
+      ui.skip.disabled = true;
+      ui.guess.disabled = true;
+      showRules(dailyDoneText);
+      return;
+    }
+    showRules(mode.description);
   }
 
   function reset(options) {
@@ -994,8 +1096,11 @@
     if (!modes[mode] || (!isAwaitingMode() && state.mode === mode)) return;
     state.mode = mode;
     renderModeSelection();
-    showRules(modes[mode].description);
-    announce(modes[mode].description);
+    const message = modes[mode].daily && isDailyDone()
+      ? dailyDoneText
+      : modes[mode].description;
+    showRules(message);
+    announce(message);
 
     if (isAwaitingMode()) {
       if (state.tracks.length) activateMode();
@@ -1182,6 +1287,7 @@
   ui.play.addEventListener("click", togglePlay);
   ui.skip.addEventListener("click", () => attempt("skip"));
   ui.next.addEventListener("click", closeResult);
+  ui.daily.addEventListener("click", () => setMode("daily"));
   ui.classic.addEventListener("click", () => setMode("classic"));
   ui.blitz.addEventListener("click", () => setMode("blitz"));
   ui.survival.addEventListener("click", () => setMode("survival"));
@@ -1249,6 +1355,7 @@
       if (state.track) loadPlayerTrack(state.status === "playing");
     } else if (data.event === "onStateChange" && data.info === 1) {
       if (!state.track || isModalOpen() || state.status === "ended") return;
+      markDailyStarted();
       state.trackStarted = true;
       ui.skip.disabled = false;
       setPlaying(true);
@@ -1276,26 +1383,43 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && state.status === "playing") setPlaying(false, true);
   });
+  setInterval(() => {
+    const date = getBudapestDate();
+    if (date === state.dailyDate) return;
+    if (state.mode === "daily" && (state.track || isModalOpen())) return;
+    state.dailyDate = date;
+    if (
+      state.mode === "daily" &&
+      state.status !== "playing" &&
+      !isModalOpen()
+    ) resetSession();
+  }, 1000);
 
   function validateTracks(value) {
     if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
     const titles = new Set();
+    const dailyNumbers = new Set();
     const valid = [];
     for (const item of value) {
       const title = typeof item?.title === "string" ? item.title.trim() : "";
       const id = typeof item?.id === "string" ? item.id.trim() : "";
       const duration = Number(item?.duration);
       const spotify = typeof item?.spotify === "string" ? item.spotify.trim() : "";
+      const dailyNumber = Number(item?.dailyNumber);
       if (
         !title ||
         titles.has(title) ||
         !/^[\w-]{11}$/.test(id) ||
         !Number.isFinite(duration) ||
         duration <= 0 ||
+        !Number.isSafeInteger(dailyNumber) ||
+        dailyNumber <= 0 ||
+        dailyNumbers.has(dailyNumber) ||
         (spotify && !/^[A-Za-z0-9]{22}$/.test(spotify))
       ) continue;
       titles.add(title);
-      valid.push({ title, id, duration, spotify });
+      dailyNumbers.add(dailyNumber);
+      valid.push({ title, id, duration, spotify, dailyNumber });
     }
     if (!valid.length) throw new Error("Track catalog has no valid tracks.");
     return valid;
