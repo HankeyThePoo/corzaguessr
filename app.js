@@ -103,6 +103,7 @@
                 aria-expanded="false"
                 disabled
               >
+              <div class="ruleset-display" aria-hidden="true"><span></span></div>
               <div
                 id="corzaguessr-suggestions"
                 class="suggest"
@@ -175,6 +176,8 @@
     play: $(".play"),
     skip: $(".skip"),
     guess: $(".guess"),
+    ruleset: $(".ruleset-display"),
+    rulesetText: $(".ruleset-display span"),
     suggest: $(".suggest"),
     fill: $(".fill"),
     snippet: $(".snippet"),
@@ -287,16 +290,35 @@
     ui.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, scale))})`;
   }
 
+  function setRulesetText(text = "") {
+    ui.rulesetText.textContent = text;
+    ui.ruleset.classList.remove("ruleset-scroll");
+    ui.ruleset.style.removeProperty("--ruleset-shift");
+    if (!text) return;
+
+    requestAnimationFrame(() => {
+      const shift = ui.rulesetText.scrollWidth - ui.ruleset.clientWidth + 32;
+      const overflow = shift > 0;
+      ui.ruleset.style.setProperty("--ruleset-shift", overflow ? `${-shift}px` : "0px");
+      ui.ruleset.classList.toggle("ruleset-scroll", overflow);
+    });
+  }
+
   function showRuleset() {
     const mode = modes[state.mode];
     if (!mode) return;
     closeSuggestions();
-    ui.guess.value = mode.rules;
+    root.classList.add("ruleset-visible");
+    ui.guess.value = "";
+    ui.guess.placeholder = "";
     ui.guess.disabled = true;
     ui.guess.setAttribute("aria-expanded", "false");
+    setRulesetText(mode.rules);
   }
 
   function enableGuessing() {
+    root.classList.remove("ruleset-visible");
+    setRulesetText();
     ui.guess.disabled = false;
     ui.guess.value = "";
     ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
@@ -1024,6 +1046,12 @@
   new ResizeObserver(() => {
     if (root.classList.contains("tracklist-visible")) setTracklistHeight();
   }).observe(ui.tracklistPanel);
+
+  new ResizeObserver(() => {
+    if (root.classList.contains("ruleset-visible")) {
+      setRulesetText(ui.rulesetText.textContent);
+    }
+  }).observe(ui.guess.parentElement);
 
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
