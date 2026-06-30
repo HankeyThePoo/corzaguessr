@@ -793,6 +793,7 @@
 
   function openResult() {
     clearTimeout(state.resultTimer);
+    ui.card.classList.remove("modal-closing");
     const card = ui.card.getBoundingClientRect();
     const board = ui.board.getBoundingClientRect();
     ui.card.style.setProperty("--modal-y", `${board.top - card.top + board.height / 2}px`);
@@ -810,6 +811,7 @@
 
   function closeResult() {
     if (!isResultOpen()) return;
+    ui.card.classList.add("modal-closing");
     ui.card.classList.remove("modal-visible");
     ui.resultShell.style.height = `${ui.resultShell.offsetHeight}px`;
     void ui.resultShell.offsetHeight;
@@ -817,7 +819,7 @@
     reset({ keepResultOpen: true });
     state.resultTimer = setTimeout(() => {
       state.resultTimer = 0;
-      ui.card.classList.remove("modal-open");
+      ui.card.classList.remove("modal-open", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
       ui.play.focus({ preventScroll: true });
@@ -853,7 +855,7 @@
     state.used.clear();
     ui.status.textContent = "";
     if (!keepResultOpen) {
-      ui.card.classList.remove("modal-open", "modal-visible");
+      ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
       ui.resultShell.style.height = "0px";
     }
