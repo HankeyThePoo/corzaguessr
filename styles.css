@@ -366,14 +366,17 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+  align-items: stretch;
+  justify-content: stretch;
   border-radius: inherit;
-  background: rgba(0, 0, 0, 0);
+  overflow: hidden;
+  background: rgba(12, 12, 16, 0.97);
+  backdrop-filter: blur(18px);
   pointer-events: none;
+  transform: scaleY(0);
+  transform-origin: center;
   visibility: hidden;
-  transition: background 0.35s ease;
+  transition: transform 0.45s ease;
 }
 
 #corzaguessr.splash-open .splash-modal {
@@ -381,19 +384,21 @@
 }
 
 #corzaguessr.splash-visible .splash-modal {
-  background: rgba(0, 0, 0, 0.4);
+  transform: scaleY(1);
 }
 
 #corzaguessr .splash-shell {
-  width: min(96vw, 840px);
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  transition: height 0.45s ease;
 }
 
 #corzaguessr .splash-panel {
   display: grid;
-  gap: 0.85rem;
-  padding: 1.2rem;
+  align-content: center;
+  gap: 1.1rem;
+  min-height: 100%;
+  padding: 1.5rem;
   text-align: center;
   text-transform: uppercase;
 }
@@ -411,18 +416,14 @@
 #corzaguessr .splash-rules {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 1.5rem;
 }
 
 #corzaguessr .splash-rule {
   display: grid;
   align-content: center;
-  gap: 0.45rem;
-  min-height: 108px;
-  padding: 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  gap: 0.35rem;
+  padding: 0;
 }
 
 #corzaguessr .splash-rule h4 {
@@ -437,6 +438,31 @@
 
 #corzaguessr .splash-error {
   color: #ffb4b4;
+}
+
+@media (max-width: 600px) {
+  #corzaguessr .splash-panel {
+    gap: 0.85rem;
+    padding: 1rem;
+  }
+
+  #corzaguessr .splash-panel h3 {
+    font-size: 1rem;
+  }
+
+  #corzaguessr .splash-rules {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
+  #corzaguessr .splash-rule {
+    gap: 0.2rem;
+  }
+
+  #corzaguessr .splash-rule p {
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
 }
 
 #corzaguessr .tracklist-modal {
