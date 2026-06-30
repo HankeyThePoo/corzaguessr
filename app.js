@@ -38,7 +38,7 @@
       </div>
       <div class="modes" aria-label="Game mode">
         <button type="button" class="mode blitz-button" aria-pressed="false">BLITZ</button>
-        <button type="button" class="mode classic" aria-pressed="true" disabled>CLASSIC</button>
+        <button type="button" class="mode classic" aria-pressed="false">CLASSIC</button>
         <button type="button" class="mode survival" aria-pressed="false">SURVIVAL</button>
       </div>
       <div class="card glass">
@@ -103,6 +103,35 @@
           </div>
         </div>
         <div
+          class="splash-modal"
+          role="region"
+          aria-labelledby="corzaguessr-splash-title"
+          aria-hidden="false"
+        >
+          <div class="splash-shell">
+            <div class="splash-panel glass">
+              <h3 id="corzaguessr-splash-title">CHOOSE A MODE TO BEGIN</h3>
+              <div class="splash-rules">
+                <section class="splash-rule">
+                  <h4>BLITZ</h4>
+                  <p>Guess as many tracks as possible before the timer runs out.</p>
+                </section>
+                <section class="splash-rule">
+                  <h4>CLASSIC</h4>
+                  <p>Guess the track in six tries as more audio is revealed.</p>
+                </section>
+                <section class="splash-rule">
+                  <h4>SURVIVAL</h4>
+                  <p>Correct guesses add time; mistakes and skips drain it.</p>
+                </section>
+              </div>
+              <p class="splash-error" hidden>
+                COULD NOT LOAD TRACKLIST, PLEASE REFRESH!
+              </p>
+            </div>
+          </div>
+        </div>
+        <div
           class="tracklist-modal"
           role="dialog"
           aria-modal="true"
@@ -157,6 +186,10 @@
     result: $(".corzaguessr-modal"),
     resultTitle: $(".modal-title"),
     resultText: $(".modal-text"),
+    splash: $(".splash-modal"),
+    splashShell: $(".splash-shell"),
+    splashPanel: $(".splash-panel"),
+    splashError: $(".splash-error"),
     tracklistButton: $(".tracklist-button"),
     tracklistModal: $(".tracklist-modal"),
     tracklistShell: $(".tracklist-shell"),
@@ -173,14 +206,14 @@
   // State and small utilities -----------------------------------------------
 
   const state = {
-    mode: "classic",
+    mode: null,
     status: "loading",
     tracks: [],
     track: null,
     previousTrack: null,
     step: 0,
     elapsed: 0,
-    time: modes.classic.initialTime,
+    time: 0,
     maxTime: modes.survival.initialTime,
     rounds: 0,
     guesses: 0,
@@ -196,11 +229,16 @@
     fillTimer: 0,
     slotsTimer: 0,
     tracklistTimer: 0,
+    splashTimer: 0,
     returnFocus: null,
     pageScrollStyles: null,
     resumeAfterTracklist: false,
     endedDuringTracklist: false,
   };
+
+  root.classList.add("splash-open", "splash-visible");
+  ui.splashShell.style.height = `${ui.splashPanel.offsetHeight}px`;
+  setBackgroundInert(false);
 
   function formatTime(seconds) {
     return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, "0")}`;
@@ -227,15 +265,19 @@
     return root.classList.contains("tracklist-open");
   }
 
+  function isSplashOpen() {
+    return root.classList.contains("splash-open");
+  }
+
   function isModalOpen() {
-    return isResultOpen() || isTracklistOpen();
+    return isResultOpen() || isTracklistOpen() || isSplashOpen();
   }
 
   function setBackgroundInert(inert) {
     ui.headerAction.inert = inert;
     ui.modes.inert = inert;
-    ui.board.inert = inert;
-    ui.slots.inert = inert;
+    ui.board.inert = inert || isSplashOpen();
+    ui.slots.inert = inert || isSplashOpen();
   }
 
   function setProgress(text, scale) {
@@ -743,7 +785,7 @@
   }
 
   function setMode(mode) {
-    if (state.mode === mode || !modes[mode]) return;
+    if (!modes[mode] || (!isSplashOpen() && state.mode === mode)) return;
     state.mode = mode;
     root.classList.toggle("timed", mode !== "classic");
     ui.classic.disabled = mode === "classic";
@@ -752,6 +794,11 @@
     ui.classic.setAttribute("aria-pressed", String(mode === "classic"));
     ui.blitz.setAttribute("aria-pressed", String(mode === "blitz"));
     ui.survival.setAttribute("aria-pressed", String(mode === "survival"));
+
+    if (isSplashOpen()) {
+      if (state.tracks.length) closeSplash();
+      return;
+    }
 
     state.session++;
     setPlaying(false, true);
@@ -764,6 +811,36 @@
         ui.fill.style.transition = "";
       }, 300);
     }, 120);
+  }
+
+  // Splash screen -----------------------------------------------------------
+
+  function closeSplash() {
+    if (
+      !isSplashOpen() ||
+      isTracklistOpen() ||
+      !state.mode ||
+      !state.tracks.length
+    ) return;
+    clearTimeout(state.splashTimer);
+    reset();
+    ui.headerAction.inert = true;
+    ui.modes.inert = true;
+    root.classList.remove("splash-visible");
+    ui.splashShell.style.height = `${ui.splashShell.offsetHeight}px`;
+    void ui.splashShell.offsetHeight;
+    ui.splashShell.style.height = "0px";
+    const closeDelay = matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 0
+      : 450;
+    state.splashTimer = setTimeout(() => {
+      root.classList.remove("splash-open");
+      ui.splash.setAttribute("aria-hidden", "true");
+      setBackgroundInert(false);
+      ui.headerAction.inert = false;
+      ui.modes.inert = false;
+      focusGuess();
+    }, closeDelay);
   }
 
   // Tracklist modal ---------------------------------------------------------
@@ -837,6 +914,7 @@
         sendPlayerCommand("playVideo");
         setPlaying(true);
       }
+      if (isSplashOpen() && state.mode && state.tracks.length) closeSplash();
     }, 450);
   }
 
@@ -915,6 +993,12 @@
   new ResizeObserver(() => {
     if (root.classList.contains("tracklist-visible")) setTracklistHeight();
   }).observe(ui.tracklistPanel);
+
+  new ResizeObserver(() => {
+    if (root.classList.contains("splash-visible")) {
+      ui.splashShell.style.height = `${ui.splashPanel.offsetHeight}px`;
+    }
+  }).observe(ui.splashPanel);
 
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
@@ -1025,7 +1109,8 @@
     .then((tracks) => {
       state.tracks = validateTracks(tracks);
       renderTracklist();
-      reset();
+      if (state.mode) closeSplash();
+      else state.status = "ready";
     })
     .catch((error) => {
       console.error("Corzaguessr could not load its track catalog.", error);
@@ -1033,7 +1118,10 @@
       ui.play.disabled = true;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
-      addSlot("COULD NOT LOAD TRACKLIST, PLEASE REFRESH!", "blink");
+      ui.classic.disabled = true;
+      ui.blitz.disabled = true;
+      ui.survival.disabled = true;
+      ui.splashError.hidden = false;
       announce("Could not load the tracklist. Please refresh.");
     });
 })();
