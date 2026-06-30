@@ -25,9 +25,34 @@
     stop: "M7 7h10v10H7z",
   };
   const modes = {
-    classic: { initialTime: 60000, endTime: "0:01", skip: "ADD 1s" },
-    blitz: { initialTime: 60000, endTime: "1:00", skip: "SKIP" },
-    survival: { initialTime: 30000, endTime: "0:30", skip: "SKIP" },
+    classic: {
+      timed: false,
+      survival: false,
+      initialTime: 60000,
+      initialText: "0:00",
+      initialProgress: 0,
+      endTime: "0:01",
+      skip: "ADD 1s",
+    },
+    blitz: {
+      timed: true,
+      survival: false,
+      initialTime: 60000,
+      initialText: "1:00",
+      initialProgress: 1,
+      endTime: "1:00",
+      skip: "SKIP",
+    },
+    survival: {
+      timed: true,
+      survival: true,
+      initialTime: 30000,
+      initialText: "0:00",
+      initialProgress: 1,
+      endTime: "0:30",
+      skip: "SKIP",
+      timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
+    },
   };
 
   root.innerHTML = `
@@ -173,6 +198,11 @@
     yt: $(".yt"),
     icon: $(".icon path"),
   };
+  const modeButtons = {
+    classic: ui.classic,
+    blitz: ui.blitz,
+    survival: ui.survival,
+  };
 
   // State and small utilities -----------------------------------------------
 
@@ -197,7 +227,7 @@
     previousTick: 0,
     session: 0,
     activeSuggestion: -1,
-    fillTimer: 0,
+    progressTimer: 0,
     slotsTimer: 0,
     tracklistTimer: 0,
     returnFocus: null,
@@ -296,7 +326,7 @@
     if (pausePlayer) sendPlayerCommand("pauseVideo");
 
     const icon = playing
-      ? state.mode === "classic" ? "stop" : "pause"
+      ? modes[state.mode].timed ? "pause" : "stop"
       : "play";
     ui.icon.setAttribute("d", icons[icon]);
     ui.play.setAttribute("aria-label", icon === "play" ? "Play" : icon === "pause" ? "Pause" : "Stop");
@@ -323,10 +353,11 @@
   }
 
   function rewindClassic() {
-    clearTimeout(state.fillTimer);
+    cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
     setProgress("0:00", 0);
-    state.fillTimer = setTimeout(() => {
+    state.progressTimer = setTimeout(() => {
+      state.progressTimer = 0;
       ui.fill.style.transition = "";
     }, 300);
   }
@@ -344,6 +375,7 @@
   function startClock() {
     if (state.frame || state.status !== "playing") return;
     const session = state.session;
+    const mode = modes[state.mode];
 
     const tick = (now) => {
       if (session !== state.session || state.status !== "playing") {
@@ -355,7 +387,7 @@
       const delta = Math.min(now - state.previousTick, 250);
       state.previousTick = now;
 
-      if (state.mode === "classic") {
+      if (!mode.timed) {
         state.elapsed += delta;
         setProgress(
           formatTime(state.elapsed / 1000),
@@ -366,13 +398,14 @@
           return;
         }
       } else {
-        const survival = state.mode === "survival";
-        if (survival) state.elapsed += delta;
+        if (mode.survival) state.elapsed += delta;
         state.time = Math.max(0, state.time - delta);
-        if (survival) ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
+        if (mode.survival) {
+          ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
+        }
         setProgress(
-          formatTime((survival ? state.elapsed : state.time) / 1000),
-          state.time / (survival ? state.maxTime : modes.blitz.initialTime),
+          formatTime((mode.survival ? state.elapsed : state.time) / 1000),
+          state.time / (mode.survival ? state.maxTime : mode.initialTime),
         );
         if (!state.time) {
           endGame();
@@ -442,7 +475,7 @@
     item.textContent = text;
     if (!replace || !item.isConnected) {
       ui.slots.prepend(item);
-      if (state.mode !== "classic") {
+      if (modes[state.mode].timed) {
         while (ui.slots.children.length > maxTimedSlots) {
           ui.slots.lastElementChild.remove();
         }
@@ -452,7 +485,7 @@
   }
 
   function renderPrompt() {
-    if (state.mode !== "classic") {
+    if (modes[state.mode].timed) {
       addSlot(`GUESS #${state.rounds}`);
       return;
     }
@@ -542,14 +575,15 @@
 
   function startRound() {
     if (!state.tracks.length) return;
+    const mode = modes[state.mode];
     const selected = selectTrack();
     const timedSeconds = Math.min(
       Math.ceil(state.time / 1000),
       maxTimedClip,
     );
-    const seconds = state.mode === "classic"
-      ? steps.at(-1)
-      : Math.min(timedSeconds, selected.duration);
+    const seconds = mode.timed
+      ? Math.min(timedSeconds, selected.duration)
+      : steps.at(-1);
     const available = Math.max(0, Math.floor(selected.duration - seconds));
 
     state.previousTrack = selected;
@@ -568,13 +602,14 @@
 
   function togglePlay() {
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
+    const mode = modes[state.mode];
     if (!state.track) {
       ui.skip.disabled = false;
       startRound();
     } else if (state.status === "playing") {
       setPlaying(false, true);
-      if (state.mode === "classic") rewindClassic();
-    } else if (state.mode === "classic") {
+      if (!mode.timed) rewindClassic();
+    } else if (!mode.timed) {
       startClassic();
     } else {
       sendPlayerCommand("playVideo");
@@ -590,11 +625,9 @@
     renderTracklist();
   }
 
-  function attempt(type, title = "") {
-    if (!state.track || isModalOpen()) return;
-
+  function renderAttempt(type, title) {
     if (type === "skip") {
-      if (state.mode !== "classic") {
+      if (modes[state.mode].timed) {
         addSlot("SKIPPED", "skip", true);
       } else {
         const last = state.step === steps.length - 1;
@@ -611,29 +644,25 @@
       addSlot(title, type === "correct" ? "correct" : "wrong", true);
     }
     clearGuess();
+  }
 
-    if (type === "correct") recordDiscovery();
-
-    if (state.mode !== "classic") {
-      if (type !== "skip") state.guesses++;
-      if (type === "correct") state.correct++;
-      if (state.mode === "survival") {
-        const change = type === "correct" ? 3000 : type === "wrong" ? -1000 : -2000;
-        state.time = Math.max(0, state.time + change);
-        state.maxTime = Math.max(state.maxTime, state.time);
-        ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
-        setProgress(formatTime(state.elapsed / 1000), state.time / state.maxTime);
-      }
-      setPlaying(false);
-      announce(type === "correct" ? "Correct." : type === "wrong" ? "Incorrect." : "Skipped.");
-      if (!state.time) {
-        endGame();
-      } else {
-        startRound();
-      }
-      return;
+  function resolveTimedAttempt(type) {
+    const mode = modes[state.mode];
+    if (type !== "skip") state.guesses++;
+    if (type === "correct") state.correct++;
+    if (mode.survival) {
+      state.time = Math.max(0, state.time + mode.timeChange[type]);
+      state.maxTime = Math.max(state.maxTime, state.time);
+      ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
+      setProgress(formatTime(state.elapsed / 1000), state.time / state.maxTime);
     }
+    setPlaying(false);
+    announce(type === "correct" ? "Correct." : type === "wrong" ? "Incorrect." : "Skipped.");
+    if (!state.time) endGame();
+    else startRound();
+  }
 
+  function resolveClassicAttempt(type) {
     if (type === "correct") {
       endGame(true);
       return;
@@ -653,6 +682,14 @@
     }
   }
 
+  function attempt(type, title = "") {
+    if (!state.track || isModalOpen()) return;
+    renderAttempt(type, title);
+    if (type === "correct") recordDiscovery();
+    if (modes[state.mode].timed) resolveTimedAttempt(type);
+    else resolveClassicAttempt(type);
+  }
+
   function makeGuess(title = ui.guess.value.trim()) {
     if (!title || !state.track) return;
     state.used.add(title);
@@ -662,13 +699,14 @@
   function handleTrackEnded() {
     if (!state.track || !state.trackStarted || state.status === "ended") return;
     state.trackStarted = false;
-    if (state.mode === "classic") setPlaying(false);
+    if (!modes[state.mode].timed) setPlaying(false);
     else attempt("skip");
   }
 
   function endGame(won) {
     if (!state.track) return;
-    if (state.mode !== "classic" || state.status === "playing") setPlaying(false, true);
+    const mode = modes[state.mode];
+    if (mode.timed || state.status === "playing") setPlaying(false, true);
     state.status = "ended";
     state.trackStarted = false;
     state.session++;
@@ -676,21 +714,20 @@
     ui.skip.disabled = true;
     ui.guess.disabled = true;
 
-    const timed = state.mode !== "classic";
     const mark = won ? "🎉" : "❌";
-    ui.resultTitle.innerHTML = timed
+    ui.resultTitle.innerHTML = mode.timed
       ? '⏱️ <span class="end">TIME IS UP</span> ⏱️'
       : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
     const percent = state.guesses
       ? Math.round(state.correct * 100 / state.guesses)
       : 0;
-    ui.resultText.textContent = timed
-      ? state.mode === "survival"
+    ui.resultText.textContent = mode.timed
+      ? mode.survival
         ? `TIME SURVIVED: ${formatTime(state.elapsed / 1000)}\nGUESSES MADE: ${state.guesses} (${percent}%)`
         : `GUESSES MADE: ${state.guesses}\nCORRECT GUESSES: ${state.correct} (${percent}%)`
       : `THE TRACK WAS\n${state.track.title}`;
 
-    const hasSpotify = !timed && Boolean(state.track.spotify);
+    const hasSpotify = !mode.timed && Boolean(state.track.spotify);
     ui.spotify.style.display = hasSpotify ? "inline-flex" : "none";
     ui.spotify.onclick = hasSpotify
       ? () => window.open(
@@ -711,12 +748,17 @@
     announce(ui.resultText.textContent.replace("\n", ". "));
   }
 
-  function reset(keepFillTransition = false) {
-    clearTimeout(state.fillTimer);
+  function cancelProgressTransition() {
+    clearTimeout(state.progressTimer);
+    state.progressTimer = 0;
+    ui.fill.style.transition = "";
+  }
+
+  function resetSession() {
+    const mode = modes[state.mode];
     clearTimeout(state.slotsTimer);
     state.session++;
     cancelClock();
-    if (!keepFillTransition) ui.fill.style.transition = "";
     if (state.track) sendPlayerCommand("pauseVideo");
 
     Object.assign(state, {
@@ -724,7 +766,7 @@
       track: null,
       step: 0,
       elapsed: 0,
-      time: modes[state.mode].initialTime,
+      time: mode.initialTime,
       maxTime: modes.survival.initialTime,
       rounds: 0,
       guesses: 0,
@@ -743,26 +785,33 @@
     ui.skip.disabled = true;
     clearSlots();
 
-    const timed = state.mode !== "classic";
-    const survival = state.mode === "survival";
-    ui.endtime.textContent = modes[state.mode].endTime;
-    ui.skip.textContent = modes[state.mode].skip;
+    ui.endtime.textContent = mode.endTime;
+    ui.skip.textContent = mode.skip;
     ui.snippet.style.width = `${100 / steps.at(-1)}%`;
-    setProgress(survival ? "0:00" : timed ? "1:00" : "0:00", timed ? 1 : 0);
+    setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
     focusGuess();
+  }
+
+  function reset() {
+    cancelProgressTransition();
+    resetSession();
+  }
+
+  function renderModeSelection() {
+    const mode = modes[state.mode];
+    root.classList.toggle("timed", mode.timed);
+    Object.entries(modeButtons).forEach(([name, button]) => {
+      const selected = name === state.mode;
+      button.disabled = selected;
+      button.setAttribute("aria-pressed", String(selected));
+    });
   }
 
   function setMode(mode) {
     if (!modes[mode] || (!isAwaitingMode() && state.mode === mode)) return;
     state.mode = mode;
-    root.classList.toggle("timed", mode !== "classic");
-    ui.classic.disabled = mode === "classic";
-    ui.blitz.disabled = mode === "blitz";
-    ui.survival.disabled = mode === "survival";
-    ui.classic.setAttribute("aria-pressed", String(mode === "classic"));
-    ui.blitz.setAttribute("aria-pressed", String(mode === "blitz"));
-    ui.survival.setAttribute("aria-pressed", String(mode === "survival"));
+    renderModeSelection();
 
     if (isAwaitingMode()) {
       if (state.tracks.length) activateMode();
@@ -775,14 +824,17 @@
   // Initial mode selection --------------------------------------------------
 
   function animateModeChange() {
+    const mode = modes[state.mode];
     state.session++;
     setPlaying(false, true);
-    clearTimeout(state.fillTimer);
+    cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
-    setProgress(ui.now.textContent, state.mode === "classic" ? 0 : 1);
-    state.fillTimer = setTimeout(() => {
-      reset(true);
-      state.fillTimer = setTimeout(() => {
+    setProgress(ui.now.textContent, mode.initialProgress);
+    state.progressTimer = setTimeout(() => {
+      state.progressTimer = 0;
+      resetSession();
+      state.progressTimer = setTimeout(() => {
+        state.progressTimer = 0;
         ui.fill.style.transition = "";
       }, 300);
     }, 120);
