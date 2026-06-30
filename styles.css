@@ -392,7 +392,7 @@
 }
 
 #corzaguessr .modal-closing .result-modal {
-  transition: background 0.35s ease;
+  transition: background 0.25s ease;
 }
 
 #corzaguessr .modal-visible .result-modal {
