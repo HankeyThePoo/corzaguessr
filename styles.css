@@ -384,12 +384,15 @@
   background: rgba(0, 0, 0, 0);
   pointer-events: none;
   visibility: hidden;
-  transition: background 0.25s ease;
 }
 
 #corzaguessr .modal-open .result-modal {
   pointer-events: auto;
   visibility: visible;
+}
+
+#corzaguessr .modal-closing .result-modal {
+  transition: background 0.35s ease;
 }
 
 #corzaguessr .modal-visible .result-modal {
