@@ -13,6 +13,7 @@
   const maxTimedClip = 60;
   const maxTimedSlots = 50;
   const storageKey = "corzaguessrDiscoveredV1";
+  const personalBestStorageKey = "corzaguessrPersonalBestsV1";
   const hiddenTitle = "???????????????????";
   const youtubeOrigin = "https://www.youtube-nocookie.com";
   const youtubeOrigins = new Set([
@@ -133,11 +134,12 @@
               role="dialog"
               aria-modal="true"
               aria-labelledby="corzaguessr-result-title"
-              aria-describedby="corzaguessr-result-text"
+              aria-describedby="corzaguessr-result-text corzaguessr-personal-best"
               aria-hidden="true"
             >
               <h3 id="corzaguessr-result-title" class="modal-title"></h3>
               <p id="corzaguessr-result-text" class="modal-text"></p>
+              <p id="corzaguessr-personal-best" class="personal-best"></p>
               <div class="actions">
                 <button type="button" class="button next">NEW GAME</button>
                 <button type="button" class="button spotify">SPOTIFY</button>
@@ -208,6 +210,7 @@
     resultShell: $(".result-shell"),
     resultTitle: $(".modal-title"),
     resultText: $(".modal-text"),
+    personalBest: $(".personal-best"),
     modePrompt: $(".mode-prompt"),
     tracklistButton: $(".tracklist-button"),
     tracklistModal: $(".tracklist-modal"),
@@ -245,6 +248,8 @@
     trackStarted: false,
     used: new Set(),
     discovered: loadDiscoveries(),
+    personalBests: loadPersonalBests(),
+    personalBestBeaten: false,
     playerReady: false,
     frame: 0,
     previousTick: 0,
@@ -326,6 +331,43 @@
       localStorage.setItem(storageKey, JSON.stringify([...state.discovered]));
     } catch {
       announce("DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
+    }
+  }
+
+  function validRecord(value) {
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  }
+
+  function loadPersonalBests() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(personalBestStorageKey) || "{}");
+      const classicCurrent = validRecord(saved?.classic?.current);
+      const classicBest = validRecord(saved?.classic?.best);
+      return {
+        classic: {
+          current: classicCurrent,
+          best: Math.max(classicCurrent, classicBest),
+        },
+        blitz: validRecord(saved?.blitz),
+        survival: validRecord(saved?.survival),
+      };
+    } catch {
+      return {
+        classic: { current: 0, best: 0 },
+        blitz: 0,
+        survival: 0,
+      };
+    }
+  }
+
+  function savePersonalBests() {
+    try {
+      localStorage.setItem(
+        personalBestStorageKey,
+        JSON.stringify(state.personalBests),
+      );
+    } catch {
+      announce("PERSONAL BESTS COULD NOT BE SAVED IN THIS BROWSER.");
     }
   }
 
@@ -728,10 +770,30 @@
     }
   }
 
+  function updateClassicStreak(type) {
+    if (state.mode !== "classic" || state.step !== 0) return;
+
+    if (type === "correct") {
+      state.personalBests.classic.current++;
+      if (state.personalBests.classic.current > state.personalBests.classic.best) {
+        state.personalBests.classic.best = state.personalBests.classic.current;
+        state.personalBestBeaten = true;
+      }
+      savePersonalBests();
+      return;
+    }
+
+    if (state.personalBests.classic.current) {
+      state.personalBests.classic.current = 0;
+      savePersonalBests();
+    }
+  }
+
   function attempt(type, title = "") {
     if (!state.track || isModalOpen()) return;
     renderAttempt(type, title);
     if (type === "correct") recordDiscovery();
+    updateClassicStreak(type);
     if (modes[state.mode].timed) resolveTimedAttempt(type);
     else resolveClassicAttempt(type);
   }
@@ -749,6 +811,40 @@
     else attempt("skip");
   }
 
+  function updateTimedPersonalBest() {
+    if (state.mode === "blitz" && state.correct > state.personalBests.blitz) {
+      state.personalBests.blitz = state.correct;
+      state.personalBestBeaten = true;
+      savePersonalBests();
+    } else if (
+      state.mode === "survival" &&
+      Math.floor(state.elapsed) > state.personalBests.survival
+    ) {
+      state.personalBests.survival = Math.floor(state.elapsed);
+      state.personalBestBeaten = true;
+      savePersonalBests();
+    }
+  }
+
+  function renderPersonalBest() {
+    const label = state.personalBestBeaten
+      ? "NEW PERSONAL BEST"
+      : "PERSONAL BEST";
+
+    if (state.mode === "classic") {
+      const { current, best } = state.personalBests.classic;
+      ui.personalBest.textContent = state.personalBestBeaten
+        ? `1S STREAK: ${current} · NEW PERSONAL BEST: ${best}`
+        : `1S STREAK: ${current} · PERSONAL BEST: ${best}`;
+    } else if (state.mode === "blitz") {
+      ui.personalBest.textContent =
+        `${label}: ${state.personalBests.blitz} CORRECT`;
+    } else {
+      ui.personalBest.textContent =
+        `${label}: ${formatTime(state.personalBests.survival / 1000)}`;
+    }
+  }
+
   function endGame(won) {
     if (!state.track) return;
     const mode = modes[state.mode];
@@ -759,6 +855,7 @@
     ui.play.disabled = true;
     ui.skip.disabled = true;
     ui.guess.disabled = true;
+    updateTimedPersonalBest();
 
     const mark = won ? "🎉" : "❌";
     ui.resultTitle.innerHTML = mode.timed
@@ -772,6 +869,7 @@
         ? `TIME SURVIVED: ${formatTime(state.elapsed / 1000)}\nGUESSES MADE: ${state.guesses} (${percent}%)`
         : `GUESSES MADE: ${state.guesses}\nCORRECT GUESSES: ${state.correct} (${percent}%)`
       : `THE TRACK WAS\n${state.track.title}`;
+    renderPersonalBest();
 
     const hasSpotify = !mode.timed && Boolean(state.track.spotify);
     ui.spotify.style.display = hasSpotify ? "inline-flex" : "none";
@@ -784,7 +882,9 @@
       : null;
 
     openResult();
-    announce(ui.resultText.textContent.replace("\n", ". "));
+    announce(
+      `${ui.resultText.textContent.replace("\n", ". ")}. ${ui.personalBest.textContent}`,
+    );
   }
 
   function setResultHeight() {
@@ -851,6 +951,7 @@
       correct: 0,
       trackStarted: false,
       activeSuggestion: -1,
+      personalBestBeaten: false,
     });
     state.used.clear();
     ui.status.textContent = "";
