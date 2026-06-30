@@ -33,7 +33,6 @@
       initialProgress: 0,
       endTime: "0:01",
       skip: "ADD 1s",
-      rules: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED.",
     },
     blitz: {
       timed: true,
@@ -43,7 +42,6 @@
       initialProgress: 1,
       endTime: "1:00",
       skip: "SKIP",
-      rules: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT.",
     },
     survival: {
       timed: true,
@@ -53,7 +51,6 @@
       initialProgress: 1,
       endTime: "0:30",
       skip: "SKIP",
-      rules: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT.",
       timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
     },
   };
@@ -103,7 +100,6 @@
                 aria-expanded="false"
                 disabled
               >
-              <div class="ruleset-display" aria-hidden="true"><span></span></div>
               <div
                 id="corzaguessr-suggestions"
                 class="suggest"
@@ -176,8 +172,6 @@
     play: $(".play"),
     skip: $(".skip"),
     guess: $(".guess"),
-    ruleset: $(".ruleset-display"),
-    rulesetText: $(".ruleset-display span"),
     suggest: $(".suggest"),
     fill: $(".fill"),
     snippet: $(".snippet"),
@@ -290,41 +284,6 @@
     ui.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, scale))})`;
   }
 
-  function setRulesetText(text = "") {
-    ui.rulesetText.textContent = text;
-    ui.ruleset.classList.remove("ruleset-scroll");
-    ui.ruleset.style.removeProperty("--ruleset-shift");
-    if (!text) return;
-
-    requestAnimationFrame(() => {
-      const shift = ui.rulesetText.scrollWidth - ui.ruleset.clientWidth + 32;
-      const overflow = shift > 0;
-      ui.ruleset.style.setProperty("--ruleset-shift", overflow ? `${-shift}px` : "0px");
-      ui.ruleset.classList.toggle("ruleset-scroll", overflow);
-    });
-  }
-
-  function showRuleset() {
-    const mode = modes[state.mode];
-    if (!mode) return;
-    closeSuggestions();
-    root.classList.add("ruleset-visible");
-    ui.guess.value = "";
-    ui.guess.placeholder = "";
-    ui.guess.disabled = true;
-    ui.guess.setAttribute("aria-expanded", "false");
-    setRulesetText(mode.rules);
-  }
-
-  function enableGuessing() {
-    root.classList.remove("ruleset-visible");
-    setRulesetText();
-    ui.guess.disabled = false;
-    ui.guess.value = "";
-    ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
-    closeSuggestions();
-  }
-
   function loadDiscoveries() {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
@@ -338,7 +297,7 @@
     try {
       localStorage.setItem(storageKey, JSON.stringify([...state.discovered]));
     } catch {
-      announce("DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
+      announce("Discovery progress could not be saved in this browser.");
     }
   }
 
@@ -467,10 +426,9 @@
     state.track = null;
     state.trackStarted = false;
     ui.skip.disabled = true;
-    showRuleset();
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
-    announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
+    announce("The selected track could not be played. Try again.");
   }
 
   // Rendering ---------------------------------------------------------------
@@ -637,7 +595,6 @@
     state.rounds++;
     state.trackStarted = false;
     state.session++;
-    enableGuessing();
     setPlaying(true);
     loadPlayerTrack(true);
     renderPrompt();
@@ -718,7 +675,7 @@
 
     state.step++;
     renderPrompt();
-    announce(type === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
+    announce(type === "wrong" ? "Incorrect. Try again." : "Skipped. More time added.");
     if (state.status !== "playing") {
       if (type === "skip") startClassic();
       else togglePlay();
@@ -824,7 +781,7 @@
     ui.result.setAttribute("aria-hidden", "true");
     setBackgroundInert(false);
     ui.play.disabled = false;
-    showRuleset();
+    ui.guess.disabled = false;
     ui.skip.disabled = true;
     clearSlots();
 
@@ -892,6 +849,7 @@
     ) return;
     root.classList.remove("awaiting-mode");
     ui.modePrompt.setAttribute("aria-hidden", "true");
+    ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
     setBackgroundInert(false);
     animateModeChange();
   }
@@ -976,7 +934,7 @@
     state.discovered.clear();
     saveDiscoveries();
     renderTracklist();
-    announce("DISCOVERED TRACKS RESET.");
+    announce("Discovered tracks reset.");
   }
 
   function trapFocus(event, container) {
@@ -1046,12 +1004,6 @@
   new ResizeObserver(() => {
     if (root.classList.contains("tracklist-visible")) setTracklistHeight();
   }).observe(ui.tracklistPanel);
-
-  new ResizeObserver(() => {
-    if (root.classList.contains("ruleset-visible")) {
-      setRulesetText(ui.rulesetText.textContent);
-    }
-  }).observe(ui.guess.parentElement);
 
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
@@ -1131,7 +1083,7 @@
   });
 
   function validateTracks(value) {
-    if (!Array.isArray(value)) throw new Error("TRACK CATALOG IS NOT AN ARRAY.");
+    if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
     const titles = new Set();
     const valid = [];
     for (const item of value) {
@@ -1150,13 +1102,13 @@
       titles.add(title);
       valid.push({ title, id, duration, spotify });
     }
-    if (!valid.length) throw new Error("TRACK CATALOG HAS NO VALID TRACKS.");
+    if (!valid.length) throw new Error("Track catalog has no valid tracks.");
     return valid;
   }
 
   fetch(tracksUrl, { headers: { Accept: "application/json" } })
     .then((response) => {
-      if (!response.ok) throw new Error(`TRACK CATALOG RETURNED ${response.status}.`);
+      if (!response.ok) throw new Error(`Track catalog returned ${response.status}.`);
       return response.json();
     })
     .then((tracks) => {
@@ -1166,7 +1118,7 @@
       else state.status = "ready";
     })
     .catch((error) => {
-      console.error("CORZAGUESSR COULD NOT LOAD ITS TRACK CATALOG.", error);
+      console.error("Corzaguessr could not load its track catalog.", error);
       state.status = "error";
       ui.play.disabled = true;
       ui.skip.disabled = true;
@@ -1176,6 +1128,6 @@
       ui.survival.disabled = true;
       ui.modePrompt.textContent = "COULD NOT LOAD TRACKLIST, PLEASE REFRESH!";
       root.classList.add("mode-error");
-      announce("COULD NOT LOAD THE TRACKLIST. PLEASE REFRESH.");
+      announce("Could not load the tracklist. Please refresh.");
     });
 })();
