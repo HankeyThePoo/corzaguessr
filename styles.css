@@ -242,10 +242,68 @@
   font: inherit;
   font-size: 0.9rem;
   text-align: center;
+  text-transform: uppercase;
 }
 
 #corzaguessr input::placeholder {
   color: rgba(255, 255, 255, 0.75);
+}
+
+#corzaguessr .ruleset {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  overflow: hidden;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+#corzaguessr .ruleset-track {
+  display: flex;
+  justify-content: center;
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+#corzaguessr .ruleset-copy {
+  display: none;
+}
+
+#corzaguessr.rules-visible input {
+  visibility: hidden;
+}
+
+#corzaguessr.rules-visible .ruleset {
+  opacity: 1;
+  visibility: visible;
+}
+
+@keyframes corzaguessr-ruleset-scroll {
+  to {
+    transform: translateX(calc(-50% - 1.25rem));
+  }
+}
+
+@media (max-width: 600px) {
+  #corzaguessr .ruleset.scroll .ruleset-track {
+    justify-content: flex-start;
+    min-width: max-content;
+    gap: 2.5rem;
+    animation: corzaguessr-ruleset-scroll 11s linear infinite;
+  }
+
+  #corzaguessr .ruleset.scroll .ruleset-copy {
+    display: inline;
+  }
 }
 
 #corzaguessr .suggest {
