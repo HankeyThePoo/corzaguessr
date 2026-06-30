@@ -82,7 +82,7 @@
           aria-expanded="false"
         >TRACKLIST</button>
       </div>
-      <div class="modes" aria-label="Game mode">
+      <div class="modes" aria-label="GAME MODE">
         <button type="button" class="mode daily" aria-pressed="false">DAILY</button>
         <button type="button" class="mode blitz-button" aria-pressed="false">BLITZ</button>
         <button type="button" class="mode classic" aria-pressed="false">CLASSIC</button>
@@ -93,7 +93,7 @@
           <div class="board">
             <div class="controls">
               <div class="time"><span class="now">0:00</span></div>
-              <button type="button" class="play" aria-label="Play" disabled>
+              <button type="button" class="play" aria-label="PLAY" disabled>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="${icons.play}"></path>
                 </svg>
@@ -110,7 +110,7 @@
               <i class="tick" style="left:50%"></i>
             </div>
             <div class="auto">
-              <label class="sr-only" for="corzaguessr-guess">Search for a track</label>
+              <label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label>
               <input
                 id="corzaguessr-guess"
                 class="guess"
@@ -190,7 +190,7 @@
     <p class="sr-only status" aria-live="polite"></p>
     <iframe
       class="yt hide"
-      title="Corzaguessr audio player"
+      title="CORZAGUESSR AUDIO PLAYER"
       allow="autoplay; encrypted-media; picture-in-picture"
       allowfullscreen
     ></iframe>
@@ -518,7 +518,7 @@
       ? modes[state.mode].timed ? "pause" : "stop"
       : "play";
     ui.icon.setAttribute("d", icons[icon]);
-    ui.play.setAttribute("aria-label", icon === "play" ? "Play" : icon === "pause" ? "Pause" : "Stop");
+    ui.play.setAttribute("aria-label", icon === "play" ? "PLAY" : icon === "pause" ? "PAUSE" : "STOP");
   }
 
   function loadPlayerTrack(autoplay = true) {
