@@ -670,7 +670,9 @@
     state.slotsTimer = setTimeout(() => {
       ui.slots.replaceChildren();
       ui.slots.style.height = "";
-      ui.play.disabled = state.status === "loading";
+      ui.play.disabled =
+        state.status === "loading" ||
+        (modes[state.mode]?.daily && isDailyDone(state.dailyDate));
     }, 250);
   }
 
