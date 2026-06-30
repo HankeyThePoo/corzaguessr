@@ -109,7 +109,7 @@
           aria-hidden="false"
         >
           <div class="splash-shell">
-            <div class="splash-panel glass">
+            <div class="splash-panel">
               <h3 id="corzaguessr-splash-title">CHOOSE A MODE TO BEGIN</h3>
               <div class="splash-rules">
                 <section class="splash-rule">
@@ -237,7 +237,6 @@
   };
 
   root.classList.add("splash-open", "splash-visible");
-  ui.splashShell.style.height = `${ui.splashPanel.offsetHeight}px`;
   setBackgroundInert(false);
 
   function formatTime(seconds) {
@@ -827,9 +826,6 @@
     ui.headerAction.inert = true;
     ui.modes.inert = true;
     root.classList.remove("splash-visible");
-    ui.splashShell.style.height = `${ui.splashShell.offsetHeight}px`;
-    void ui.splashShell.offsetHeight;
-    ui.splashShell.style.height = "0px";
     const closeDelay = matchMedia("(prefers-reduced-motion: reduce)").matches
       ? 0
       : 450;
@@ -993,12 +989,6 @@
   new ResizeObserver(() => {
     if (root.classList.contains("tracklist-visible")) setTracklistHeight();
   }).observe(ui.tracklistPanel);
-
-  new ResizeObserver(() => {
-    if (root.classList.contains("splash-visible")) {
-      ui.splashShell.style.height = `${ui.splashPanel.offsetHeight}px`;
-    }
-  }).observe(ui.splashPanel);
 
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
