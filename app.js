@@ -126,19 +126,23 @@
           </div>
           <div class="slots" aria-live="polite" aria-relevant="additions text"></div>
         </div>
-        <div
-          class="corzaguessr-modal glass"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="corzaguessr-result-title"
-          aria-describedby="corzaguessr-result-text"
-          aria-hidden="true"
-        >
-          <h3 id="corzaguessr-result-title" class="modal-title"></h3>
-          <p id="corzaguessr-result-text" class="modal-text"></p>
-          <div class="actions">
-            <button type="button" class="button next">NEW GAME</button>
-            <button type="button" class="button spotify">SPOTIFY</button>
+        <div class="result-modal">
+          <div class="result-shell">
+            <div
+              class="corzaguessr-modal glass"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="corzaguessr-result-title"
+              aria-describedby="corzaguessr-result-text"
+              aria-hidden="true"
+            >
+              <h3 id="corzaguessr-result-title" class="modal-title"></h3>
+              <p id="corzaguessr-result-text" class="modal-text"></p>
+              <div class="actions">
+                <button type="button" class="button next">NEW GAME</button>
+                <button type="button" class="button spotify">SPOTIFY</button>
+              </div>
+            </div>
           </div>
         </div>
         <p class="mode-prompt" role="status" aria-hidden="false">
@@ -201,6 +205,7 @@
     blitz: $(".blitz-button"),
     survival: $(".survival"),
     result: $(".corzaguessr-modal"),
+    resultShell: $(".result-shell"),
     resultTitle: $(".modal-title"),
     resultText: $(".modal-text"),
     modePrompt: $(".mode-prompt"),
@@ -247,6 +252,7 @@
     activeSuggestion: -1,
     progressTimer: 0,
     slotsTimer: 0,
+    resultTimer: 0,
     tracklistTimer: 0,
     returnFocus: null,
     pageScrollStyles: null,
@@ -288,6 +294,10 @@
 
   function isModalOpen() {
     return isResultOpen() || isTracklistOpen();
+  }
+
+  function modalTransitionDelay() {
+    return matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450;
   }
 
   function setBackgroundInert(inert) {
@@ -772,15 +782,43 @@
         )
       : null;
 
+    openResult();
+    announce(ui.resultText.textContent.replace("\n", ". "));
+  }
+
+  function setResultHeight() {
+    ui.resultShell.style.height = `${ui.result.offsetHeight}px`;
+  }
+
+  function openResult() {
+    clearTimeout(state.resultTimer);
     const card = ui.card.getBoundingClientRect();
     const board = ui.board.getBoundingClientRect();
     ui.card.style.setProperty("--modal-y", `${board.top - card.top + board.height / 2}px`);
     state.returnFocus = document.activeElement;
     ui.card.classList.add("modal-open");
     ui.result.setAttribute("aria-hidden", "false");
+    ui.resultShell.style.height = "0px";
     setBackgroundInert(true);
-    requestAnimationFrame(() => ui.next.focus());
-    announce(ui.resultText.textContent.replace("\n", ". "));
+    requestAnimationFrame(() => {
+      ui.card.classList.add("modal-visible");
+      setResultHeight();
+      ui.next.focus();
+    });
+  }
+
+  function closeResult() {
+    if (!isResultOpen()) return;
+    clearTimeout(state.resultTimer);
+    ui.card.classList.remove("modal-visible");
+    ui.resultShell.style.height = `${ui.resultShell.offsetHeight}px`;
+    void ui.resultShell.offsetHeight;
+    ui.resultShell.style.height = "0px";
+    state.resultTimer = setTimeout(() => {
+      state.resultTimer = 0;
+      reset();
+      ui.play.focus({ preventScroll: true });
+    }, modalTransitionDelay());
   }
 
   function cancelProgressTransition() {
@@ -811,8 +849,9 @@
     });
     state.used.clear();
     ui.status.textContent = "";
-    ui.card.classList.remove("modal-open");
+    ui.card.classList.remove("modal-open", "modal-visible");
     ui.result.setAttribute("aria-hidden", "true");
+    ui.resultShell.style.height = "0px";
     setBackgroundInert(false);
     ui.play.disabled = false;
     ui.skip.disabled = true;
@@ -827,6 +866,8 @@
   }
 
   function reset() {
+    clearTimeout(state.resultTimer);
+    state.resultTimer = 0;
     cancelProgressTransition();
     resetSession();
   }
@@ -963,7 +1004,7 @@
         setPlaying(true);
       }
       if (isAwaitingMode() && state.mode && state.tracks.length) activateMode();
-    }, 450);
+    }, modalTransitionDelay());
   }
 
   function toggleTracklist() {
@@ -1032,7 +1073,7 @@
   });
   ui.play.addEventListener("click", togglePlay);
   ui.skip.addEventListener("click", () => attempt("skip"));
-  ui.next.addEventListener("click", () => reset());
+  ui.next.addEventListener("click", closeResult);
   ui.classic.addEventListener("click", () => setMode("classic"));
   ui.blitz.addEventListener("click", () => setMode("blitz"));
   ui.survival.addEventListener("click", () => setMode("survival"));
@@ -1046,6 +1087,10 @@
   new ResizeObserver(() => {
     if (root.classList.contains("tracklist-visible")) setTracklistHeight();
   }).observe(ui.tracklistPanel);
+
+  new ResizeObserver(() => {
+    if (ui.card.classList.contains("modal-visible")) setResultHeight();
+  }).observe(ui.result);
 
   root.addEventListener("keydown", (event) => {
     if (isTracklistOpen()) {
@@ -1061,7 +1106,7 @@
       trapFocus(event, ui.result);
       if (event.key === "Enter" && document.activeElement !== ui.spotify) {
         event.preventDefault();
-        reset();
+        closeResult();
       }
     }
   }, true);
