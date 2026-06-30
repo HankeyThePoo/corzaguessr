@@ -405,12 +405,28 @@
   function loadDaily() {
     try {
       const saved = JSON.parse(localStorage.getItem(dailyStorageKey) || "{}");
+      const started = saved?.started === true;
+      const completed = started && saved?.completed === true;
+      const step = Number.isSafeInteger(saved?.step) &&
+        saved.step >= 0 &&
+        saved.step < steps.length
+        ? saved.step
+        : 0;
       return {
         date: /^\d{4}-\d{2}-\d{2}$/.test(saved?.date) ? saved.date : "",
-        started: saved?.started === true,
+        started,
+        completed,
+        won: completed && saved?.won === true,
+        step,
       };
     } catch {
-      return { date: "", started: false };
+      return {
+        date: "",
+        started: false,
+        completed: false,
+        won: false,
+        step: 0,
+      };
     }
   }
 
@@ -426,9 +442,46 @@
     return state.daily.date === date && state.daily.started;
   }
 
+  function getDailyDoneText() {
+    if (state.daily.date === state.dailyDate && state.daily.completed) {
+      const attempts = state.daily.step + 1;
+      return `COMPLETED IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK TOMORROW`;
+    }
+    return dailyDoneText;
+  }
+
   function markDailyStarted() {
     if (state.mode !== "daily" || isDailyDone(state.dailyDate)) return;
-    state.daily = { date: state.dailyDate, started: true };
+    state.daily = {
+      date: state.dailyDate,
+      started: true,
+      completed: false,
+      won: false,
+      step: 0,
+    };
+    saveDaily();
+  }
+
+  function saveDailyStep() {
+    if (
+      state.mode !== "daily" ||
+      state.daily.date !== state.dailyDate ||
+      !state.daily.started ||
+      state.daily.completed
+    ) return;
+    state.daily.step = state.step;
+    saveDaily();
+  }
+
+  function completeDaily(won) {
+    if (state.mode !== "daily") return;
+    state.daily = {
+      date: state.dailyDate,
+      started: true,
+      completed: true,
+      won: Boolean(won),
+      step: state.step,
+    };
     saveDaily();
   }
 
@@ -849,6 +902,7 @@
     }
 
     state.step++;
+    saveDailyStep();
     renderPrompt();
     announce(type === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
     if (state.status !== "playing") {
@@ -919,7 +973,7 @@
       : "PERSONAL BEST";
 
     if (state.mode === "daily") {
-      ui.personalBest.textContent = "DAILY COMPLETE · COME BACK TOMORROW";
+      ui.personalBest.textContent = getDailyDoneText();
     } else if (state.mode === "classic") {
       const { current, best } = state.personalBests.classic;
       ui.personalBest.textContent = state.personalBestBeaten
@@ -944,6 +998,7 @@
     ui.play.disabled = true;
     ui.skip.disabled = true;
     ui.guess.disabled = true;
+    completeDaily(won);
     updateTimedPersonalBest();
 
     const mark = won ? "🎉" : "❌";
@@ -1053,7 +1108,6 @@
     setBackgroundInert(keepResultOpen);
     ui.play.disabled = false;
     ui.skip.disabled = true;
-    applyModeAvailability();
     clearSlots();
 
     ui.endtime.textContent = mode.endTime;
@@ -1061,6 +1115,14 @@
     ui.snippet.style.width = `${100 / steps.at(-1)}%`;
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
+    applyModeAvailability();
+  }
+
+  function renderSavedDailyProgress() {
+    const seconds = steps[state.daily.step] || steps[0];
+    ui.endtime.textContent = formatTime(seconds);
+    ui.snippet.style.width = `${seconds / steps.at(-1) * 100}%`;
+    setProgress(formatTime(seconds), seconds / steps.at(-1));
   }
 
   function applyModeAvailability() {
@@ -1069,7 +1131,8 @@
       ui.play.disabled = true;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
-      showRules(dailyDoneText);
+      showRules(getDailyDoneText());
+      renderSavedDailyProgress();
       return;
     }
     showRules(mode.description);
@@ -1097,7 +1160,7 @@
     state.mode = mode;
     renderModeSelection();
     const message = modes[mode].daily && isDailyDone()
-      ? dailyDoneText
+      ? getDailyDoneText()
       : modes[mode].description;
     showRules(message);
     announce(message);
