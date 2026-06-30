@@ -650,6 +650,7 @@
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
     const mode = modes[state.mode];
     if (!state.track) {
+      showGuess();
       startRound();
     } else if (state.status === "playing") {
       setPlaying(false, true);
@@ -1142,11 +1143,9 @@
     } else if (data.event === "onStateChange" && data.info === 1) {
       if (!state.track || isModalOpen() || state.status === "ended") return;
       state.trackStarted = true;
-      showGuess();
       ui.skip.disabled = false;
       setPlaying(true);
       startClock();
-      focusGuess();
     } else if (data.event === "onStateChange" && data.info === 3) {
       cancelClock();
     } else if (
