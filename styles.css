@@ -231,7 +231,8 @@
   position: relative;
 }
 
-#corzaguessr input {
+#corzaguessr input,
+#corzaguessr .ruleset {
   width: 100%;
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--line);
@@ -252,6 +253,20 @@
   cursor: default;
   opacity: 1;
   -webkit-text-fill-color: white;
+}
+
+#corzaguessr .ruleset {
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+#corzaguessr .ruleset::-webkit-scrollbar {
+  display: none;
 }
 
 #corzaguessr .suggest {
