@@ -67,7 +67,7 @@
               <input
                 id="corzaguessr-guess"
                 class="guess"
-                placeholder="HAVE A GUESS? SEARCH FOR IT HERE!"
+                placeholder="SELECT A MODE TO BEGIN"
                 autocomplete="off"
                 role="combobox"
                 aria-autocomplete="list"
@@ -779,7 +779,7 @@
     setPlaying(false, true);
     clearTimeout(state.fillTimer);
     ui.fill.style.transition = "transform 250ms ease-out";
-    setProgress(ui.now.textContent, 1);
+    setProgress(ui.now.textContent, state.mode === "classic" ? 0 : 1);
     state.fillTimer = setTimeout(() => {
       reset(true);
       state.fillTimer = setTimeout(() => {
@@ -797,6 +797,7 @@
     ) return;
     root.classList.remove("awaiting-mode");
     ui.modePrompt.setAttribute("aria-hidden", "true");
+    ui.guess.placeholder = "HAVE A GUESS? SEARCH FOR IT HERE!";
     setBackgroundInert(false);
     animateModeChange();
   }
