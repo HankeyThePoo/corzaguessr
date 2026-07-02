@@ -825,7 +825,7 @@
   function togglePlay() {
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
     const mode = modes[state.mode];
-    if (mode.daily && isDailyDone(state.dailyDate)) {
+    if (mode.daily && isDailyDone(state.dailyDate) && !state.track) {
       applyModeAvailability();
       return;
     }
