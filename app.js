@@ -265,6 +265,7 @@
     discovered: loadDiscoveries(),
     personalBests: loadPersonalBests(),
     personalBestBeaten: false,
+    resultPersonalBestBeaten: false,
     classicResult: null,
     daily: loadDaily(),
     dailyDate: getBudapestDate(),
@@ -951,6 +952,11 @@
     return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}S`;
   }
 
+  function markPersonalBestBeaten() {
+    state.personalBestBeaten = true;
+    state.resultPersonalBestBeaten = true;
+  }
+
   function updateClassicRecord(won) {
     if (state.mode !== "classic") return;
 
@@ -962,11 +968,13 @@
         won: true,
         streak: record.current,
         average: getClassicAverage(record),
+        newPersonalBest: false,
       };
       if (record.current > record.best) {
         record.best = record.current;
         record.bestSnippetTotal = record.snippetTotal;
-        state.personalBestBeaten = true;
+        state.classicResult.newPersonalBest = true;
+        markPersonalBestBeaten();
       }
       savePersonalBests();
       return;
@@ -976,6 +984,7 @@
       won: false,
       streak: record.current,
       average: getClassicAverage(record),
+      newPersonalBest: false,
     };
     if (record.current || record.snippetTotal) {
       record.current = 0;
@@ -989,7 +998,7 @@
     const attempts = state.step + 1;
     if (!state.personalBests.daily || attempts < state.personalBests.daily) {
       state.personalBests.daily = attempts;
-      state.personalBestBeaten = true;
+      markPersonalBestBeaten();
       savePersonalBests();
     }
   }
@@ -1018,14 +1027,14 @@
   function updateTimedPersonalBest() {
     if (state.mode === "blitz" && state.correct > state.personalBests.blitz) {
       state.personalBests.blitz = state.correct;
-      state.personalBestBeaten = true;
+      markPersonalBestBeaten();
       savePersonalBests();
     } else if (
       state.mode === "survival" &&
       Math.floor(state.elapsed) > state.personalBests.survival
     ) {
       state.personalBests.survival = Math.floor(state.elapsed);
-      state.personalBestBeaten = true;
+      markPersonalBestBeaten();
       savePersonalBests();
     }
   }
@@ -1051,7 +1060,7 @@
   }
 
   function renderResultMeta() {
-    const label = state.personalBestBeaten
+    const label = state.resultPersonalBestBeaten
       ? "NEW PERSONAL BEST"
       : "PERSONAL BEST";
 
@@ -1193,6 +1202,7 @@
       trackStarted: false,
       activeSuggestion: -1,
       personalBestBeaten: false,
+      resultPersonalBestBeaten: false,
       classicResult: null,
     });
     state.used.clear();
