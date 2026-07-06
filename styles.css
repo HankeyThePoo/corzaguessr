@@ -432,9 +432,15 @@
 }
 
 #corzaguessr .result-meta {
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line);
   font-weight: 800;
+}
+
+#corzaguessr .result-module {
+  display: grid;
+  gap: 0.2rem;
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line);
 }
 
 #corzaguessr .end {
