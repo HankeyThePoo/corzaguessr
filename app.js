@@ -153,7 +153,7 @@
             >
               <h3 id="corzaguessr-result-title" class="modal-title"></h3>
               <p id="corzaguessr-result-text" class="modal-text"></p>
-              <p id="corzaguessr-result-meta" class="result-meta"></p>
+              <div id="corzaguessr-result-meta" class="result-meta"></div>
               <div class="actions">
                 <button type="button" class="button next">NEW GAME</button>
                 <button type="button" class="button spotify">SPOTIFY</button>
@@ -401,10 +401,16 @@
     const best = validRecord(saved?.best);
     const snippetTotal = validSnippetTotal(saved?.snippetTotal, current);
     const activeCurrent = snippetTotal ? current : 0;
+    const savedBestSnippetTotal = validSnippetTotal(saved?.bestSnippetTotal, best);
+    const resolvedBest = Math.max(activeCurrent, best);
+    const bestSnippetTotal = activeCurrent >= best
+      ? snippetTotal
+      : savedBestSnippetTotal;
     return {
       current: activeCurrent,
-      best: Math.max(activeCurrent, best),
+      best: resolvedBest,
       snippetTotal: activeCurrent ? snippetTotal : 0,
+      bestSnippetTotal,
     };
   }
 
@@ -416,6 +422,7 @@
     const source = saved && typeof saved === "object" ? saved : {};
     return {
       classic: loadClassicPersonalBest(source?.classic),
+      daily: validRecord(source?.daily),
       blitz: validRecord(source?.blitz ?? legacy?.blitz),
       survival: validRecord(source?.survival ?? legacy?.survival),
     };
@@ -934,6 +941,10 @@
     return record.current ? record.snippetTotal / record.current : 0;
   }
 
+  function getClassicBestAverage(record = state.personalBests.classic) {
+    return record.best ? record.bestSnippetTotal / record.best : 0;
+  }
+
   function formatSnippetAverage(seconds) {
     if (!Number.isFinite(seconds) || seconds <= 0) return "--";
     const rounded = Math.round(seconds * 10) / 10;
@@ -954,6 +965,7 @@
       };
       if (record.current > record.best) {
         record.best = record.current;
+        record.bestSnippetTotal = record.snippetTotal;
         state.personalBestBeaten = true;
       }
       savePersonalBests();
@@ -968,6 +980,16 @@
     if (record.current || record.snippetTotal) {
       record.current = 0;
       record.snippetTotal = 0;
+      savePersonalBests();
+    }
+  }
+
+  function updateDailyPersonalBest(won) {
+    if (state.mode !== "daily" || !won) return;
+    const attempts = state.step + 1;
+    if (!state.personalBests.daily || attempts < state.personalBests.daily) {
+      state.personalBests.daily = attempts;
+      state.personalBestBeaten = true;
       savePersonalBests();
     }
   }
@@ -1008,13 +1030,42 @@
     }
   }
 
+  function createResultModule(lines) {
+    const module = document.createElement("div");
+    module.className = "result-module";
+    module.replaceChildren(...lines.map((line) => {
+      const item = document.createElement("span");
+      item.textContent = line;
+      return item;
+    }));
+    return module;
+  }
+
+  function setResultMeta(...modules) {
+    ui.resultMeta.replaceChildren(
+      ...modules.map((lines) => createResultModule(lines)),
+    );
+    ui.resultMeta.dataset.announcement = modules
+      .map((lines) => lines.join(". "))
+      .join(". ");
+  }
+
   function renderResultMeta() {
     const label = state.personalBestBeaten
       ? "NEW PERSONAL BEST"
       : "PERSONAL BEST";
 
     if (state.mode === "daily") {
-      ui.resultMeta.textContent = getDailyDoneText();
+      const attempts = state.step + 1;
+      setResultMeta(
+        [`ATTEMPTS: ${attempts}`],
+        [
+          `${label}:`,
+          state.personalBests.daily
+            ? `ATTEMPTS: ${state.personalBests.daily}`
+            : "NO DAILY WIN YET",
+        ],
+      );
     } else if (state.mode === "classic") {
       const result = state.classicResult || {
         won: Boolean(state.personalBests.classic.current),
@@ -1022,17 +1073,26 @@
         average: getClassicAverage(),
       };
       const average = formatSnippetAverage(result.average);
-      ui.resultMeta.textContent = state.personalBestBeaten
-        ? `NEW PERSONAL BEST: ${result.streak}-STREAK · AVG SNIPPET: ${average}`
-        : result.won
-          ? `STREAK: ${result.streak} · AVG SNIPPET: ${average}`
-          : `STREAK ENDED: ${result.streak} · AVG SNIPPET: ${average}`;
+      const bestAverage = formatSnippetAverage(getClassicBestAverage());
+      setResultMeta(
+        [
+          `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${average}`,
+        ],
+        [
+          `${label}:`,
+          `STREAK: ${state.personalBests.classic.best} · AVERAGE SNIPPET: ${bestAverage}`,
+        ],
+      );
     } else if (state.mode === "blitz") {
-      ui.resultMeta.textContent =
-        `${label}: ${state.personalBests.blitz} CORRECT`;
+      setResultMeta(
+        [`CORRECT GUESSES: ${state.correct}`],
+        [`${label}:`, `CORRECT GUESSES: ${state.personalBests.blitz}`],
+      );
     } else {
-      ui.resultMeta.textContent =
-        `${label}: ${formatTime(state.personalBests.survival / 1000)}`;
+      setResultMeta(
+        [`TIME SURVIVED: ${formatTime(state.elapsed / 1000)}`],
+        [`${label}:`, `TIME SURVIVED: ${formatTime(state.personalBests.survival / 1000)}`],
+      );
     }
   }
 
@@ -1048,19 +1108,15 @@
     ui.guess.disabled = true;
     completeDaily(won);
     updateClassicRecord(won);
+    updateDailyPersonalBest(won);
     updateTimedPersonalBest();
 
     const mark = won ? "🎉" : "❌";
     ui.resultTitle.innerHTML = mode.timed
       ? '⏱️ <span class="end">TIME IS UP</span> ⏱️'
       : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
-    const percent = state.guesses
-      ? Math.round(state.correct * 100 / state.guesses)
-      : 0;
     ui.resultText.textContent = mode.timed
-      ? mode.survival
-        ? `TIME SURVIVED: ${formatTime(state.elapsed / 1000)}\nGUESSES MADE: ${state.guesses} (${percent}%)`
-        : `GUESSES MADE: ${state.guesses}\nCORRECT GUESSES: ${state.correct} (${percent}%)`
+      ? "RUN COMPLETE"
       : `THE TRACK WAS\n${state.track.title}`;
     renderResultMeta();
 
@@ -1076,7 +1132,7 @@
 
     openResult();
     announce(
-      `${ui.resultText.textContent.replace("\n", ". ")}. ${ui.resultMeta.textContent}`,
+      `${ui.resultText.textContent.replace("\n", ". ")}. ${ui.resultMeta.dataset.announcement}`,
     );
   }
 
