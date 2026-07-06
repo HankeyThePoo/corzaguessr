@@ -14,7 +14,8 @@
   const maxTimedClip = 60;
   const maxTimedSlots = 50;
   const storageKey = "corzaguessrDiscoveredV1";
-  const personalBestStorageKey = "corzaguessrPersonalBestsV1";
+  const legacyPersonalBestStorageKey = "corzaguessrPersonalBestsV1";
+  const personalBestStorageKey = "corzaguessrPersonalBestsV2";
   const dailyStorageKey = "corzaguessrDailyV1";
   const dailyTimeZone = "Europe/Budapest";
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
@@ -264,6 +265,7 @@
     discovered: loadDiscoveries(),
     personalBests: loadPersonalBests(),
     personalBestBeaten: false,
+    classicResult: null,
     daily: loadDaily(),
     dailyDate: getBudapestDate(),
     playerReady: false,
@@ -386,17 +388,36 @@
     return Number.isSafeInteger(value) && value >= 0 ? value : 0;
   }
 
-  function loadPersonalBests() {
-    const saved = readStorage(personalBestStorageKey, {});
-    const classicCurrent = validRecord(saved?.classic?.current);
-    const classicBest = validRecord(saved?.classic?.best);
+  function validSnippetTotal(value, current) {
+    return Number.isSafeInteger(value) &&
+      value >= current &&
+      value <= current * steps.at(-1)
+      ? value
+      : 0;
+  }
+
+  function loadClassicPersonalBest(saved) {
+    const current = validRecord(saved?.current);
+    const best = validRecord(saved?.best);
+    const snippetTotal = validSnippetTotal(saved?.snippetTotal, current);
+    const activeCurrent = snippetTotal ? current : 0;
     return {
-      classic: {
-        current: classicCurrent,
-        best: Math.max(classicCurrent, classicBest),
-      },
-      blitz: validRecord(saved?.blitz),
-      survival: validRecord(saved?.survival),
+      current: activeCurrent,
+      best: Math.max(activeCurrent, best),
+      snippetTotal: activeCurrent ? snippetTotal : 0,
+    };
+  }
+
+  function loadPersonalBests() {
+    const saved = readStorage(personalBestStorageKey, null);
+    const legacy = saved === null
+      ? readStorage(legacyPersonalBestStorageKey, {})
+      : {};
+    const source = saved && typeof saved === "object" ? saved : {};
+    return {
+      classic: loadClassicPersonalBest(source?.classic),
+      blitz: validRecord(source?.blitz ?? legacy?.blitz),
+      survival: validRecord(source?.survival ?? legacy?.survival),
     };
   }
 
@@ -909,21 +930,44 @@
     }
   }
 
-  function updateClassicStreak(type) {
-    if (state.mode !== "classic" || state.step !== 0) return;
+  function getClassicAverage(record = state.personalBests.classic) {
+    return record.current ? record.snippetTotal / record.current : 0;
+  }
 
-    if (type === "correct") {
-      state.personalBests.classic.current++;
-      if (state.personalBests.classic.current > state.personalBests.classic.best) {
-        state.personalBests.classic.best = state.personalBests.classic.current;
+  function formatSnippetAverage(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "--";
+    const rounded = Math.round(seconds * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}S`;
+  }
+
+  function updateClassicRecord(won) {
+    if (state.mode !== "classic") return;
+
+    const record = state.personalBests.classic;
+    if (won) {
+      record.current++;
+      record.snippetTotal += steps[state.step] || steps[0];
+      state.classicResult = {
+        won: true,
+        streak: record.current,
+        average: getClassicAverage(record),
+      };
+      if (record.current > record.best) {
+        record.best = record.current;
         state.personalBestBeaten = true;
       }
       savePersonalBests();
       return;
     }
 
-    if (state.personalBests.classic.current) {
-      state.personalBests.classic.current = 0;
+    state.classicResult = {
+      won: false,
+      streak: record.current,
+      average: getClassicAverage(record),
+    };
+    if (record.current || record.snippetTotal) {
+      record.current = 0;
+      record.snippetTotal = 0;
       savePersonalBests();
     }
   }
@@ -932,7 +976,6 @@
     if (!state.track || isModalOpen()) return;
     renderAttempt(type, title);
     if (type === "correct") recordDiscovery();
-    updateClassicStreak(type);
     if (modes[state.mode].timed) resolveTimedAttempt(type);
     else resolveClassicAttempt(type);
   }
@@ -973,10 +1016,17 @@
     if (state.mode === "daily") {
       ui.resultMeta.textContent = getDailyDoneText();
     } else if (state.mode === "classic") {
-      const { current, best } = state.personalBests.classic;
+      const result = state.classicResult || {
+        won: Boolean(state.personalBests.classic.current),
+        streak: state.personalBests.classic.current,
+        average: getClassicAverage(),
+      };
+      const average = formatSnippetAverage(result.average);
       ui.resultMeta.textContent = state.personalBestBeaten
-        ? `1S STREAK: ${current} · NEW PERSONAL BEST: ${best}`
-        : `1S STREAK: ${current} · PERSONAL BEST: ${best}`;
+        ? `NEW PERSONAL BEST: ${result.streak}-STREAK · AVG SNIPPET: ${average}`
+        : result.won
+          ? `STREAK: ${result.streak} · AVG SNIPPET: ${average}`
+          : `STREAK ENDED: ${result.streak} · AVG SNIPPET: ${average}`;
     } else if (state.mode === "blitz") {
       ui.resultMeta.textContent =
         `${label}: ${state.personalBests.blitz} CORRECT`;
@@ -997,6 +1047,7 @@
     ui.skip.disabled = true;
     ui.guess.disabled = true;
     completeDaily(won);
+    updateClassicRecord(won);
     updateTimedPersonalBest();
 
     const mark = won ? "🎉" : "❌";
@@ -1086,6 +1137,7 @@
       trackStarted: false,
       activeSuggestion: -1,
       personalBestBeaten: false,
+      classicResult: null,
     });
     state.used.clear();
     ui.status.textContent = "";
