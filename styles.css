@@ -8,7 +8,7 @@
 }
 
 #corzaguessr::-webkit-scrollbar,
-#corzaguessr .tracklist-items::-webkit-scrollbar {
+#corzaguessr .discovery-items::-webkit-scrollbar {
   display: none;
 }
 
@@ -152,7 +152,7 @@
   flex: 1;
 }
 
-#corzaguessr .tracklist-button {
+#corzaguessr .discovery-button {
   width: calc((720px - 2.25rem) / 4);
   max-width: calc((100% - 2.25rem) / 4);
   margin: -1rem auto 1rem;
@@ -486,7 +486,7 @@
   white-space: normal;
 }
 
-#corzaguessr .tracklist-modal {
+#corzaguessr .discovery-modal {
   display: flex;
   position: absolute;
   inset: 0;
@@ -501,23 +501,23 @@
   transition: background 0.35s ease;
 }
 
-#corzaguessr.tracklist-open .tracklist-modal {
+#corzaguessr.discovery-open .discovery-modal {
   pointer-events: auto;
   visibility: visible;
 }
 
-#corzaguessr.tracklist-visible .tracklist-modal {
+#corzaguessr.discovery-visible .discovery-modal {
   background: rgba(0, 0, 0, 0.55);
 }
 
-#corzaguessr .tracklist-shell {
+#corzaguessr .discovery-shell {
   width: min(96vw, 840px);
   height: 0;
   overflow: hidden;
   transition: height 0.45s ease;
 }
 
-#corzaguessr .tracklist-panel {
+#corzaguessr .discovery-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 0.6rem;
@@ -526,7 +526,7 @@
   overflow: hidden;
 }
 
-#corzaguessr .tracklist-title {
+#corzaguessr .discovery-title {
   display: grid;
   gap: 0.15rem;
   margin: 0.25rem;
@@ -534,11 +534,11 @@
   font-size: 1.1rem;
 }
 
-#corzaguessr .tracklist-title small {
+#corzaguessr .discovery-title small {
   font-size: 0.9rem;
 }
 
-#corzaguessr .tracklist-items {
+#corzaguessr .discovery-items {
   display: grid;
   align-content: start;
   gap: 0.5rem;
@@ -548,7 +548,7 @@
   scrollbar-width: none;
 }
 
-#corzaguessr .tracklist-item {
+#corzaguessr .discovery-item {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -563,7 +563,7 @@
   text-transform: uppercase;
 }
 
-#corzaguessr .tracklist-reset {
+#corzaguessr .discovery-reset {
   width: 128px;
 }
 
