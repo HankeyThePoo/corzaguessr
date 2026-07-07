@@ -179,6 +179,14 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
+#corzaguessr .timeline.survival-gain {
+  animation: corzaguessr-survival-gain 0.42s ease-out;
+}
+
+#corzaguessr .timeline.survival-damage {
+  animation: corzaguessr-survival-damage 0.42s ease-out;
+}
+
 #corzaguessr .timeline::before {
   content: "";
   position: absolute;
@@ -225,6 +233,32 @@
 #corzaguessr.timed .tick,
 #corzaguessr.timed .snippet {
   display: none;
+}
+
+@keyframes corzaguessr-survival-gain {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  35% {
+    box-shadow:
+      inset 0 0 0 1px rgba(117, 255, 171, 0.5),
+      0 0 18px rgba(117, 255, 171, 0.42);
+  }
+}
+
+@keyframes corzaguessr-survival-damage {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  35% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 94, 120, 0.55),
+      0 0 18px rgba(255, 94, 120, 0.45);
+  }
 }
 
 #corzaguessr .auto {
