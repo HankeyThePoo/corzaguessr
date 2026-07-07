@@ -184,7 +184,7 @@
               <div class="tracklist-items"></div>
               <div class="actions">
                 <button type="button" class="button tracklist-close">CLOSE</button>
-                <button type="button" class="button tracklist-reset">RESET DISCOVERY</button>
+                <button type="button" class="button tracklist-reset">RESET PROFILE</button>
               </div>
             </div>
           </div>
@@ -782,11 +782,22 @@
   function renderProfileSummary() {
     ui.profileSummary.replaceChildren(
       ...[
-        ["DAILY:", formatAttempts(state.personalBests.daily)],
-        ["CLASSIC:", formatClassicPersonalBest()],
-        ["BLITZ:", formatBlitzPersonalBest()],
-        ["SURVIVAL:", formatSurvivalPersonalBest()],
-      ].map((module) => createResultModule(module)),
+        ["DAILY", formatAttempts(state.personalBests.daily)],
+        ["CLASSIC", formatClassicPersonalBest()],
+        ["BLITZ", formatBlitzPersonalBest()],
+        ["SURVIVAL", formatSurvivalPersonalBest()],
+      ].map(([label, value]) => {
+        const item = document.createElement("div");
+        item.className = "profile-stat";
+        const title = document.createElement("span");
+        title.className = "profile-stat-label";
+        title.textContent = label;
+        const stat = document.createElement("span");
+        stat.className = "profile-stat-value";
+        stat.textContent = value;
+        item.replaceChildren(title, stat);
+        return item;
+      }),
     );
   }
 
@@ -1512,11 +1523,26 @@
   }
 
   function resetTracklist() {
-    if (!window.confirm("RESET DISCOVERED TRACKS?")) return;
-    state.discovered.clear();
-    saveDiscoveries();
+    if (!window.confirm(
+      "RESET PROFILE? THIS CLEARS PERSONAL BESTS, DISCOVERED TRACKS, AND TODAY'S DAILY PROGRESS.",
+    )) return;
+    try {
+      localStorage.removeItem(storageKey);
+      localStorage.removeItem(personalBestStorageKey);
+      localStorage.removeItem(legacyPersonalBestStorageKey);
+      localStorage.removeItem(dailyStorageKey);
+    } catch {
+      announce("PROFILE COULD NOT BE FULLY RESET IN THIS BROWSER.");
+      return;
+    }
+    state.discovered = loadDiscoveries();
+    state.personalBests = loadPersonalBests();
+    state.daily = loadDaily();
+    state.newPersonalBest = false;
+    state.classicResult = null;
     renderTracklist();
-    announce("DISCOVERED TRACKS RESET.");
+    if (!state.track) applyModeAvailability();
+    announce("PROFILE RESET.");
   }
 
   function trapFocus(event, container) {
