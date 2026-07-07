@@ -407,9 +407,9 @@
     const activeCurrent = snippetTotal ? current : 0;
     const savedBestSnippetTotal = validSnippetTotal(saved?.bestSnippetTotal, best);
     const resolvedBest = Math.max(activeCurrent, best);
-    const bestSnippetTotal = activeCurrent >= best
+    const bestSnippetTotal = activeCurrent > best
       ? snippetTotal
-      : savedBestSnippetTotal;
+      : savedBestSnippetTotal || (activeCurrent === best ? snippetTotal : 0);
     return {
       current: activeCurrent,
       best: resolvedBest,
@@ -983,6 +983,15 @@
     state.newPersonalBest = true;
   }
 
+  function isClassicPersonalBest(record) {
+    return record.current > record.best ||
+      (
+        record.current === record.best &&
+        record.current > 0 &&
+        (!record.bestSnippetTotal || record.snippetTotal < record.bestSnippetTotal)
+      );
+  }
+
   function updateClassicRecord(won) {
     if (state.mode !== "classic") return;
 
@@ -995,7 +1004,7 @@
         streak: record.current,
         average: getClassicAverage(record),
       };
-      if (record.current > record.best) {
+      if (isClassicPersonalBest(record)) {
         record.best = record.current;
         record.bestSnippetTotal = record.snippetTotal;
         markNewPersonalBest();
