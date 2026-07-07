@@ -77,10 +77,10 @@
       <div class="row header-action">
         <button
           type="button"
-          class="button tracklist-button"
-          aria-controls="corzaguessr-tracklist"
+          class="button discovery-button"
+          aria-controls="corzaguessr-discovery"
           aria-expanded="false"
-        >TRACKLIST</button>
+        >DISCOVERY</button>
       </div>
       <div class="modes" aria-label="GAME MODE">
         <button type="button" class="mode daily" aria-pressed="false">DAILY</button>
@@ -163,23 +163,23 @@
           SELECT A MODE TO BEGIN
         </p>
         <div
-          id="corzaguessr-tracklist"
-          class="tracklist-modal"
+          id="corzaguessr-discovery"
+          class="discovery-modal"
           role="dialog"
           aria-modal="true"
           aria-labelledby="corzaguessr-discovery-title"
           aria-hidden="true"
         >
-          <div class="tracklist-shell">
-            <div class="tracklist-panel glass">
-              <h3 id="corzaguessr-discovery-title" class="tracklist-title">
+          <div class="discovery-shell">
+            <div class="discovery-panel glass">
+              <h3 id="corzaguessr-discovery-title" class="discovery-title">
                 <span>DISCOVERY</span>
                 <small>0 / 0 (0%)</small>
               </h3>
-              <div class="tracklist-items"></div>
+              <div class="discovery-items"></div>
               <div class="actions">
-                <button type="button" class="button tracklist-close">CLOSE</button>
-                <button type="button" class="button tracklist-reset">RESET</button>
+                <button type="button" class="button discovery-close">CLOSE</button>
+                <button type="button" class="button discovery-reset">RESET</button>
               </div>
             </div>
           </div>
@@ -223,14 +223,14 @@
     resultTitle: $(".modal-title"),
     resultMeta: $(".result-meta"),
     modePrompt: $(".mode-prompt"),
-    tracklistButton: $(".tracklist-button"),
-    tracklistModal: $(".tracklist-modal"),
-    tracklistShell: $(".tracklist-shell"),
-    tracklistPanel: $(".tracklist-panel"),
-    tracklistCount: $("#corzaguessr-discovery-title small"),
-    tracklistItems: $(".tracklist-items"),
-    tracklistClose: $(".tracklist-close"),
-    tracklistReset: $(".tracklist-reset"),
+    discoveryButton: $(".discovery-button"),
+    discoveryModal: $(".discovery-modal"),
+    discoveryShell: $(".discovery-shell"),
+    discoveryPanel: $(".discovery-panel"),
+    discoveryCount: $("#corzaguessr-discovery-title small"),
+    discoveryItems: $(".discovery-items"),
+    discoveryClose: $(".discovery-close"),
+    discoveryReset: $(".discovery-reset"),
     status: $(".status"),
     yt: $(".yt"),
     icon: $(".icon path"),
@@ -273,11 +273,11 @@
     progressTimer: 0,
     slotsTimer: 0,
     resultTimer: 0,
-    tracklistTimer: 0,
+    discoveryTimer: 0,
     returnFocus: null,
     pageScrollStyles: null,
-    resumeAfterTracklist: false,
-    endedDuringTracklist: false,
+    resumeAfterDiscovery: false,
+    endedDuringDiscovery: false,
   };
 
   root.classList.add("awaiting-mode", "rules-visible");
@@ -315,8 +315,8 @@
     return ui.card.classList.contains("modal-open");
   }
 
-  function isTracklistOpen() {
-    return root.classList.contains("tracklist-open");
+  function isDiscoveryOpen() {
+    return root.classList.contains("discovery-open");
   }
 
   function isAwaitingMode() {
@@ -324,7 +324,7 @@
   }
 
   function isModalOpen() {
-    return isResultOpen() || isTracklistOpen();
+    return isResultOpen() || isDiscoveryOpen();
   }
 
   function transitionDelay(milliseconds) {
@@ -770,18 +770,18 @@
     return `${found} / ${total} (${percent}%)`;
   }
 
-  function renderTracklistItems() {
+  function renderDiscoveryItems() {
     if (state.status === "loading" && !state.tracks.length) {
-      ui.tracklistCount.textContent = formatDiscoveryCount(0, 0);
-      ui.tracklistItems.textContent = "LOADING...";
+      ui.discoveryCount.textContent = formatDiscoveryCount(0, 0);
+      ui.discoveryItems.textContent = "LOADING...";
       return;
     }
     const validTitles = new Set(state.tracks.map((track) => track.title));
     const found = [...state.discovered].filter((title) => validTitles.has(title)).length;
-    ui.tracklistCount.textContent = formatDiscoveryCount(found, state.tracks.length);
-    ui.tracklistItems.replaceChildren(...state.tracks.map((track) => {
+    ui.discoveryCount.textContent = formatDiscoveryCount(found, state.tracks.length);
+    ui.discoveryItems.replaceChildren(...state.tracks.map((track) => {
       const item = document.createElement("div");
-      item.className = "tracklist-item";
+      item.className = "discovery-item";
       const discovered = state.discovered.has(track.title);
       item.textContent = discovered ? track.title : hiddenTitle;
       if (!discovered) item.setAttribute("aria-hidden", "true");
@@ -789,9 +789,9 @@
     }));
   }
 
-  function renderTracklist() {
-    renderTracklistItems();
-    if (isTracklistOpen()) requestAnimationFrame(setTracklistHeight);
+  function renderDiscovery() {
+    renderDiscoveryItems();
+    if (isDiscoveryOpen()) requestAnimationFrame(setDiscoveryHeight);
   }
 
   function renderSuggestions() {
@@ -915,7 +915,7 @@
     if (!state.track || state.discovered.has(state.track.title)) return;
     state.discovered.add(state.track.title);
     saveDiscoveries();
-    renderTracklist();
+    renderDiscovery();
   }
 
   function renderAttempt(type, title) {
@@ -1401,7 +1401,7 @@
   function activateMode() {
     if (
       !isAwaitingMode() ||
-      isTracklistOpen() ||
+      isDiscoveryOpen() ||
       !state.mode ||
       !state.tracks.length
     ) return;
@@ -1411,10 +1411,10 @@
     animateModeChange();
   }
 
-  // Tracklist modal ---------------------------------------------------------
+  // Discovery modal ---------------------------------------------------------
 
-  function setTracklistHeight() {
-    ui.tracklistShell.style.height = `${ui.tracklistPanel.offsetHeight}px`;
+  function setDiscoveryHeight() {
+    ui.discoveryShell.style.height = `${ui.discoveryPanel.offsetHeight}px`;
   }
 
   function lockPageScroll() {
@@ -1441,44 +1441,44 @@
     state.pageScrollStyles = null;
   }
 
-  function openTracklist() {
-    clearTimeout(state.tracklistTimer);
-    renderTracklist();
+  function openDiscovery() {
+    clearTimeout(state.discoveryTimer);
+    renderDiscovery();
     state.returnFocus = document.activeElement;
-    state.resumeAfterTracklist = state.status === "playing";
-    state.endedDuringTracklist = false;
-    if (state.resumeAfterTracklist) setPlaying(false, true);
+    state.resumeAfterDiscovery = state.status === "playing";
+    state.endedDuringDiscovery = false;
+    if (state.resumeAfterDiscovery) setPlaying(false, true);
     setBackgroundInert(true);
     ui.headerAction.inert = false;
     lockPageScroll();
-    root.classList.add("tracklist-open");
-    ui.tracklistButton.setAttribute("aria-expanded", "true");
-    ui.tracklistModal.setAttribute("aria-hidden", "false");
-    ui.tracklistShell.style.height = "0px";
+    root.classList.add("discovery-open");
+    ui.discoveryButton.setAttribute("aria-expanded", "true");
+    ui.discoveryModal.setAttribute("aria-hidden", "false");
+    ui.discoveryShell.style.height = "0px";
     requestAnimationFrame(() => {
-      root.classList.add("tracklist-visible");
-      setTracklistHeight();
-      ui.tracklistClose.focus({ preventScroll: true });
+      root.classList.add("discovery-visible");
+      setDiscoveryHeight();
+      ui.discoveryClose.focus({ preventScroll: true });
     });
   }
 
-  function closeTracklist() {
-    clearTimeout(state.tracklistTimer);
-    root.classList.remove("tracklist-visible");
-    ui.tracklistButton.setAttribute("aria-expanded", "false");
-    ui.tracklistShell.style.height = `${ui.tracklistShell.offsetHeight}px`;
-    void ui.tracklistShell.offsetHeight;
-    ui.tracklistShell.style.height = "0px";
-    state.tracklistTimer = setTimeout(() => {
-      root.classList.remove("tracklist-open");
-      ui.tracklistModal.setAttribute("aria-hidden", "true");
+  function closeDiscovery() {
+    clearTimeout(state.discoveryTimer);
+    root.classList.remove("discovery-visible");
+    ui.discoveryButton.setAttribute("aria-expanded", "false");
+    ui.discoveryShell.style.height = `${ui.discoveryShell.offsetHeight}px`;
+    void ui.discoveryShell.offsetHeight;
+    ui.discoveryShell.style.height = "0px";
+    state.discoveryTimer = setTimeout(() => {
+      root.classList.remove("discovery-open");
+      ui.discoveryModal.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
       unlockPageScroll();
       state.returnFocus?.focus?.({ preventScroll: true });
-      const ended = state.endedDuringTracklist;
-      const resume = state.resumeAfterTracklist;
-      state.endedDuringTracklist = false;
-      state.resumeAfterTracklist = false;
+      const ended = state.endedDuringDiscovery;
+      const resume = state.resumeAfterDiscovery;
+      state.endedDuringDiscovery = false;
+      state.resumeAfterDiscovery = false;
       if (ended) {
         handleTrackEnded();
       } else if (resume && state.track && state.status !== "ended") {
@@ -1489,12 +1489,12 @@
     }, transitionDelay(450));
   }
 
-  function toggleTracklist() {
-    if (isTracklistOpen()) closeTracklist();
-    else openTracklist();
+  function toggleDiscovery() {
+    if (isDiscoveryOpen()) closeDiscovery();
+    else openDiscovery();
   }
 
-  function resetTracklist() {
+  function resetDiscovery() {
     if (!window.confirm(
       "RESET DISCOVERY? THIS HIDES ALL DISCOVERED TRACKS.",
     )) return;
@@ -1505,7 +1505,7 @@
       return;
     }
     state.discovered = loadDiscoveries();
-    renderTracklist();
+    renderDiscovery();
     announce("DISCOVERY RESET.");
   }
 
@@ -1566,24 +1566,24 @@
   Object.entries(modeButtons).forEach(([name, button]) => {
     button.addEventListener("click", () => setMode(name));
   });
-  ui.tracklistButton.addEventListener("click", toggleTracklist);
-  ui.tracklistClose.addEventListener("click", closeTracklist);
-  ui.tracklistReset.addEventListener("click", resetTracklist);
-  ui.tracklistModal.addEventListener("click", (event) => {
-    if (!event.target.closest(".tracklist-panel")) closeTracklist();
+  ui.discoveryButton.addEventListener("click", toggleDiscovery);
+  ui.discoveryClose.addEventListener("click", closeDiscovery);
+  ui.discoveryReset.addEventListener("click", resetDiscovery);
+  ui.discoveryModal.addEventListener("click", (event) => {
+    if (!event.target.closest(".discovery-panel")) closeDiscovery();
   });
 
   new ResizeObserver(() => {
-    if (root.classList.contains("tracklist-visible")) setTracklistHeight();
-  }).observe(ui.tracklistPanel);
+    if (root.classList.contains("discovery-visible")) setDiscoveryHeight();
+  }).observe(ui.discoveryPanel);
 
   root.addEventListener("keydown", (event) => {
-    if (isTracklistOpen()) {
+    if (isDiscoveryOpen()) {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeTracklist();
+        closeDiscovery();
       } else {
-        trapFocus(event, ui.tracklistPanel);
+        trapFocus(event, ui.discoveryPanel);
       }
       return;
     }
@@ -1640,7 +1640,7 @@
       state.trackStarted &&
       state.status !== "ended"
     ) {
-      if (isTracklistOpen()) state.endedDuringTracklist = true;
+      if (isDiscoveryOpen()) state.endedDuringDiscovery = true;
       else handleTrackEnded();
     } else if (data.event === "onError") {
       handlePlayerError();
@@ -1703,7 +1703,7 @@
     })
     .then((tracks) => {
       state.tracks = validateTracks(tracks);
-      renderTracklist();
+      renderDiscovery();
       if (state.mode) activateMode();
       else state.status = "ready";
     })
@@ -1717,7 +1717,7 @@
       ui.classic.disabled = true;
       ui.blitz.disabled = true;
       ui.survival.disabled = true;
-      ui.modePrompt.textContent = "COULD NOT LOAD TRACKLIST, PLEASE REFRESH!";
+      ui.modePrompt.textContent = "COULD NOT LOAD THE TRACKLIST, PLEASE REFRESH!";
       root.classList.add("mode-error");
       announce("COULD NOT LOAD THE TRACKLIST. PLEASE REFRESH.");
     });
