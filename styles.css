@@ -553,12 +553,16 @@
 
 #corzaguessr .profile-accordion {
   display: grid;
+  grid-template-rows: auto;
   gap: 0.5rem;
+  flex: 0 0 auto;
   min-height: 0;
 }
 
 #corzaguessr .profile-accordion-open {
-  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 0;
+  overflow: hidden;
 }
 
 #corzaguessr .profile-accordion-toggle {
