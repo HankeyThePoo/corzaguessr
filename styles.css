@@ -518,8 +518,9 @@
 }
 
 #corzaguessr .tracklist-panel {
+  position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 0.6rem;
   height: min(78dvh, 650px);
   padding: 1rem;
@@ -538,27 +539,36 @@
   font-size: 0.9rem;
 }
 
-#corzaguessr .profile-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 0.75rem;
-}
-
-#corzaguessr .profile-tab {
-  width: 160px;
-  max-width: calc((100% - 0.75rem) / 2);
-  padding: 0.55rem 0.9rem;
-  border-radius: 0.85rem;
-  background: rgba(255, 255, 255, 0.08);
+#corzaguessr .profile-nav {
+  position: absolute;
+  top: 50%;
+  right: 0.55rem;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 54px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
+  font-size: 1.8rem;
   font-weight: 800;
-  text-transform: uppercase;
+  line-height: 1;
+  transform: translateY(-50%);
   cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
-#corzaguessr .profile-tab.active {
-  background: var(--gradient);
-  color: #32323a;
+#corzaguessr .profile-nav.back {
+  right: auto;
+  left: 0.55rem;
+}
+
+#corzaguessr .profile-nav:is(:hover, :focus-visible) {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.34);
+  transform: translateY(-50%) scale(1.04);
 }
 
 #corzaguessr .profile-content,
@@ -569,15 +579,6 @@
 #corzaguessr .profile-content {
   display: grid;
   overflow: hidden;
-}
-
-#corzaguessr .profile-prompt {
-  align-self: center;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.72);
-  font-weight: 800;
-  text-align: center;
-  text-transform: uppercase;
 }
 
 #corzaguessr .highscores-section,
@@ -631,7 +632,7 @@
 }
 
 #corzaguessr .highscores-section .tracklist-item {
-  min-height: 64px;
+  min-height: 41px;
 }
 
 #corzaguessr .tracklist-reset {
@@ -659,10 +660,15 @@
     padding: 0.85rem;
   }
 
-  #corzaguessr .profile-tab {
-    flex: 1;
-    padding: 0.5rem 0.45rem;
-    font-size: 0.78rem;
+  #corzaguessr .profile-nav {
+    right: 0.35rem;
+    width: 30px;
+    height: 48px;
+    font-size: 1.55rem;
+  }
+
+  #corzaguessr .profile-nav.back {
+    left: 0.35rem;
   }
 
   #corzaguessr .tracklist-item {
