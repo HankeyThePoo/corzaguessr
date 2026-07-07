@@ -81,7 +81,7 @@
           class="button tracklist-button"
           aria-controls="corzaguessr-tracklist"
           aria-expanded="false"
-        >PROFILE</button>
+        >TRACKLIST</button>
       </div>
       <div class="modes" aria-label="GAME MODE">
         <button type="button" class="mode daily" aria-pressed="false">DAILY</button>
@@ -168,54 +168,16 @@
           class="tracklist-modal"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="corzaguessr-highscores-title"
+          aria-labelledby="corzaguessr-discovery-title"
           aria-hidden="true"
         >
           <div class="tracklist-shell">
             <div class="tracklist-panel glass">
-              <div class="profile-content">
-                <section class="profile-accordion">
-                  <button
-                    type="button"
-                    id="corzaguessr-highscores-title"
-                    class="profile-accordion-toggle"
-                    aria-expanded="false"
-                    aria-controls="corzaguessr-highscores-panel"
-                  >
-                    <span class="profile-accordion-label">HIGHSCORES</span>
-                    <span class="profile-accordion-icon" aria-hidden="true">&#8964;</span>
-                  </button>
-                  <div
-                    id="corzaguessr-highscores-panel"
-                    class="profile-section highscores-section"
-                    hidden
-                  >
-                    <div class="highscores-items"></div>
-                  </div>
-                </section>
-                <section class="profile-accordion">
-                  <button
-                    type="button"
-                    id="corzaguessr-discovery-title"
-                    class="profile-accordion-toggle"
-                    aria-expanded="false"
-                    aria-controls="corzaguessr-discovery-panel"
-                  >
-                    <span class="profile-accordion-label">
-                      <span>DISCOVERY</span>
-                      <small class="profile-discovery-count">0 / 0 (0%)</small>
-                    </span>
-                    <span class="profile-accordion-icon" aria-hidden="true">&#8964;</span>
-                  </button>
-                  <div
-                    id="corzaguessr-discovery-panel"
-                    class="profile-section tracklist-section"
-                    hidden
-                  >
-                    <div class="tracklist-items"></div>
-                  </div>
-                </section>
-              </div>
+              <h3 id="corzaguessr-discovery-title" class="tracklist-title discovery-title">
+                <span>DISCOVERY</span>
+                <small>0 / 0 (0%)</small>
+              </h3>
+              <div class="tracklist-items"></div>
               <div class="actions">
                 <button type="button" class="button tracklist-close">CLOSE</button>
                 <button type="button" class="button tracklist-reset">RESET</button>
@@ -266,12 +228,7 @@
     tracklistModal: $(".tracklist-modal"),
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
-    tracklistCount: $(".profile-discovery-count"),
-    highscoresToggle: $("#corzaguessr-highscores-title"),
-    discoveryToggle: $("#corzaguessr-discovery-title"),
-    highscoresSection: $(".highscores-section"),
-    highscoresItems: $(".highscores-items"),
-    tracklistSection: $(".tracklist-section"),
+    tracklistCount: $(".discovery-title small"),
     tracklistItems: $(".tracklist-items"),
     tracklistClose: $(".tracklist-close"),
     tracklistReset: $(".tracklist-reset"),
@@ -322,7 +279,6 @@
     pageScrollStyles: null,
     resumeAfterTracklist: false,
     endedDuringTracklist: false,
-    profileTab: null,
   };
 
   root.classList.add("awaiting-mode", "rules-visible");
@@ -818,28 +774,6 @@
     return `${found} / ${total} (${percent}%)`;
   }
 
-  function createProfileEntry(label, value) {
-    const group = document.createElement("section");
-    group.className = "profile-entry";
-    const title = document.createElement("h4");
-    title.className = "tracklist-title profile-entry-title";
-    title.textContent = label;
-    const stat = document.createElement("div");
-    stat.className = "tracklist-item";
-    stat.textContent = value;
-    group.replaceChildren(title, stat);
-    return group;
-  }
-
-  function renderHighscores() {
-    ui.highscoresItems.replaceChildren(
-      createProfileEntry("DAILY", formatAttempts(state.personalBests.daily)),
-      createProfileEntry("CLASSIC", formatClassicPersonalBest()),
-      createProfileEntry("BLITZ", formatBlitzPersonalBest()),
-      createProfileEntry("SURVIVAL", formatSurvivalPersonalBest()),
-    );
-  }
-
   function renderTracklistItems() {
     if (state.status === "loading" && !state.tracks.length) {
       ui.tracklistCount.textContent = formatDiscoveryCount(0, 0);
@@ -859,27 +793,9 @@
     }));
   }
 
-  function setProfileTab(tab) {
-    state.profileTab = tab;
-    const showHighscores = tab === "highscores";
-    const showTracklist = tab === "tracklist";
-    ui.highscoresSection.hidden = !showHighscores;
-    ui.tracklistSection.hidden = !showTracklist;
-    ui.highscoresToggle.setAttribute("aria-expanded", String(showHighscores));
-    ui.discoveryToggle.setAttribute("aria-expanded", String(showTracklist));
-    ui.highscoresToggle.parentElement.classList.toggle("profile-accordion-open", showHighscores);
-    ui.discoveryToggle.parentElement.classList.toggle("profile-accordion-open", showTracklist);
-    ui.tracklistModal.setAttribute(
-      "aria-labelledby",
-      showTracklist ? "corzaguessr-discovery-title" : "corzaguessr-highscores-title",
-    );
-    renderHighscores();
+  function renderTracklist() {
     renderTracklistItems();
     if (isTracklistOpen()) requestAnimationFrame(setTracklistHeight);
-  }
-
-  function renderTracklist() {
-    setProfileTab(state.profileTab);
   }
 
   function renderSuggestions() {
@@ -1532,7 +1448,6 @@
 
   function openTracklist() {
     clearTimeout(state.tracklistTimer);
-    state.profileTab = null;
     renderTracklist();
     state.returnFocus = document.activeElement;
     state.resumeAfterTracklist = state.status === "playing";
@@ -1586,25 +1501,17 @@
 
   function resetTracklist() {
     if (!window.confirm(
-      "RESET PROFILE? THIS CLEARS PERSONAL BESTS, DISCOVERED TRACKS, AND TODAY'S DAILY PROGRESS.",
+      "RESET DISCOVERY? THIS HIDES ALL DISCOVERED TRACKS.",
     )) return;
     try {
       localStorage.removeItem(storageKey);
-      localStorage.removeItem(personalBestStorageKey);
-      localStorage.removeItem(legacyPersonalBestStorageKey);
-      localStorage.removeItem(dailyStorageKey);
     } catch {
-      announce("PROFILE COULD NOT BE FULLY RESET IN THIS BROWSER.");
+      announce("DISCOVERY COULD NOT BE RESET IN THIS BROWSER.");
       return;
     }
     state.discovered = loadDiscoveries();
-    state.personalBests = loadPersonalBests();
-    state.daily = loadDaily();
-    state.newPersonalBest = false;
-    state.classicResult = null;
     renderTracklist();
-    if (!state.track) applyModeAvailability();
-    announce("PROFILE RESET.");
+    announce("DISCOVERY RESET.");
   }
 
   function trapFocus(event, container) {
@@ -1665,12 +1572,6 @@
     button.addEventListener("click", () => setMode(name));
   });
   ui.tracklistButton.addEventListener("click", toggleTracklist);
-  ui.highscoresToggle.addEventListener("click", () => {
-    setProfileTab(state.profileTab === "highscores" ? null : "highscores");
-  });
-  ui.discoveryToggle.addEventListener("click", () => {
-    setProfileTab(state.profileTab === "tracklist" ? null : "tracklist");
-  });
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
   ui.tracklistModal.addEventListener("click", (event) => {
