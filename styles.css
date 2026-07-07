@@ -519,7 +519,7 @@
 
 #corzaguessr .tracklist-panel {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 0.6rem;
   height: min(78dvh, 650px);
   padding: 1rem;
@@ -538,34 +538,78 @@
   font-size: 0.9rem;
 }
 
-#corzaguessr .profile-summary {
+#corzaguessr .profile-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+#corzaguessr .profile-tab {
+  width: 160px;
+  max-width: calc((100% - 0.75rem) / 2);
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#corzaguessr .profile-tab.active {
+  background: var(--gradient);
+  color: #32323a;
+}
+
+#corzaguessr .profile-content,
+#corzaguessr .profile-section {
+  min-height: 0;
+}
+
+#corzaguessr .profile-content {
   display: grid;
-  gap: 0;
+  overflow: hidden;
+}
+
+#corzaguessr .profile-prompt {
+  align-self: center;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
   font-weight: 800;
   text-align: center;
   text-transform: uppercase;
 }
 
-#corzaguessr .profile-stat {
-  padding: 0.45rem 0.5rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.78rem;
-  line-height: 1.3;
+#corzaguessr .highscores-section,
+#corzaguessr .tracklist-section {
+  display: grid;
+  gap: 0.65rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+#corzaguessr .profile-entry {
+  display: grid;
+  gap: 0.35rem;
   text-align: center;
+  text-transform: uppercase;
+}
+
+#corzaguessr .profile-entry h4 {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.72;
 }
 
 #corzaguessr .discovery-title {
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--line);
+  margin-top: 0;
 }
 
 #corzaguessr .tracklist-items {
   display: grid;
   gap: 0.5rem;
   min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
 }
 
 #corzaguessr .tracklist-item {
@@ -604,13 +648,14 @@
     padding: 0.85rem;
   }
 
-  #corzaguessr .profile-stat {
-    padding: 0.34rem 0.35rem;
-    font-size: 0.72rem;
+  #corzaguessr .profile-tab {
+    flex: 1;
+    padding: 0.5rem 0.45rem;
+    font-size: 0.78rem;
   }
 
-  #corzaguessr .discovery-title {
-    padding-top: 0.5rem;
+  #corzaguessr .profile-entry h4 {
+    font-size: 0.74rem;
   }
 
   #corzaguessr .tracklist-item {
