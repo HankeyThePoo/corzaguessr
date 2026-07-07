@@ -567,33 +567,6 @@
   width: 128px;
 }
 
-@media (max-width: 800px) {
-  #corzaguessr .tracklist-modal {
-    position: fixed;
-    z-index: 9999;
-    align-items: flex-start;
-    padding: 0.75rem;
-    border-radius: 0;
-    overflow: hidden;
-  }
-
-  #corzaguessr .tracklist-shell {
-    width: min(94vw, 840px);
-  }
-
-  #corzaguessr .tracklist-panel {
-    height: min(88vh, 640px);
-    height: min(88svh, calc(100vh - 1.5rem), 640px);
-    gap: 0.5rem;
-    padding: 0.85rem;
-  }
-
-  #corzaguessr .tracklist-item {
-    min-height: 39px;
-    padding: 0.55rem 0.65rem;
-  }
-}
-
 #corzaguessr .hide,
 #corzaguessr [hidden] {
   display: none !important;
