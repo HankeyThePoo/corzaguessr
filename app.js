@@ -176,12 +176,21 @@
               <h3 id="corzaguessr-tracklist-title" class="tracklist-title">
                 <span>PROFILE</span>
               </h3>
-              <div class="profile-summary"></div>
-              <h4 class="tracklist-title discovery-title">
-                <span>TRACKS DISCOVERED</span>
-                <small>0 / 0 (0%)</small>
-              </h4>
-              <div class="tracklist-items"></div>
+              <div class="profile-tabs" role="tablist" aria-label="PROFILE SECTIONS">
+                <button type="button" class="profile-tab highscores-tab" role="tab" aria-selected="false">HIGHSCORES</button>
+                <button type="button" class="profile-tab tracklist-tab" role="tab" aria-selected="false">TRACKLIST</button>
+              </div>
+              <div class="profile-content">
+                <p class="profile-prompt">CHOOSE A TAB TO VIEW</p>
+                <div class="profile-section highscores-section" hidden></div>
+                <div class="profile-section tracklist-section" hidden>
+                  <h4 class="tracklist-title discovery-title">
+                    <span>TRACKS DISCOVERED</span>
+                    <small>0 / 0 (0%)</small>
+                  </h4>
+                  <div class="tracklist-items"></div>
+                </div>
+              </div>
               <div class="actions">
                 <button type="button" class="button tracklist-close">CLOSE</button>
                 <button type="button" class="button tracklist-reset">RESET</button>
@@ -233,7 +242,11 @@
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
     tracklistCount: $(".tracklist-title small"),
-    profileSummary: $(".profile-summary"),
+    profilePrompt: $(".profile-prompt"),
+    highscoresTab: $(".highscores-tab"),
+    tracklistTab: $(".tracklist-tab"),
+    highscoresSection: $(".highscores-section"),
+    tracklistSection: $(".tracklist-section"),
     tracklistItems: $(".tracklist-items"),
     tracklistClose: $(".tracklist-close"),
     tracklistReset: $(".tracklist-reset"),
@@ -284,6 +297,7 @@
     pageScrollStyles: null,
     resumeAfterTracklist: false,
     endedDuringTracklist: false,
+    profileTab: null,
   };
 
   root.classList.add("awaiting-mode", "rules-visible");
@@ -779,24 +793,28 @@
     return `${found} / ${total} (${percent}%)`;
   }
 
-  function renderProfileSummary() {
-    ui.profileSummary.replaceChildren(
-      ...[
-        ["DAILY", formatAttempts(state.personalBests.daily)],
-        ["CLASSIC", formatClassicPersonalBest()],
-        ["BLITZ", formatBlitzPersonalBest()],
-        ["SURVIVAL", formatSurvivalPersonalBest()],
-      ].map(([label, value]) => {
-        const item = document.createElement("div");
-        item.className = "profile-stat";
-        item.textContent = `${label} · ${value}`;
-        return item;
-      }),
+  function createProfileEntry(label, value) {
+    const group = document.createElement("section");
+    group.className = "profile-entry";
+    const title = document.createElement("h4");
+    title.textContent = label;
+    const stat = document.createElement("div");
+    stat.className = "tracklist-item";
+    stat.textContent = value;
+    group.replaceChildren(title, stat);
+    return group;
+  }
+
+  function renderHighscores() {
+    ui.highscoresSection.replaceChildren(
+      createProfileEntry("DAILY", formatAttempts(state.personalBests.daily)),
+      createProfileEntry("CLASSIC", formatClassicPersonalBest()),
+      createProfileEntry("BLITZ", formatBlitzPersonalBest()),
+      createProfileEntry("SURVIVAL", formatSurvivalPersonalBest()),
     );
   }
 
-  function renderTracklist() {
-    renderProfileSummary();
+  function renderTracklistItems() {
     if (state.status === "loading" && !state.tracks.length) {
       ui.tracklistCount.textContent = formatDiscoveryCount(0, 0);
       ui.tracklistItems.textContent = "LOADING...";
@@ -813,6 +831,26 @@
       if (!discovered) item.setAttribute("aria-hidden", "true");
       return item;
     }));
+  }
+
+  function setProfileTab(tab) {
+    state.profileTab = tab;
+    const showHighscores = tab === "highscores";
+    const showTracklist = tab === "tracklist";
+    ui.profilePrompt.hidden = showHighscores || showTracklist;
+    ui.highscoresSection.hidden = !showHighscores;
+    ui.tracklistSection.hidden = !showTracklist;
+    ui.highscoresTab.setAttribute("aria-selected", String(showHighscores));
+    ui.tracklistTab.setAttribute("aria-selected", String(showTracklist));
+    ui.highscoresTab.classList.toggle("active", showHighscores);
+    ui.tracklistTab.classList.toggle("active", showTracklist);
+    if (showHighscores) renderHighscores();
+    if (showTracklist) renderTracklistItems();
+    if (isTracklistOpen()) requestAnimationFrame(setTracklistHeight);
+  }
+
+  function renderTracklist() {
+    setProfileTab(state.profileTab);
   }
 
   function renderSuggestions() {
@@ -1465,6 +1503,7 @@
 
   function openTracklist() {
     clearTimeout(state.tracklistTimer);
+    state.profileTab = null;
     renderTracklist();
     state.returnFocus = document.activeElement;
     state.resumeAfterTracklist = state.status === "playing";
@@ -1597,6 +1636,8 @@
     button.addEventListener("click", () => setMode(name));
   });
   ui.tracklistButton.addEventListener("click", toggleTracklist);
+  ui.highscoresTab.addEventListener("click", () => setProfileTab("highscores"));
+  ui.tracklistTab.addEventListener("click", () => setProfileTab("tracklist"));
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
   ui.tracklistModal.addEventListener("click", (event) => {
