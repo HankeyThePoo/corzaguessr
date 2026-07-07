@@ -184,7 +184,7 @@
               <div class="tracklist-items"></div>
               <div class="actions">
                 <button type="button" class="button tracklist-close">CLOSE</button>
-                <button type="button" class="button tracklist-reset">RESET PROFILE</button>
+                <button type="button" class="button tracklist-reset">RESET</button>
               </div>
             </div>
           </div>
