@@ -174,12 +174,12 @@
           <div class="tracklist-shell">
             <div class="tracklist-panel glass">
               <div class="profile-content">
-                <section class="profile-accordion profile-accordion-open">
+                <section class="profile-accordion">
                   <button
                     type="button"
                     id="corzaguessr-highscores-title"
                     class="profile-accordion-toggle"
-                    aria-expanded="true"
+                    aria-expanded="false"
                     aria-controls="corzaguessr-highscores-panel"
                   >
                     <span class="profile-accordion-label">HIGHSCORES</span>
@@ -188,6 +188,7 @@
                   <div
                     id="corzaguessr-highscores-panel"
                     class="profile-section highscores-section"
+                    hidden
                   >
                     <div class="highscores-items"></div>
                   </div>
@@ -321,7 +322,7 @@
     pageScrollStyles: null,
     resumeAfterTracklist: false,
     endedDuringTracklist: false,
-    profileTab: "highscores",
+    profileTab: null,
   };
 
   root.classList.add("awaiting-mode", "rules-visible");
@@ -870,7 +871,7 @@
     ui.discoveryToggle.parentElement.classList.toggle("profile-accordion-open", showTracklist);
     ui.tracklistModal.setAttribute(
       "aria-labelledby",
-      showHighscores ? "corzaguessr-highscores-title" : "corzaguessr-discovery-title",
+      showTracklist ? "corzaguessr-discovery-title" : "corzaguessr-highscores-title",
     );
     renderHighscores();
     renderTracklistItems();
@@ -1531,7 +1532,7 @@
 
   function openTracklist() {
     clearTimeout(state.tracklistTimer);
-    state.profileTab = "highscores";
+    state.profileTab = null;
     renderTracklist();
     state.returnFocus = document.activeElement;
     state.resumeAfterTracklist = state.status === "playing";
@@ -1664,8 +1665,12 @@
     button.addEventListener("click", () => setMode(name));
   });
   ui.tracklistButton.addEventListener("click", toggleTracklist);
-  ui.highscoresToggle.addEventListener("click", () => setProfileTab("highscores"));
-  ui.discoveryToggle.addEventListener("click", () => setProfileTab("tracklist"));
+  ui.highscoresToggle.addEventListener("click", () => {
+    setProfileTab(state.profileTab === "highscores" ? null : "highscores");
+  });
+  ui.discoveryToggle.addEventListener("click", () => {
+    setProfileTab(state.profileTab === "tracklist" ? null : "tracklist");
+  });
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
   ui.tracklistModal.addEventListener("click", (event) => {
