@@ -345,8 +345,10 @@
   }
 
   function setProgress(text, scale) {
+    const clampedScale = Math.max(0, Math.min(1, scale));
     ui.now.textContent = text;
-    ui.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, scale))})`;
+    ui.fill.style.transform = `scaleX(${clampedScale})`;
+    ui.feedback.style.transform = `scaleX(${clampedScale})`;
   }
 
   function flashSurvivalFeedback(type) {
