@@ -176,13 +176,9 @@
               <h3 id="corzaguessr-tracklist-title" class="tracklist-title">
                 <span>PROFILE</span>
               </h3>
-              <div class="profile-tabs" role="tablist" aria-label="PROFILE SECTIONS">
-                <button type="button" class="profile-tab highscores-tab" role="tab" aria-selected="false">HIGHSCORES</button>
-                <button type="button" class="profile-tab tracklist-tab" role="tab" aria-selected="false">TRACKLIST</button>
-              </div>
+              <button type="button" class="profile-nav" aria-label="VIEW TRACKLIST">&rsaquo;</button>
               <div class="profile-content">
-                <p class="profile-prompt">CHOOSE A TAB TO VIEW</p>
-                <div class="profile-section highscores-section" hidden></div>
+                <div class="profile-section highscores-section"></div>
                 <div class="profile-section tracklist-section" hidden>
                   <h4 class="tracklist-title discovery-title">
                     <span>TRACKS DISCOVERED</span>
@@ -242,9 +238,7 @@
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
     tracklistCount: $(".tracklist-title small"),
-    profilePrompt: $(".profile-prompt"),
-    highscoresTab: $(".highscores-tab"),
-    tracklistTab: $(".tracklist-tab"),
+    profileNav: $(".profile-nav"),
     highscoresSection: $(".highscores-section"),
     tracklistSection: $(".tracklist-section"),
     tracklistItems: $(".tracklist-items"),
@@ -297,7 +291,7 @@
     pageScrollStyles: null,
     resumeAfterTracklist: false,
     endedDuringTracklist: false,
-    profileTab: null,
+    profileTab: "highscores",
   };
 
   root.classList.add("awaiting-mode", "rules-visible");
@@ -838,13 +832,11 @@
     state.profileTab = tab;
     const showHighscores = tab === "highscores";
     const showTracklist = tab === "tracklist";
-    ui.profilePrompt.hidden = showHighscores || showTracklist;
     ui.highscoresSection.hidden = !showHighscores;
     ui.tracklistSection.hidden = !showTracklist;
-    ui.highscoresTab.setAttribute("aria-selected", String(showHighscores));
-    ui.tracklistTab.setAttribute("aria-selected", String(showTracklist));
-    ui.highscoresTab.classList.toggle("active", showHighscores);
-    ui.tracklistTab.classList.toggle("active", showTracklist);
+    ui.profileNav.innerHTML = showHighscores ? "&rsaquo;" : "&lsaquo;";
+    ui.profileNav.setAttribute("aria-label", showHighscores ? "VIEW TRACKLIST" : "VIEW HIGHSCORES");
+    ui.profileNav.classList.toggle("back", showTracklist);
     if (showHighscores) renderHighscores();
     if (showTracklist) renderTracklistItems();
     if (isTracklistOpen()) requestAnimationFrame(setTracklistHeight);
@@ -1504,7 +1496,7 @@
 
   function openTracklist() {
     clearTimeout(state.tracklistTimer);
-    state.profileTab = null;
+    state.profileTab = "highscores";
     renderTracklist();
     state.returnFocus = document.activeElement;
     state.resumeAfterTracklist = state.status === "playing";
@@ -1637,8 +1629,9 @@
     button.addEventListener("click", () => setMode(name));
   });
   ui.tracklistButton.addEventListener("click", toggleTracklist);
-  ui.highscoresTab.addEventListener("click", () => setProfileTab("highscores"));
-  ui.tracklistTab.addEventListener("click", () => setProfileTab("tracklist"));
+  ui.profileNav.addEventListener("click", () => {
+    setProfileTab(state.profileTab === "highscores" ? "tracklist" : "highscores");
+  });
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
   ui.tracklistModal.addEventListener("click", (event) => {
