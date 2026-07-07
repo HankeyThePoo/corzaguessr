@@ -14,7 +14,6 @@
   const maxTimedClip = 60;
   const maxTimedSlots = 50;
   const storageKey = "corzaguessrDiscoveredV1";
-  const legacyPersonalBestStorageKey = "corzaguessrPersonalBestsV1";
   const personalBestStorageKey = "corzaguessrPersonalBestsV2";
   const dailyStorageKey = "corzaguessrDailyV1";
   const dailyTimeZone = "Europe/Budapest";
@@ -173,7 +172,7 @@
         >
           <div class="tracklist-shell">
             <div class="tracklist-panel glass">
-              <h3 id="corzaguessr-discovery-title" class="tracklist-title discovery-title">
+              <h3 id="corzaguessr-discovery-title" class="tracklist-title">
                 <span>DISCOVERY</span>
                 <small>0 / 0 (0%)</small>
               </h3>
@@ -228,7 +227,7 @@
     tracklistModal: $(".tracklist-modal"),
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
-    tracklistCount: $(".discovery-title small"),
+    tracklistCount: $("#corzaguessr-discovery-title small"),
     tracklistItems: $(".tracklist-items"),
     tracklistClose: $(".tracklist-close"),
     tracklistReset: $(".tracklist-reset"),
@@ -418,27 +417,24 @@
     };
   }
 
-  function loadTimedPersonalBest(saved, legacyScore) {
+  function loadTimedPersonalBest(saved) {
     const source = saved && typeof saved === "object"
       ? saved
-      : { score: saved };
+      : {};
     return {
-      score: validRecord(source?.score ?? legacyScore),
+      score: validRecord(source?.score),
       accuracy: validAccuracy(source?.accuracy),
     };
   }
 
   function loadPersonalBests() {
-    const saved = readStorage(personalBestStorageKey, null);
-    const legacy = saved === null
-      ? readStorage(legacyPersonalBestStorageKey, {})
-      : {};
+    const saved = readStorage(personalBestStorageKey, {});
     const source = saved && typeof saved === "object" ? saved : {};
     return {
       classic: loadClassicPersonalBest(source?.classic),
       daily: validRecord(source?.daily),
-      blitz: loadTimedPersonalBest(source?.blitz, legacy?.blitz),
-      survival: loadTimedPersonalBest(source?.survival, legacy?.survival),
+      blitz: loadTimedPersonalBest(source?.blitz),
+      survival: loadTimedPersonalBest(source?.survival),
     };
   }
 
@@ -1245,7 +1241,6 @@
     const card = ui.card.getBoundingClientRect();
     const board = ui.board.getBoundingClientRect();
     ui.card.style.setProperty("--modal-y", `${board.top - card.top + board.height / 2}px`);
-    state.returnFocus = document.activeElement;
     ui.card.classList.add("modal-open");
     ui.result.setAttribute("aria-hidden", "false");
     setBackgroundInert(true);
