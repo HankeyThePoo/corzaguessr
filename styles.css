@@ -594,16 +594,17 @@
 }
 
 #corzaguessr .tracklist-reset {
-  width: auto;
-  min-width: 168px;
+  width: 128px;
 }
 
 @media (max-width: 800px) {
   #corzaguessr .tracklist-modal {
     position: fixed;
-    align-items: center;
+    z-index: 9999;
+    align-items: flex-start;
     padding: 0.75rem;
     border-radius: 0;
+    overflow: hidden;
   }
 
   #corzaguessr .tracklist-shell {
@@ -611,7 +612,8 @@
   }
 
   #corzaguessr .tracklist-panel {
-    height: min(88dvh, 640px);
+    height: min(88vh, 640px);
+    height: min(88svh, calc(100vh - 1.5rem), 640px);
     gap: 0.5rem;
     padding: 0.85rem;
   }
