@@ -148,11 +148,10 @@
               role="dialog"
               aria-modal="true"
               aria-labelledby="corzaguessr-result-title"
-              aria-describedby="corzaguessr-result-text corzaguessr-result-meta"
+              aria-describedby="corzaguessr-result-meta"
               aria-hidden="true"
             >
               <h3 id="corzaguessr-result-title" class="modal-title"></h3>
-              <p id="corzaguessr-result-text" class="modal-text"></p>
               <div id="corzaguessr-result-meta" class="result-meta"></div>
               <div class="actions">
                 <button type="button" class="button next">NEW GAME</button>
@@ -223,7 +222,6 @@
     survival: $(".survival"),
     result: $(".corzaguessr-modal"),
     resultTitle: $(".modal-title"),
-    resultText: $(".modal-text"),
     resultMeta: $(".result-meta"),
     modePrompt: $(".mode-prompt"),
     tracklistButton: $(".tracklist-button"),
@@ -389,6 +387,12 @@
     return Number.isSafeInteger(value) && value >= 0 ? value : 0;
   }
 
+  function validAccuracy(value) {
+    return Number.isSafeInteger(value) && value >= 0 && value <= 100
+      ? value
+      : null;
+  }
+
   function validSnippetTotal(value, current) {
     return Number.isSafeInteger(value) &&
       value >= current &&
@@ -415,6 +419,16 @@
     };
   }
 
+  function loadTimedPersonalBest(saved, legacyScore) {
+    const source = saved && typeof saved === "object"
+      ? saved
+      : { score: saved };
+    return {
+      score: validRecord(source?.score ?? legacyScore),
+      accuracy: validAccuracy(source?.accuracy),
+    };
+  }
+
   function loadPersonalBests() {
     const saved = readStorage(personalBestStorageKey, null);
     const legacy = saved === null
@@ -424,8 +438,8 @@
     return {
       classic: loadClassicPersonalBest(source?.classic),
       daily: validRecord(source?.daily),
-      blitz: validRecord(source?.blitz ?? legacy?.blitz),
-      survival: validRecord(source?.survival ?? legacy?.survival),
+      blitz: loadTimedPersonalBest(source?.blitz, legacy?.blitz),
+      survival: loadTimedPersonalBest(source?.survival, legacy?.survival),
     };
   }
 
@@ -952,6 +966,20 @@
     return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}S`;
   }
 
+  function getAccuracy() {
+    return state.guesses
+      ? Math.round(state.correct * 100 / state.guesses)
+      : 0;
+  }
+
+  function formatAccuracy(accuracy) {
+    return accuracy === null ? "--" : `${accuracy}%`;
+  }
+
+  function formatAttempts(attempts) {
+    return attempts ? `ATTEMPTS: ${attempts}` : "ATTEMPTS: --";
+  }
+
   function markPersonalBestBeaten() {
     state.personalBestBeaten = true;
     state.resultPersonalBestBeaten = true;
@@ -1025,15 +1053,22 @@
   }
 
   function updateTimedPersonalBest() {
-    if (state.mode === "blitz" && state.correct > state.personalBests.blitz) {
-      state.personalBests.blitz = state.correct;
+    const accuracy = getAccuracy();
+    if (state.mode === "blitz" && state.correct > state.personalBests.blitz.score) {
+      state.personalBests.blitz = {
+        score: state.correct,
+        accuracy,
+      };
       markPersonalBestBeaten();
       savePersonalBests();
     } else if (
       state.mode === "survival" &&
-      Math.floor(state.elapsed) > state.personalBests.survival
+      Math.floor(state.elapsed) > state.personalBests.survival.score
     ) {
-      state.personalBests.survival = Math.floor(state.elapsed);
+      state.personalBests.survival = {
+        score: Math.floor(state.elapsed),
+        accuracy,
+      };
       markPersonalBestBeaten();
       savePersonalBests();
     }
@@ -1042,8 +1077,9 @@
   function createResultModule(lines) {
     const module = document.createElement("div");
     module.className = "result-module";
-    module.replaceChildren(...lines.map((line) => {
+    module.replaceChildren(...lines.map((line, index) => {
       const item = document.createElement("span");
+      item.className = index ? "result-value" : "result-label";
       item.textContent = line;
       return item;
     }));
@@ -1063,18 +1099,16 @@
     const label = state.resultPersonalBestBeaten
       ? "NEW PERSONAL BEST"
       : "PERSONAL BEST";
+    const modules = [];
+
+    if (!modes[state.mode].timed) {
+      modules.push(["TRACK:", state.track.title]);
+    }
 
     if (state.mode === "daily") {
       const attempts = state.step + 1;
-      setResultMeta(
-        [`ATTEMPTS: ${attempts}`],
-        [
-          `${label}:`,
-          state.personalBests.daily
-            ? `ATTEMPTS: ${state.personalBests.daily}`
-            : "NO DAILY WIN YET",
-        ],
-      );
+      modules.push(["RUN:", formatAttempts(attempts)]);
+      modules.push([`${label}:`, formatAttempts(state.personalBests.daily)]);
     } else if (state.mode === "classic") {
       const result = state.classicResult || {
         won: Boolean(state.personalBests.classic.current),
@@ -1083,26 +1117,35 @@
       };
       const average = formatSnippetAverage(result.average);
       const bestAverage = formatSnippetAverage(getClassicBestAverage());
-      setResultMeta(
-        [
-          `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${average}`,
-        ],
-        [
-          `${label}:`,
-          `STREAK: ${state.personalBests.classic.best} · AVERAGE SNIPPET: ${bestAverage}`,
-        ],
-      );
+      modules.push([
+        "RUN:",
+        `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${average}`,
+      ]);
+      modules.push([
+        `${label}:`,
+        `STREAK: ${state.personalBests.classic.best} · AVERAGE SNIPPET: ${bestAverage}`,
+      ]);
     } else if (state.mode === "blitz") {
-      setResultMeta(
-        [`CORRECT GUESSES: ${state.correct}`],
-        [`${label}:`, `CORRECT GUESSES: ${state.personalBests.blitz}`],
-      );
+      modules.push([
+        "RUN:",
+        `CORRECT GUESSES: ${state.correct} · ACCURACY: ${formatAccuracy(getAccuracy())}`,
+      ]);
+      modules.push([
+        `${label}:`,
+        `CORRECT GUESSES: ${state.personalBests.blitz.score} · ACCURACY: ${formatAccuracy(state.personalBests.blitz.accuracy)}`,
+      ]);
     } else {
-      setResultMeta(
-        [`TIME SURVIVED: ${formatTime(state.elapsed / 1000)}`],
-        [`${label}:`, `TIME SURVIVED: ${formatTime(state.personalBests.survival / 1000)}`],
-      );
+      modules.push([
+        "RUN:",
+        `TIME SURVIVED: ${formatTime(state.elapsed / 1000)} · ACCURACY: ${formatAccuracy(getAccuracy())}`,
+      ]);
+      modules.push([
+        `${label}:`,
+        `TIME SURVIVED: ${formatTime(state.personalBests.survival.score / 1000)} · ACCURACY: ${formatAccuracy(state.personalBests.survival.accuracy)}`,
+      ]);
     }
+
+    setResultMeta(...modules);
   }
 
   function endGame(won) {
@@ -1124,9 +1167,6 @@
     ui.resultTitle.innerHTML = mode.timed
       ? '⏱️ <span class="end">TIME IS UP</span> ⏱️'
       : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
-    ui.resultText.textContent = mode.timed
-      ? "RUN COMPLETE"
-      : `THE TRACK WAS\n${state.track.title}`;
     renderResultMeta();
 
     const hasSpotify = !mode.timed && Boolean(state.track.spotify);
@@ -1140,9 +1180,7 @@
       : null;
 
     openResult();
-    announce(
-      `${ui.resultText.textContent.replace("\n", ". ")}. ${ui.resultMeta.dataset.announcement}`,
-    );
+    announce(ui.resultMeta.dataset.announcement);
   }
 
   function openResult() {
