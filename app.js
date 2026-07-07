@@ -168,19 +168,21 @@
           class="tracklist-modal"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="corzaguessr-tracklist-title"
+          aria-labelledby="corzaguessr-highscores-title"
           aria-hidden="true"
         >
           <div class="tracklist-shell">
             <div class="tracklist-panel glass">
-              <h3 id="corzaguessr-tracklist-title" class="tracklist-title">
-                <span>PROFILE</span>
-              </h3>
               <button type="button" class="profile-nav" aria-label="VIEW TRACKLIST">&rsaquo;</button>
               <div class="profile-content">
-                <div class="profile-section highscores-section"></div>
+                <div class="profile-section highscores-section">
+                  <h4 id="corzaguessr-highscores-title" class="tracklist-title highscores-title">
+                    <span>HIGHSCORES</span>
+                  </h4>
+                  <div class="highscores-items"></div>
+                </div>
                 <div class="profile-section tracklist-section" hidden>
-                  <h4 class="tracklist-title discovery-title">
+                  <h4 id="corzaguessr-discovery-title" class="tracklist-title discovery-title">
                     <span>TRACKS DISCOVERED</span>
                     <small>0 / 0 (0%)</small>
                   </h4>
@@ -237,9 +239,10 @@
     tracklistModal: $(".tracklist-modal"),
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
-    tracklistCount: $(".tracklist-title small"),
+    tracklistCount: $(".discovery-title small"),
     profileNav: $(".profile-nav"),
     highscoresSection: $(".highscores-section"),
+    highscoresItems: $(".highscores-items"),
     tracklistSection: $(".tracklist-section"),
     tracklistItems: $(".tracklist-items"),
     tracklistClose: $(".tracklist-close"),
@@ -801,7 +804,7 @@
   }
 
   function renderHighscores() {
-    ui.highscoresSection.replaceChildren(
+    ui.highscoresItems.replaceChildren(
       createProfileEntry("DAILY", formatAttempts(state.personalBests.daily)),
       createProfileEntry("CLASSIC", formatClassicPersonalBest()),
       createProfileEntry("BLITZ", formatBlitzPersonalBest()),
@@ -834,6 +837,10 @@
     const showTracklist = tab === "tracklist";
     ui.highscoresSection.hidden = !showHighscores;
     ui.tracklistSection.hidden = !showTracklist;
+    ui.tracklistModal.setAttribute(
+      "aria-labelledby",
+      showHighscores ? "corzaguessr-highscores-title" : "corzaguessr-discovery-title",
+    );
     ui.profileNav.innerHTML = showHighscores ? "&rsaquo;" : "&lsaquo;";
     ui.profileNav.setAttribute("aria-label", showHighscores ? "VIEW TRACKLIST" : "VIEW HIGHSCORES");
     ui.profileNav.classList.toggle("back", showTracklist);
