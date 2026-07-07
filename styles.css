@@ -432,6 +432,7 @@
 }
 
 #corzaguessr .result-meta {
+  width: 100%;
   font-weight: 800;
 }
 
@@ -441,6 +442,16 @@
   padding-top: 0.75rem;
   margin-top: 0.75rem;
   border-top: 1px solid var(--line);
+}
+
+#corzaguessr .result-module:first-child {
+  margin-top: 0;
+}
+
+#corzaguessr .result-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  opacity: 0.72;
 }
 
 #corzaguessr .end {
