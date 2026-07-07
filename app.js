@@ -797,6 +797,7 @@
     const group = document.createElement("section");
     group.className = "profile-entry";
     const title = document.createElement("h4");
+    title.className = "tracklist-title profile-entry-title";
     title.textContent = label;
     const stat = document.createElement("div");
     stat.className = "tracklist-item";
