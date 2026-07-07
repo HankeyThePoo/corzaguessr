@@ -173,21 +173,47 @@
         >
           <div class="tracklist-shell">
             <div class="tracklist-panel glass">
-              <button type="button" class="profile-nav" aria-label="VIEW TRACKLIST">&rsaquo;</button>
               <div class="profile-content">
-                <div class="profile-section highscores-section">
-                  <h4 id="corzaguessr-highscores-title" class="tracklist-title highscores-title">
-                    <span>HIGHSCORES</span>
-                  </h4>
-                  <div class="highscores-items"></div>
-                </div>
-                <div class="profile-section tracklist-section" hidden>
-                  <h4 id="corzaguessr-discovery-title" class="tracklist-title discovery-title">
-                    <span>TRACKS DISCOVERED</span>
-                    <small>0 / 0 (0%)</small>
-                  </h4>
-                  <div class="tracklist-items"></div>
-                </div>
+                <section class="profile-accordion profile-accordion-open">
+                  <button
+                    type="button"
+                    id="corzaguessr-highscores-title"
+                    class="profile-accordion-toggle"
+                    aria-expanded="true"
+                    aria-controls="corzaguessr-highscores-panel"
+                  >
+                    <span class="profile-accordion-label">HIGHSCORES</span>
+                    <span class="profile-accordion-icon" aria-hidden="true">&#8964;</span>
+                  </button>
+                  <div
+                    id="corzaguessr-highscores-panel"
+                    class="profile-section highscores-section"
+                  >
+                    <div class="highscores-items"></div>
+                  </div>
+                </section>
+                <section class="profile-accordion">
+                  <button
+                    type="button"
+                    id="corzaguessr-discovery-title"
+                    class="profile-accordion-toggle"
+                    aria-expanded="false"
+                    aria-controls="corzaguessr-discovery-panel"
+                  >
+                    <span class="profile-accordion-label">
+                      <span>DISCOVERY</span>
+                      <small class="profile-discovery-count">0 / 0 (0%)</small>
+                    </span>
+                    <span class="profile-accordion-icon" aria-hidden="true">&#8964;</span>
+                  </button>
+                  <div
+                    id="corzaguessr-discovery-panel"
+                    class="profile-section tracklist-section"
+                    hidden
+                  >
+                    <div class="tracklist-items"></div>
+                  </div>
+                </section>
               </div>
               <div class="actions">
                 <button type="button" class="button tracklist-close">CLOSE</button>
@@ -239,8 +265,9 @@
     tracklistModal: $(".tracklist-modal"),
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
-    tracklistCount: $(".discovery-title small"),
-    profileNav: $(".profile-nav"),
+    tracklistCount: $(".profile-discovery-count"),
+    highscoresToggle: $("#corzaguessr-highscores-title"),
+    discoveryToggle: $("#corzaguessr-discovery-title"),
     highscoresSection: $(".highscores-section"),
     highscoresItems: $(".highscores-items"),
     tracklistSection: $(".tracklist-section"),
@@ -837,15 +864,16 @@
     const showTracklist = tab === "tracklist";
     ui.highscoresSection.hidden = !showHighscores;
     ui.tracklistSection.hidden = !showTracklist;
+    ui.highscoresToggle.setAttribute("aria-expanded", String(showHighscores));
+    ui.discoveryToggle.setAttribute("aria-expanded", String(showTracklist));
+    ui.highscoresToggle.parentElement.classList.toggle("profile-accordion-open", showHighscores);
+    ui.discoveryToggle.parentElement.classList.toggle("profile-accordion-open", showTracklist);
     ui.tracklistModal.setAttribute(
       "aria-labelledby",
       showHighscores ? "corzaguessr-highscores-title" : "corzaguessr-discovery-title",
     );
-    ui.profileNav.innerHTML = showHighscores ? "&rsaquo;" : "&lsaquo;";
-    ui.profileNav.setAttribute("aria-label", showHighscores ? "VIEW TRACKLIST" : "VIEW HIGHSCORES");
-    ui.profileNav.classList.toggle("back", showTracklist);
-    if (showHighscores) renderHighscores();
-    if (showTracklist) renderTracklistItems();
+    renderHighscores();
+    renderTracklistItems();
     if (isTracklistOpen()) requestAnimationFrame(setTracklistHeight);
   }
 
@@ -1636,9 +1664,8 @@
     button.addEventListener("click", () => setMode(name));
   });
   ui.tracklistButton.addEventListener("click", toggleTracklist);
-  ui.profileNav.addEventListener("click", () => {
-    setProfileTab(state.profileTab === "highscores" ? "tracklist" : "highscores");
-  });
+  ui.highscoresToggle.addEventListener("click", () => setProfileTab("highscores"));
+  ui.discoveryToggle.addEventListener("click", () => setProfileTab("tracklist"));
   ui.tracklistClose.addEventListener("click", closeTracklist);
   ui.tracklistReset.addEventListener("click", resetTracklist);
   ui.tracklistModal.addEventListener("click", (event) => {
