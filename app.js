@@ -103,6 +103,7 @@
             <div class="timeline" aria-hidden="true">
               <div class="snippet"></div>
               <div class="fill"></div>
+              <div class="feedback"></div>
               <i class="tick" style="left:3.125%"></i>
               <i class="tick" style="left:6.25%"></i>
               <i class="tick" style="left:12.5%"></i>
@@ -210,6 +211,7 @@
     rulesetText: $(".ruleset-text"),
     rulesetCopy: $(".ruleset-copy"),
     timeline: $(".timeline"),
+    feedback: $(".feedback"),
     fill: $(".fill"),
     snippet: $(".snippet"),
     now: $(".now"),
@@ -350,11 +352,11 @@
   function flashSurvivalFeedback(type) {
     if (state.mode !== "survival") return;
     clearTimeout(state.feedbackTimer);
-    ui.timeline.classList.remove("survival-gain", "survival-damage");
-    void ui.timeline.offsetWidth;
-    ui.timeline.classList.add(type === "correct" ? "survival-gain" : "survival-damage");
+    ui.feedback.classList.remove("survival-gain", "survival-damage");
+    void ui.feedback.offsetWidth;
+    ui.feedback.classList.add(type === "correct" ? "survival-gain" : "survival-damage");
     state.feedbackTimer = setTimeout(() => {
-      ui.timeline.classList.remove("survival-gain", "survival-damage");
+      ui.feedback.classList.remove("survival-gain", "survival-damage");
       state.feedbackTimer = 0;
     }, transitionDelay(420));
   }
@@ -1312,7 +1314,7 @@
     ui.status.textContent = "";
     clearTimeout(state.feedbackTimer);
     state.feedbackTimer = 0;
-    ui.timeline.classList.remove("survival-gain", "survival-damage");
+    ui.feedback.classList.remove("survival-gain", "survival-damage");
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
