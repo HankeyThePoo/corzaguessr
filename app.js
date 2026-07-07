@@ -789,13 +789,7 @@
       ].map(([label, value]) => {
         const item = document.createElement("div");
         item.className = "profile-stat";
-        const title = document.createElement("span");
-        title.className = "profile-stat-label";
-        title.textContent = label;
-        const stat = document.createElement("span");
-        stat.className = "profile-stat-value";
-        stat.textContent = value;
-        item.replaceChildren(title, stat);
+        item.textContent = `${label} · ${value}`;
         return item;
       }),
     );
