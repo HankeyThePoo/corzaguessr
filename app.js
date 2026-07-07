@@ -81,7 +81,7 @@
           class="button tracklist-button"
           aria-controls="corzaguessr-tracklist"
           aria-expanded="false"
-        >TRACKLIST</button>
+        >PROFILE</button>
       </div>
       <div class="modes" aria-label="GAME MODE">
         <button type="button" class="mode daily" aria-pressed="false">DAILY</button>
@@ -174,13 +174,17 @@
           <div class="tracklist-shell">
             <div class="tracklist-panel glass">
               <h3 id="corzaguessr-tracklist-title" class="tracklist-title">
-                <span>TRACKS DISCOVERED</span>
-                <small>0 / 0</small>
+                <span>PROFILE</span>
               </h3>
+              <div class="profile-summary"></div>
+              <h4 class="tracklist-title discovery-title">
+                <span>TRACKS DISCOVERED</span>
+                <small>0 / 0 (0%)</small>
+              </h4>
               <div class="tracklist-items"></div>
               <div class="actions">
                 <button type="button" class="button tracklist-close">CLOSE</button>
-                <button type="button" class="button tracklist-reset">RESET</button>
+                <button type="button" class="button tracklist-reset">RESET DISCOVERY</button>
               </div>
             </div>
           </div>
@@ -229,6 +233,7 @@
     tracklistShell: $(".tracklist-shell"),
     tracklistPanel: $(".tracklist-panel"),
     tracklistCount: $(".tracklist-title small"),
+    profileSummary: $(".profile-summary"),
     tracklistItems: $(".tracklist-items"),
     tracklistClose: $(".tracklist-close"),
     tracklistReset: $(".tracklist-reset"),
@@ -769,15 +774,32 @@
     );
   }
 
+  function formatDiscoveryCount(found, total) {
+    const percent = total ? Math.round(found * 100 / total) : 0;
+    return `${found} / ${total} (${percent}%)`;
+  }
+
+  function renderProfileSummary() {
+    ui.profileSummary.replaceChildren(
+      ...[
+        ["DAILY:", formatAttempts(state.personalBests.daily)],
+        ["CLASSIC:", formatClassicPersonalBest()],
+        ["BLITZ:", formatBlitzPersonalBest()],
+        ["SURVIVAL:", formatSurvivalPersonalBest()],
+      ].map((module) => createResultModule(module)),
+    );
+  }
+
   function renderTracklist() {
+    renderProfileSummary();
     if (state.status === "loading" && !state.tracks.length) {
-      ui.tracklistCount.textContent = "0 / 0";
+      ui.tracklistCount.textContent = formatDiscoveryCount(0, 0);
       ui.tracklistItems.textContent = "LOADING...";
       return;
     }
     const validTitles = new Set(state.tracks.map((track) => track.title));
     const found = [...state.discovered].filter((title) => validTitles.has(title)).length;
-    ui.tracklistCount.textContent = `${found} / ${state.tracks.length}`;
+    ui.tracklistCount.textContent = formatDiscoveryCount(found, state.tracks.length);
     ui.tracklistItems.replaceChildren(...state.tracks.map((track) => {
       const item = document.createElement("div");
       item.className = "tracklist-item";
@@ -877,6 +899,7 @@
     state.rounds++;
     state.trackStarted = false;
     state.session++;
+    if (!mode.timed) setProgress(mode.initialText, mode.initialProgress);
     setPlaying(true);
     loadPlayerTrack(true);
     renderPrompt();
