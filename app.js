@@ -477,19 +477,33 @@
   }
 
   function isDailyDone(date = getBudapestDate()) {
+    return state.daily.date === date && state.daily.completed;
+  }
+
+  function isDailyStarted(date = getBudapestDate()) {
     return state.daily.date === date && state.daily.started;
+  }
+
+  function isDailyInProgress(date = getBudapestDate()) {
+    return isDailyStarted(date) && !state.daily.completed;
   }
 
   function getDailyDoneText() {
     if (state.daily.date === state.dailyDate && state.daily.completed) {
       const attempts = state.daily.step + 1;
-      return `COMPLETED IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK TOMORROW`;
+      const label = state.daily.won ? "COMPLETED" : "FAILED";
+      return `${label} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK TOMORROW`;
     }
     return dailyDoneText;
   }
 
+  function getDailyInProgressText() {
+    const attempt = state.daily.step + 1;
+    return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${attempt}`;
+  }
+
   function markDailyStarted() {
-    if (state.mode !== "daily" || isDailyDone(state.dailyDate)) return;
+    if (state.mode !== "daily" || isDailyStarted(state.dailyDate)) return;
     state.daily = {
       date: state.dailyDate,
       started: true,
@@ -657,7 +671,8 @@
     state.track = null;
     state.trackStarted = false;
     ui.skip.disabled = true;
-    showRules(modes[state.mode].description);
+    if (modes[state.mode].daily) applyModeAvailability();
+    else showRules(modes[state.mode].description);
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
     announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
@@ -836,6 +851,9 @@
   function startRound() {
     if (!state.tracks.length) return;
     const mode = modes[state.mode];
+    if (mode.daily && isDailyInProgress(state.dailyDate)) {
+      state.step = state.daily.step;
+    }
     const selected = selectTrack();
     const timedSeconds = Math.min(
       Math.ceil(state.time / 1000),
@@ -1305,6 +1323,14 @@
       renderSavedDailyProgress();
       return;
     }
+    if (mode.daily && isDailyInProgress(state.dailyDate)) {
+      ui.play.disabled = state.status === "loading";
+      ui.skip.disabled = true;
+      ui.guess.disabled = true;
+      showRules(getDailyInProgressText());
+      renderSavedDailyProgress();
+      return;
+    }
     showRules(mode.description);
   }
 
@@ -1329,8 +1355,12 @@
     if (!modes[mode] || (!isAwaitingMode() && state.mode === mode)) return;
     state.mode = mode;
     renderModeSelection();
-    const message = modes[mode].daily && isDailyDone()
-      ? getDailyDoneText()
+    const message = modes[mode].daily
+      ? isDailyDone()
+        ? getDailyDoneText()
+        : isDailyInProgress()
+          ? getDailyInProgressText()
+          : modes[mode].description
       : modes[mode].description;
     showRules(message);
     announce(message);
