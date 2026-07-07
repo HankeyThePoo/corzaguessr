@@ -209,6 +209,7 @@
     ruleset: $(".ruleset"),
     rulesetText: $(".ruleset-text"),
     rulesetCopy: $(".ruleset-copy"),
+    timeline: $(".timeline"),
     fill: $(".fill"),
     snippet: $(".snippet"),
     now: $(".now"),
@@ -271,6 +272,7 @@
     session: 0,
     activeSuggestion: -1,
     progressTimer: 0,
+    feedbackTimer: 0,
     slotsTimer: 0,
     resultTimer: 0,
     discoveryTimer: 0,
@@ -343,6 +345,18 @@
   function setProgress(text, scale) {
     ui.now.textContent = text;
     ui.fill.style.transform = `scaleX(${Math.max(0, Math.min(1, scale))})`;
+  }
+
+  function flashSurvivalFeedback(type) {
+    if (state.mode !== "survival") return;
+    clearTimeout(state.feedbackTimer);
+    ui.timeline.classList.remove("survival-gain", "survival-damage");
+    void ui.timeline.offsetWidth;
+    ui.timeline.classList.add(type === "correct" ? "survival-gain" : "survival-damage");
+    state.feedbackTimer = setTimeout(() => {
+      ui.timeline.classList.remove("survival-gain", "survival-damage");
+      state.feedbackTimer = 0;
+    }, transitionDelay(420));
   }
 
   function readStorage(key, fallback) {
@@ -944,6 +958,7 @@
     if (type !== "skip") state.guesses++;
     if (type === "correct") state.correct++;
     if (mode.survival) {
+      flashSurvivalFeedback(type);
       state.time = Math.max(0, state.time + mode.timeChange[type]);
       state.maxTime = Math.max(state.maxTime, state.time);
       ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
@@ -1295,6 +1310,9 @@
     });
     state.used.clear();
     ui.status.textContent = "";
+    clearTimeout(state.feedbackTimer);
+    state.feedbackTimer = 0;
+    ui.timeline.classList.remove("survival-gain", "survival-damage");
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
