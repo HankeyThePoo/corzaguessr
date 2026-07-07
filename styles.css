@@ -422,13 +422,8 @@
   text-transform: uppercase;
 }
 
-#corzaguessr .corzaguessr-modal h3,
-#corzaguessr .corzaguessr-modal p {
+#corzaguessr .corzaguessr-modal h3 {
   margin: 0.25rem;
-}
-
-#corzaguessr .corzaguessr-modal p {
-  white-space: pre-line;
 }
 
 #corzaguessr .result-meta {
