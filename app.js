@@ -262,8 +262,7 @@
     used: new Set(),
     discovered: loadDiscoveries(),
     personalBests: loadPersonalBests(),
-    personalBestBeaten: false,
-    resultPersonalBestBeaten: false,
+    newPersonalBest: false,
     classicResult: null,
     daily: loadDaily(),
     dailyDate: getBudapestDate(),
@@ -973,16 +972,15 @@
   }
 
   function formatAccuracy(accuracy) {
-    return accuracy === null ? "--" : `${accuracy}%`;
+    return Number.isSafeInteger(accuracy) ? `${accuracy}%` : "--";
   }
 
   function formatAttempts(attempts) {
     return attempts ? `ATTEMPTS: ${attempts}` : "ATTEMPTS: --";
   }
 
-  function markPersonalBestBeaten() {
-    state.personalBestBeaten = true;
-    state.resultPersonalBestBeaten = true;
+  function markNewPersonalBest() {
+    state.newPersonalBest = true;
   }
 
   function updateClassicRecord(won) {
@@ -996,13 +994,11 @@
         won: true,
         streak: record.current,
         average: getClassicAverage(record),
-        newPersonalBest: false,
       };
       if (record.current > record.best) {
         record.best = record.current;
         record.bestSnippetTotal = record.snippetTotal;
-        state.classicResult.newPersonalBest = true;
-        markPersonalBestBeaten();
+        markNewPersonalBest();
       }
       savePersonalBests();
       return;
@@ -1012,7 +1008,6 @@
       won: false,
       streak: record.current,
       average: getClassicAverage(record),
-      newPersonalBest: false,
     };
     if (record.current || record.snippetTotal) {
       record.current = 0;
@@ -1026,7 +1021,7 @@
     const attempts = state.step + 1;
     if (!state.personalBests.daily || attempts < state.personalBests.daily) {
       state.personalBests.daily = attempts;
-      markPersonalBestBeaten();
+      markNewPersonalBest();
       savePersonalBests();
     }
   }
@@ -1059,7 +1054,7 @@
         score: state.correct,
         accuracy,
       };
-      markPersonalBestBeaten();
+      markNewPersonalBest();
       savePersonalBests();
     } else if (
       state.mode === "survival" &&
@@ -1069,8 +1064,18 @@
         score: Math.floor(state.elapsed),
         accuracy,
       };
-      markPersonalBestBeaten();
+      markNewPersonalBest();
       savePersonalBests();
+    }
+  }
+
+  function updatePersonalBest(won) {
+    if (state.mode === "classic") {
+      updateClassicRecord(won);
+    } else if (state.mode === "daily") {
+      updateDailyPersonalBest(won);
+    } else {
+      updateTimedPersonalBest();
     }
   }
 
@@ -1095,57 +1100,72 @@
       .join(". ");
   }
 
-  function renderResultMeta() {
-    const label = state.resultPersonalBestBeaten
-      ? "NEW PERSONAL BEST"
-      : "PERSONAL BEST";
-    const modules = [];
+  function getPersonalBestLabel() {
+    return state.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:";
+  }
 
-    if (!modes[state.mode].timed) {
-      modules.push(["TRACK:", state.track.title]);
-    }
+  function formatClassicRun() {
+    const result = state.classicResult || {
+      won: Boolean(state.personalBests.classic.current),
+      streak: state.personalBests.classic.current,
+      average: getClassicAverage(),
+    };
+    const streakLabel = result.won ? "STREAK" : "STREAK ENDED";
+    return `${streakLabel}: ${result.streak} · AVERAGE SNIPPET: ${formatSnippetAverage(result.average)}`;
+  }
 
+  function formatClassicPersonalBest() {
+    const { best } = state.personalBests.classic;
+    return `STREAK: ${best} · AVERAGE SNIPPET: ${formatSnippetAverage(getClassicBestAverage())}`;
+  }
+
+  function formatBlitzRun() {
+    return `CORRECT GUESSES: ${state.correct} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
+  }
+
+  function formatBlitzPersonalBest() {
+    const { score, accuracy } = state.personalBests.blitz;
+    return `CORRECT GUESSES: ${score} · ACCURACY: ${formatAccuracy(accuracy)}`;
+  }
+
+  function formatSurvivalRun() {
+    return `TIME SURVIVED: ${formatTime(state.elapsed / 1000)} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
+  }
+
+  function formatSurvivalPersonalBest() {
+    const { score, accuracy } = state.personalBests.survival;
+    return `TIME SURVIVED: ${formatTime(score / 1000)} · ACCURACY: ${formatAccuracy(accuracy)}`;
+  }
+
+  function getRunModule() {
+    if (state.mode === "daily") return ["RUN:", formatAttempts(state.step + 1)];
+    if (state.mode === "classic") return ["RUN:", formatClassicRun()];
+    if (state.mode === "blitz") return ["RUN:", formatBlitzRun()];
+    return ["RUN:", formatSurvivalRun()];
+  }
+
+  function getPersonalBestModule() {
     if (state.mode === "daily") {
-      const attempts = state.step + 1;
-      modules.push(["RUN:", formatAttempts(attempts)]);
-      modules.push([`${label}:`, formatAttempts(state.personalBests.daily)]);
-    } else if (state.mode === "classic") {
-      const result = state.classicResult || {
-        won: Boolean(state.personalBests.classic.current),
-        streak: state.personalBests.classic.current,
-        average: getClassicAverage(),
-      };
-      const average = formatSnippetAverage(result.average);
-      const bestAverage = formatSnippetAverage(getClassicBestAverage());
-      modules.push([
-        "RUN:",
-        `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${average}`,
-      ]);
-      modules.push([
-        `${label}:`,
-        `STREAK: ${state.personalBests.classic.best} · AVERAGE SNIPPET: ${bestAverage}`,
-      ]);
-    } else if (state.mode === "blitz") {
-      modules.push([
-        "RUN:",
-        `CORRECT GUESSES: ${state.correct} · ACCURACY: ${formatAccuracy(getAccuracy())}`,
-      ]);
-      modules.push([
-        `${label}:`,
-        `CORRECT GUESSES: ${state.personalBests.blitz.score} · ACCURACY: ${formatAccuracy(state.personalBests.blitz.accuracy)}`,
-      ]);
-    } else {
-      modules.push([
-        "RUN:",
-        `TIME SURVIVED: ${formatTime(state.elapsed / 1000)} · ACCURACY: ${formatAccuracy(getAccuracy())}`,
-      ]);
-      modules.push([
-        `${label}:`,
-        `TIME SURVIVED: ${formatTime(state.personalBests.survival.score / 1000)} · ACCURACY: ${formatAccuracy(state.personalBests.survival.accuracy)}`,
-      ]);
+      return [getPersonalBestLabel(), formatAttempts(state.personalBests.daily)];
     }
+    if (state.mode === "classic") {
+      return [getPersonalBestLabel(), formatClassicPersonalBest()];
+    }
+    if (state.mode === "blitz") {
+      return [getPersonalBestLabel(), formatBlitzPersonalBest()];
+    }
+    return [getPersonalBestLabel(), formatSurvivalPersonalBest()];
+  }
 
-    setResultMeta(...modules);
+  function getResultModules() {
+    const modules = [];
+    if (!modes[state.mode].timed) modules.push(["TRACK:", state.track.title]);
+    modules.push(getRunModule(), getPersonalBestModule());
+    return modules;
+  }
+
+  function renderResultMeta() {
+    setResultMeta(...getResultModules());
   }
 
   function endGame(won) {
@@ -1159,9 +1179,7 @@
     ui.skip.disabled = true;
     ui.guess.disabled = true;
     completeDaily(won);
-    updateClassicRecord(won);
-    updateDailyPersonalBest(won);
-    updateTimedPersonalBest();
+    updatePersonalBest(won);
 
     const mark = won ? "🎉" : "❌";
     ui.resultTitle.innerHTML = mode.timed
@@ -1239,8 +1257,7 @@
       correct: 0,
       trackStarted: false,
       activeSuggestion: -1,
-      personalBestBeaten: false,
-      resultPersonalBestBeaten: false,
+      newPersonalBest: false,
       classicResult: null,
     });
     state.used.clear();
