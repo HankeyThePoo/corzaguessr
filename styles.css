@@ -520,7 +520,7 @@
 #corzaguessr .tracklist-panel {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 0.6rem;
   height: min(78dvh, 650px);
   padding: 1rem;
@@ -541,34 +541,33 @@
 
 #corzaguessr .profile-nav {
   position: absolute;
-  top: 50%;
-  right: 0.55rem;
+  top: 1rem;
+  right: 1rem;
   z-index: 2;
   display: grid;
   place-items: center;
   width: 34px;
-  height: 54px;
+  height: 34px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   color: white;
-  font-size: 1.8rem;
+  font-size: 1.45rem;
   font-weight: 800;
   line-height: 1;
-  transform: translateY(-50%);
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 #corzaguessr .profile-nav.back {
   right: auto;
-  left: 0.55rem;
+  left: 1rem;
 }
 
 #corzaguessr .profile-nav:is(:hover, :focus-visible) {
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.34);
-  transform: translateY(-50%) scale(1.04);
+  transform: scale(1.04);
 }
 
 #corzaguessr .profile-content,
@@ -606,10 +605,12 @@
   margin-top: 0;
 }
 
+#corzaguessr .highscores-title,
 #corzaguessr .discovery-title {
   margin-top: 0;
 }
 
+#corzaguessr .highscores-items,
 #corzaguessr .tracklist-items {
   display: grid;
   gap: 0.5rem;
@@ -661,14 +662,15 @@
   }
 
   #corzaguessr .profile-nav {
-    right: 0.35rem;
+    top: 0.85rem;
+    right: 0.85rem;
     width: 30px;
-    height: 48px;
-    font-size: 1.55rem;
+    height: 30px;
+    font-size: 1.3rem;
   }
 
   #corzaguessr .profile-nav.back {
-    left: 0.35rem;
+    left: 0.85rem;
   }
 
   #corzaguessr .tracklist-item {
