@@ -336,6 +336,10 @@
     return isResultOpen() || isDiscoveryOpen();
   }
 
+  function canPreviewRules() {
+    return !isModalOpen() && (isAwaitingMode() || (state.mode && !state.track));
+  }
+
   function shouldKeepPlayFocused() {
     return (
       state.mode &&
@@ -757,17 +761,17 @@
   }
 
   function previewMode(modeName) {
-    if (!isAwaitingMode() || isModalOpen()) return;
+    if (!canPreviewRules()) return;
     showRules(getModeRulesText(modeName));
   }
 
   function previewDiscovery() {
-    if (!isAwaitingMode() || isModalOpen()) return;
+    if (!canPreviewRules()) return;
     showRules(discoveryDescription);
   }
 
   function resetRulesPreview() {
-    if (!isAwaitingMode() || isModalOpen()) return;
+    if (!canPreviewRules()) return;
     showRules(getCurrentRulesText());
   }
 
@@ -1344,7 +1348,7 @@
   }
 
   function closeResult() {
-    if (!isResultOpen()) return;
+    if (!isResultOpen() || ui.card.classList.contains("modal-closing")) return;
     ui.card.classList.add("modal-closing");
     ui.card.classList.remove("modal-visible");
     reset({ keepResultOpen: true });
@@ -1686,6 +1690,13 @@
     if (root.classList.contains("discovery-visible")) setDiscoveryHeight();
   }).observe(ui.discoveryPanel);
 
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !isResultOpen()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeResult();
+  }, true);
+
   root.addEventListener("keydown", (event) => {
     if (isDiscoveryOpen()) {
       if (event.key === "Escape") {
@@ -1698,10 +1709,6 @@
     }
     if (isResultOpen()) {
       trapFocus(event, ui.result);
-      if (event.key === "Enter") {
-        event.preventDefault();
-        closeResult();
-      }
       return;
     }
     if (
@@ -1758,6 +1765,7 @@
       ui.skip.disabled = false;
       setPlaying(true);
       startClock();
+      focusGuess();
     } else if (data.event === "onStateChange" && data.info === 3) {
       cancelClock();
     } else if (
