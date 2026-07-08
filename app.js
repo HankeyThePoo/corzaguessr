@@ -1223,6 +1223,9 @@
     module.replaceChildren(...lines.map((line, index) => {
       const item = document.createElement("span");
       item.className = index ? "result-value" : "result-label";
+      if (!index && state.newPersonalBest && line === "NEW PERSONAL BEST:") {
+        item.classList.add("blink");
+      }
       item.textContent = line;
       return item;
     }));
