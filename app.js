@@ -173,6 +173,7 @@
           aria-modal="true"
           aria-labelledby="corzaguessr-discovery-title"
           aria-hidden="true"
+          tabindex="-1"
         >
           <div class="discovery-shell">
             <div class="discovery-panel glass">
@@ -1563,7 +1564,7 @@
     requestAnimationFrame(() => {
       root.classList.add("discovery-visible");
       setDiscoveryHeight();
-      ui.discoveryClose.focus({ preventScroll: true });
+      ui.discoveryModal.focus({ preventScroll: true });
     });
   }
 
@@ -1621,6 +1622,11 @@
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable.at(-1);
+    if (!container.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+      return;
+    }
     if (event.shiftKey && document.activeElement === first) {
       event.preventDefault();
       last.focus();
@@ -1690,20 +1696,11 @@
     if (root.classList.contains("discovery-visible")) setDiscoveryHeight();
   }).observe(ui.discoveryPanel);
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" || !isResultOpen()) return;
-    event.preventDefault();
-    event.stopPropagation();
-    closeResult();
-  }, true);
-
   root.addEventListener("keydown", (event) => {
     if (isDiscoveryOpen()) {
       if (event.key === "Escape") {
         event.preventDefault();
         closeDiscovery();
-      } else if (event.key === "Enter") {
-        event.preventDefault();
       } else {
         trapFocus(event, ui.discoveryPanel);
       }
@@ -1711,6 +1708,13 @@
     }
     if (isResultOpen()) {
       trapFocus(event, ui.result);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeResult();
+      } else if (event.key === "Enter" && document.activeElement !== ui.spotify) {
+        event.preventDefault();
+        closeResult();
+      }
       return;
     }
     if (
