@@ -1702,6 +1702,8 @@
       if (event.key === "Escape") {
         event.preventDefault();
         closeDiscovery();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
       } else {
         trapFocus(event, ui.discoveryPanel);
       }
