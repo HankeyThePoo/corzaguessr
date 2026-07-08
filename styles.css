@@ -196,7 +196,7 @@
 #corzaguessr .snippet,
 #corzaguessr .fill,
 #corzaguessr .feedback,
-#corzaguessr .damage {
+#corzaguessr .time-change {
   position: absolute;
   inset: 0 auto 0 0;
 }
@@ -217,22 +217,35 @@
 }
 
 #corzaguessr .feedback {
+  --survival-flash-start: rgba(255, 94, 120, 0.9);
+  --survival-flash-end: rgba(255, 94, 120, 0.2);
+  --survival-flash-shadow: rgba(255, 94, 120, 0.42);
   right: 0;
   z-index: 3;
   opacity: 0;
-  background: linear-gradient(90deg, rgba(255, 94, 120, 0.9), rgba(255, 94, 120, 0.2));
-  box-shadow: inset 0 0 18px rgba(255, 94, 120, 0.42);
+  background: linear-gradient(90deg, var(--survival-flash-start), var(--survival-flash-end));
+  box-shadow: inset 0 0 18px var(--survival-flash-shadow);
   pointer-events: none;
   transform: scaleX(0);
   transform-origin: left;
   will-change: opacity;
 }
 
-#corzaguessr .feedback.survival-damage {
-  animation: corzaguessr-survival-damage 0.52s cubic-bezier(0.16, 1, 0.3, 1);
+#corzaguessr .feedback.survival-penalty {
+  --survival-flash-start: rgba(255, 94, 120, 0.9);
+  --survival-flash-end: rgba(255, 94, 120, 0.2);
+  --survival-flash-shadow: rgba(255, 94, 120, 0.42);
+  animation: corzaguessr-survival-flash 0.52s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-#corzaguessr .damage {
+#corzaguessr .feedback.survival-reward {
+  --survival-flash-start: rgba(255, 218, 94, 0.95);
+  --survival-flash-end: rgba(255, 190, 64, 0.24);
+  --survival-flash-shadow: rgba(255, 196, 58, 0.46);
+  animation: corzaguessr-survival-flash 0.52s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#corzaguessr .time-change {
   display: grid;
   place-items: center;
   right: 0;
@@ -240,7 +253,7 @@
   pointer-events: none;
 }
 
-#corzaguessr .damage span {
+#corzaguessr .time-change span {
   opacity: 0;
   color: white;
   font-size: 1.3rem;
@@ -250,7 +263,7 @@
   transform: translateY(0) scale(0.85);
 }
 
-#corzaguessr .damage.survival-change span {
+#corzaguessr .time-change.survival-change span {
   animation: corzaguessr-survival-hit 0.68s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -267,7 +280,7 @@
   display: none;
 }
 
-@keyframes corzaguessr-survival-damage {
+@keyframes corzaguessr-survival-flash {
   0% {
     opacity: 0;
   }
