@@ -336,6 +336,17 @@
     return isResultOpen() || isDiscoveryOpen();
   }
 
+  function shouldKeepPlayFocused() {
+    return (
+      state.mode &&
+      !state.track &&
+      !isAwaitingMode() &&
+      !isModalOpen() &&
+      !ui.play.disabled &&
+      state.status !== "loading"
+    );
+  }
+
   function transitionDelay(milliseconds) {
     return matchMedia("(prefers-reduced-motion: reduce)").matches
       ? 0
@@ -1705,6 +1716,14 @@
   }, true);
 
   root.addEventListener("pointerdown", (event) => {
+    if (
+      shouldKeepPlayFocused() &&
+      !event.target.closest("button, input, .suggest, a")
+    ) {
+      event.preventDefault();
+      ui.play.focus({ preventScroll: true });
+      return;
+    }
     if (
       ui.guess.disabled ||
       isModalOpen() ||
