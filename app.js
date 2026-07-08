@@ -1272,9 +1272,9 @@
     ui.card.classList.add("modal-open");
     ui.result.setAttribute("aria-hidden", "false");
     setBackgroundInert(true);
+    ui.next.focus({ preventScroll: true });
     requestAnimationFrame(() => {
       ui.card.classList.add("modal-visible");
-      ui.next.focus();
     });
   }
 
