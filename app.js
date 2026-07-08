@@ -1724,8 +1724,7 @@
     if (
       event.key === "Enter" &&
       !isAwaitingMode() &&
-      event.target !== ui.guess &&
-      !event.target.closest?.(".suggest")
+      !event.target.closest?.("button, input, a, .suggest")
     ) {
       event.preventDefault();
       usePlaybackShortcut();
