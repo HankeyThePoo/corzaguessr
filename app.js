@@ -103,7 +103,7 @@
             <div class="timeline" aria-hidden="true">
               <div class="snippet"></div>
               <div class="fill"></div>
-              <div class="feedback"></div>
+              <div class="feedback"><span></span></div>
               <i class="tick" style="left:3.125%"></i>
               <i class="tick" style="left:6.25%"></i>
               <i class="tick" style="left:12.5%"></i>
@@ -212,6 +212,7 @@
     rulesetCopy: $(".ruleset-copy"),
     timeline: $(".timeline"),
     feedback: $(".feedback"),
+    feedbackText: $(".feedback span"),
     fill: $(".fill"),
     snippet: $(".snippet"),
     now: $(".now"),
@@ -351,14 +352,16 @@
     ui.feedback.style.transform = `scaleX(${clampedScale})`;
   }
 
-  function flashSurvivalFeedback(type) {
-    if (state.mode !== "survival") return;
+  function flashSurvivalDamage(amount) {
+    if (state.mode !== "survival" || amount >= 0) return;
     clearTimeout(state.feedbackTimer);
-    ui.feedback.classList.remove("survival-gain", "survival-damage");
+    ui.feedbackText.textContent = amount;
+    ui.feedback.classList.remove("survival-damage");
     void ui.feedback.offsetWidth;
-    ui.feedback.classList.add(type === "correct" ? "survival-gain" : "survival-damage");
+    ui.feedback.classList.add("survival-damage");
     state.feedbackTimer = setTimeout(() => {
-      ui.feedback.classList.remove("survival-gain", "survival-damage");
+      ui.feedback.classList.remove("survival-damage");
+      ui.feedbackText.textContent = "";
       state.feedbackTimer = 0;
     }, transitionDelay(420));
   }
@@ -962,7 +965,7 @@
     if (type !== "skip") state.guesses++;
     if (type === "correct") state.correct++;
     if (mode.survival) {
-      flashSurvivalFeedback(type);
+      flashSurvivalDamage(mode.timeChange[type] / 1000);
       state.time = Math.max(0, state.time + mode.timeChange[type]);
       state.maxTime = Math.max(state.maxTime, state.time);
       ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
@@ -1316,7 +1319,8 @@
     ui.status.textContent = "";
     clearTimeout(state.feedbackTimer);
     state.feedbackTimer = 0;
-    ui.feedback.classList.remove("survival-gain", "survival-damage");
+    ui.feedback.classList.remove("survival-damage");
+    ui.feedbackText.textContent = "";
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
