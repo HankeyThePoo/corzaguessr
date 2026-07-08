@@ -321,6 +321,12 @@
     }
   }
 
+  function focusPlay() {
+    if (!ui.play.disabled && !isModalOpen()) {
+      ui.play.focus({ preventScroll: true });
+    }
+  }
+
   function isResultOpen() {
     return ui.card.classList.contains("modal-open");
   }
@@ -341,7 +347,7 @@
     return !isModalOpen() && (isAwaitingMode() || (state.mode && !state.track));
   }
 
-  function shouldKeepPlayFocused() {
+  function isRoundReadyToStart() {
     return (
       state.mode &&
       !state.track &&
@@ -987,7 +993,7 @@
     focusGuess();
   }
 
-  function playFromGuessInput() {
+  function usePlaybackShortcut() {
     if (
       !state.mode ||
       ui.play.disabled ||
@@ -1358,7 +1364,7 @@
       ui.card.classList.remove("modal-open", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
-      ui.play.focus({ preventScroll: true });
+      if (isRoundReadyToStart()) focusPlay();
     }, transitionDelay(350));
   }
 
@@ -1413,9 +1419,7 @@
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
     applyModeAvailability();
-    if (!keepResultOpen && !isAwaitingMode() && !ui.play.disabled) {
-      ui.play.focus({ preventScroll: true });
-    }
+    if (isRoundReadyToStart()) focusPlay();
   }
 
   function renderSavedDailyProgress() {
@@ -1653,12 +1657,12 @@
     if (event.key !== "Enter") return;
     event.preventDefault();
     if (!state.track) {
-      playFromGuessInput();
+      usePlaybackShortcut();
       return;
     }
     const active = ui.suggest.querySelector(".active");
     if (active) makeGuess(active.dataset.title);
-    else if (!ui.guess.value.trim()) playFromGuessInput();
+    else if (!ui.guess.value.trim()) usePlaybackShortcut();
   });
 
   ui.suggest.addEventListener("pointermove", (event) => {
@@ -1724,17 +1728,17 @@
       !event.target.closest?.(".suggest")
     ) {
       event.preventDefault();
-      playFromGuessInput();
+      usePlaybackShortcut();
     }
   }, true);
 
   root.addEventListener("pointerdown", (event) => {
     if (
-      shouldKeepPlayFocused() &&
+      isRoundReadyToStart() &&
       !event.target.closest("button, input, .suggest, a")
     ) {
       event.preventDefault();
-      ui.play.focus({ preventScroll: true });
+      focusPlay();
       return;
     }
     if (
