@@ -240,7 +240,7 @@
 #corzaguessr .damage span {
   opacity: 0;
   color: white;
-  font-size: 1rem;
+  font-size: 1.3rem;
   font-weight: 800;
   line-height: 1;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75);
