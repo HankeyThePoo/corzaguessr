@@ -17,6 +17,8 @@
   const personalBestStorageKey = "corzaguessrPersonalBestsV2";
   const dailyStorageKey = "corzaguessrDailyV1";
   const dailyTimeZone = "Europe/Budapest";
+  const modePromptText = "SELECT A MODE TO BEGIN";
+  const discoveryDescription = "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
   const hiddenTitle = "???????????????????";
   const youtubeOrigin = "https://www.youtube-nocookie.com";
@@ -126,8 +128,8 @@
               >
               <div class="ruleset" aria-hidden="true">
                 <div class="ruleset-track">
-                  <span class="ruleset-text">SELECT A MODE TO BEGIN</span>
-                  <span class="ruleset-copy">SELECT A MODE TO BEGIN</span>
+                  <span class="ruleset-text">${modePromptText}</span>
+                  <span class="ruleset-copy">${modePromptText}</span>
                 </div>
               </div>
               <div
@@ -162,7 +164,7 @@
           </div>
         </div>
         <p class="mode-prompt" role="status" aria-hidden="false">
-          SELECT A MODE TO BEGIN
+          ${modePromptText}
         </p>
         <div
           id="corzaguessr-discovery"
@@ -721,12 +723,36 @@
   function showRules(text) {
     clearGuess();
     ui.guess.disabled = true;
+    ui.modePrompt.textContent = text;
     ui.rulesetText.textContent = text;
     ui.rulesetCopy.textContent = text;
     ui.ruleset.classList.remove("scroll");
     void ui.ruleset.offsetWidth;
     ui.ruleset.classList.add("scroll");
     root.classList.add("rules-visible");
+  }
+
+  function getModeRulesText(modeName) {
+    const mode = modes[modeName];
+    if (!mode) return modePromptText;
+    if (!mode.daily) return mode.description;
+    if (state.mode === modeName && isDailyDone()) return getDailyDoneText();
+    if (state.mode === modeName && isDailyInProgress()) return getDailyInProgressText();
+    return mode.description;
+  }
+
+  function getCurrentRulesText() {
+    return state.mode ? getModeRulesText(state.mode) : modePromptText;
+  }
+
+  function previewRules(text) {
+    if (!isAwaitingMode() || isModalOpen()) return;
+    showRules(text);
+  }
+
+  function resetRulesPreview() {
+    if (!isAwaitingMode() || isModalOpen()) return;
+    showRules(getCurrentRulesText());
   }
 
   function showGuess() {
@@ -1599,8 +1625,16 @@
   ui.skip.addEventListener("click", () => attempt("skip"));
   ui.next.addEventListener("click", closeResult);
   Object.entries(modeButtons).forEach(([name, button]) => {
+    button.addEventListener("pointerenter", () => previewRules(getModeRulesText(name)));
+    button.addEventListener("pointerleave", resetRulesPreview);
+    button.addEventListener("focus", () => previewRules(getModeRulesText(name)));
+    button.addEventListener("blur", resetRulesPreview);
     button.addEventListener("click", () => setMode(name));
   });
+  ui.discoveryButton.addEventListener("pointerenter", () => previewRules(discoveryDescription));
+  ui.discoveryButton.addEventListener("pointerleave", resetRulesPreview);
+  ui.discoveryButton.addEventListener("focus", () => previewRules(discoveryDescription));
+  ui.discoveryButton.addEventListener("blur", resetRulesPreview);
   ui.discoveryButton.addEventListener("click", toggleDiscovery);
   ui.discoveryClose.addEventListener("click", closeDiscovery);
   ui.discoveryReset.addEventListener("click", resetDiscovery);
