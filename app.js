@@ -283,7 +283,6 @@
     slotsTimer: 0,
     resultTimer: 0,
     discoveryTimer: 0,
-    previewMode: null,
     returnFocus: null,
     pageScrollStyles: null,
     resumeAfterDiscovery: false,
@@ -748,19 +747,16 @@
 
   function previewMode(modeName) {
     if (!isAwaitingMode() || isModalOpen()) return;
-    state.previewMode = modeName;
     showRules(getModeRulesText(modeName));
   }
 
   function previewDiscovery() {
     if (!isAwaitingMode() || isModalOpen()) return;
-    state.previewMode = null;
     showRules(discoveryDescription);
   }
 
   function resetRulesPreview() {
     if (!isAwaitingMode() || isModalOpen()) return;
-    state.previewMode = null;
     showRules(getCurrentRulesText());
   }
 
@@ -989,7 +985,7 @@
     }
 
     if (modes[state.mode].timed) {
-      if (state.status !== "playing") togglePlay();
+      togglePlay();
       return;
     }
 
@@ -1677,18 +1673,8 @@
   }).observe(ui.discoveryPanel);
 
   root.addEventListener("keydown", (event) => {
-    if (
-      event.key === "Enter" &&
-      isAwaitingMode() &&
-      state.previewMode &&
-      !isModalOpen()
-    ) {
-      event.preventDefault();
-      setMode(state.previewMode);
-      return;
-    }
     if (isDiscoveryOpen()) {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" || event.key === "Enter") {
         event.preventDefault();
         closeDiscovery();
       } else {
@@ -1698,10 +1684,20 @@
     }
     if (isResultOpen()) {
       trapFocus(event, ui.result);
-      if (event.key === "Enter" && document.activeElement !== ui.spotify) {
+      if (event.key === "Enter") {
         event.preventDefault();
         closeResult();
       }
+      return;
+    }
+    if (
+      event.key === "Enter" &&
+      !isAwaitingMode() &&
+      event.target !== ui.guess &&
+      !event.target.closest?.(".suggest")
+    ) {
+      event.preventDefault();
+      playFromGuessInput();
     }
   }, true);
 
