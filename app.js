@@ -349,7 +349,6 @@
     const clampedScale = Math.max(0, Math.min(1, scale));
     ui.now.textContent = text;
     ui.fill.style.transform = `scaleX(${clampedScale})`;
-    ui.feedback.style.transform = `scaleX(${clampedScale})`;
   }
 
   function flashSurvivalDamage(amount) {
@@ -363,7 +362,7 @@
       ui.feedback.classList.remove("survival-damage");
       ui.feedbackText.textContent = "";
       state.feedbackTimer = 0;
-    }, transitionDelay(420));
+    }, transitionDelay(700));
   }
 
   function readStorage(key, fallback) {
