@@ -357,6 +357,7 @@
   function flashSurvivalChange(amount) {
     if (state.mode !== "survival" || !amount) return;
     const damage = amount < 0;
+    const duration = transitionDelay(720);
     clearTimeout(state.feedbackTimer);
     ui.damageText.textContent = amount > 0 ? `+${amount}` : amount;
     ui.feedback.classList.remove("survival-damage");
@@ -369,7 +370,7 @@
       ui.damage.classList.remove("survival-change");
       ui.damageText.textContent = "";
       state.feedbackTimer = 0;
-    }, transitionDelay(560));
+    }, duration);
   }
 
   function readStorage(key, fallback) {
