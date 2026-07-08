@@ -357,11 +357,12 @@
   function flashSurvivalChange(amount) {
     if (state.mode !== "survival" || !amount) return;
     const damage = amount < 0;
-    const duration = transitionDelay(720);
+    const duration = transitionDelay(680);
     clearTimeout(state.feedbackTimer);
     ui.damageText.textContent = amount > 0 ? `+${amount}` : amount;
     ui.feedback.classList.remove("survival-damage");
     ui.damage.classList.remove("survival-change");
+    void ui.feedback.offsetWidth;
     void ui.damage.offsetWidth;
     if (damage) ui.feedback.classList.add("survival-damage");
     ui.damage.classList.add("survival-change");
