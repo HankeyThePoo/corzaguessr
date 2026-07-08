@@ -1397,6 +1397,9 @@
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
     applyModeAvailability();
+    if (!keepResultOpen && !isAwaitingMode() && !ui.play.disabled) {
+      ui.play.focus({ preventScroll: true });
+    }
   }
 
   function renderSavedDailyProgress() {
