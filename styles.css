@@ -599,6 +599,10 @@
   transition: background 0.35s ease;
 }
 
+#corzaguessr .discovery-modal:focus {
+  outline: 0;
+}
+
 #corzaguessr.discovery-open .discovery-modal {
   pointer-events: auto;
   visibility: visible;
