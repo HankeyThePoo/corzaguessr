@@ -106,7 +106,7 @@
               <div class="snippet"></div>
               <div class="fill"></div>
               <div class="feedback"></div>
-              <div class="damage"><span></span></div>
+              <div class="time-change"><span></span></div>
               <i class="tick" style="left:3.125%"></i>
               <i class="tick" style="left:6.25%"></i>
               <i class="tick" style="left:12.5%"></i>
@@ -215,8 +215,8 @@
     rulesetCopy: $(".ruleset-copy"),
     timeline: $(".timeline"),
     feedback: $(".feedback"),
-    damage: $(".damage"),
-    damageText: $(".damage span"),
+    timeChange: $(".time-change"),
+    timeChangeText: $(".time-change span"),
     fill: $(".fill"),
     snippet: $(".snippet"),
     now: $(".now"),
@@ -359,20 +359,20 @@
 
   function flashSurvivalChange(amount) {
     if (state.mode !== "survival" || !amount) return;
-    const damage = amount < 0;
+    const flashClass = amount > 0 ? "survival-reward" : "survival-penalty";
     const duration = transitionDelay(680);
     clearTimeout(state.feedbackTimer);
-    ui.damageText.textContent = amount > 0 ? `+${amount}` : amount;
-    ui.feedback.classList.remove("survival-damage");
-    ui.damage.classList.remove("survival-change");
+    ui.timeChangeText.textContent = amount > 0 ? `+${amount}` : amount;
+    ui.feedback.classList.remove("survival-penalty", "survival-reward");
+    ui.timeChange.classList.remove("survival-change");
     void ui.feedback.offsetWidth;
-    void ui.damage.offsetWidth;
-    if (damage) ui.feedback.classList.add("survival-damage");
-    ui.damage.classList.add("survival-change");
+    void ui.timeChange.offsetWidth;
+    ui.feedback.classList.add(flashClass);
+    ui.timeChange.classList.add("survival-change");
     state.feedbackTimer = setTimeout(() => {
-      ui.feedback.classList.remove("survival-damage");
-      ui.damage.classList.remove("survival-change");
-      ui.damageText.textContent = "";
+      ui.feedback.classList.remove("survival-penalty", "survival-reward");
+      ui.timeChange.classList.remove("survival-change");
+      ui.timeChangeText.textContent = "";
       state.feedbackTimer = 0;
     }, duration);
   }
@@ -1383,9 +1383,9 @@
     ui.status.textContent = "";
     clearTimeout(state.feedbackTimer);
     state.feedbackTimer = 0;
-    ui.feedback.classList.remove("survival-damage");
-    ui.damage.classList.remove("survival-change");
-    ui.damageText.textContent = "";
+    ui.feedback.classList.remove("survival-penalty", "survival-reward");
+    ui.timeChange.classList.remove("survival-change");
+    ui.timeChangeText.textContent = "";
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
