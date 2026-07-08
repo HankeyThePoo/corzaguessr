@@ -283,6 +283,7 @@
     slotsTimer: 0,
     resultTimer: 0,
     discoveryTimer: 0,
+    previewMode: null,
     returnFocus: null,
     pageScrollStyles: null,
     resumeAfterDiscovery: false,
@@ -745,13 +746,21 @@
     return state.mode ? getModeRulesText(state.mode) : modePromptText;
   }
 
-  function previewRules(text) {
+  function previewMode(modeName) {
     if (!isAwaitingMode() || isModalOpen()) return;
-    showRules(text);
+    state.previewMode = modeName;
+    showRules(getModeRulesText(modeName));
+  }
+
+  function previewDiscovery() {
+    if (!isAwaitingMode() || isModalOpen()) return;
+    state.previewMode = null;
+    showRules(discoveryDescription);
   }
 
   function resetRulesPreview() {
     if (!isAwaitingMode() || isModalOpen()) return;
+    state.previewMode = null;
     showRules(getCurrentRulesText());
   }
 
@@ -964,6 +973,27 @@
       setPlaying(true);
     }
     focusGuess();
+  }
+
+  function playFromGuessInput() {
+    if (
+      !state.mode ||
+      ui.play.disabled ||
+      state.status === "loading" ||
+      isModalOpen()
+    ) return;
+
+    if (!state.track) {
+      togglePlay();
+      return;
+    }
+
+    if (modes[state.mode].timed) {
+      if (state.status !== "playing") togglePlay();
+      return;
+    }
+
+    startClassic();
   }
 
   function recordDiscovery() {
@@ -1603,12 +1633,12 @@
     if (event.key !== "Enter") return;
     event.preventDefault();
     if (!state.track) {
-      togglePlay();
+      playFromGuessInput();
       return;
     }
     const active = ui.suggest.querySelector(".active");
     if (active) makeGuess(active.dataset.title);
-    else if (!ui.guess.value.trim()) togglePlay();
+    else if (!ui.guess.value.trim()) playFromGuessInput();
   });
 
   ui.suggest.addEventListener("pointermove", (event) => {
@@ -1625,15 +1655,15 @@
   ui.skip.addEventListener("click", () => attempt("skip"));
   ui.next.addEventListener("click", closeResult);
   Object.entries(modeButtons).forEach(([name, button]) => {
-    button.addEventListener("pointerenter", () => previewRules(getModeRulesText(name)));
+    button.addEventListener("pointerenter", () => previewMode(name));
     button.addEventListener("pointerleave", resetRulesPreview);
-    button.addEventListener("focus", () => previewRules(getModeRulesText(name)));
+    button.addEventListener("focus", () => previewMode(name));
     button.addEventListener("blur", resetRulesPreview);
     button.addEventListener("click", () => setMode(name));
   });
-  ui.discoveryButton.addEventListener("pointerenter", () => previewRules(discoveryDescription));
+  ui.discoveryButton.addEventListener("pointerenter", previewDiscovery);
   ui.discoveryButton.addEventListener("pointerleave", resetRulesPreview);
-  ui.discoveryButton.addEventListener("focus", () => previewRules(discoveryDescription));
+  ui.discoveryButton.addEventListener("focus", previewDiscovery);
   ui.discoveryButton.addEventListener("blur", resetRulesPreview);
   ui.discoveryButton.addEventListener("click", toggleDiscovery);
   ui.discoveryClose.addEventListener("click", closeDiscovery);
@@ -1647,6 +1677,16 @@
   }).observe(ui.discoveryPanel);
 
   root.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Enter" &&
+      isAwaitingMode() &&
+      state.previewMode &&
+      !isModalOpen()
+    ) {
+      event.preventDefault();
+      setMode(state.previewMode);
+      return;
+    }
     if (isDiscoveryOpen()) {
       if (event.key === "Escape") {
         event.preventDefault();
