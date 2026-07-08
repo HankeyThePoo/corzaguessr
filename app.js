@@ -103,7 +103,8 @@
             <div class="timeline" aria-hidden="true">
               <div class="snippet"></div>
               <div class="fill"></div>
-              <div class="feedback"><span></span></div>
+              <div class="feedback"></div>
+              <div class="damage"><span></span></div>
               <i class="tick" style="left:3.125%"></i>
               <i class="tick" style="left:6.25%"></i>
               <i class="tick" style="left:12.5%"></i>
@@ -212,7 +213,8 @@
     rulesetCopy: $(".ruleset-copy"),
     timeline: $(".timeline"),
     feedback: $(".feedback"),
-    feedbackText: $(".feedback span"),
+    damage: $(".damage"),
+    damageText: $(".damage span"),
     fill: $(".fill"),
     snippet: $(".snippet"),
     now: $(".now"),
@@ -349,18 +351,22 @@
     const clampedScale = Math.max(0, Math.min(1, scale));
     ui.now.textContent = text;
     ui.fill.style.transform = `scaleX(${clampedScale})`;
+    ui.feedback.style.transform = `scaleX(${clampedScale})`;
   }
 
   function flashSurvivalDamage(amount) {
     if (state.mode !== "survival" || amount >= 0) return;
     clearTimeout(state.feedbackTimer);
-    ui.feedbackText.textContent = amount;
+    ui.damageText.textContent = amount;
     ui.feedback.classList.remove("survival-damage");
-    void ui.feedback.offsetWidth;
+    ui.damage.classList.remove("survival-damage");
+    void ui.damage.offsetWidth;
     ui.feedback.classList.add("survival-damage");
+    ui.damage.classList.add("survival-damage");
     state.feedbackTimer = setTimeout(() => {
       ui.feedback.classList.remove("survival-damage");
-      ui.feedbackText.textContent = "";
+      ui.damage.classList.remove("survival-damage");
+      ui.damageText.textContent = "";
       state.feedbackTimer = 0;
     }, transitionDelay(700));
   }
@@ -1319,7 +1325,8 @@
     clearTimeout(state.feedbackTimer);
     state.feedbackTimer = 0;
     ui.feedback.classList.remove("survival-damage");
-    ui.feedbackText.textContent = "";
+    ui.damage.classList.remove("survival-damage");
+    ui.damageText.textContent = "";
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
