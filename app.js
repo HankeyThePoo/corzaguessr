@@ -1688,7 +1688,7 @@
 
   root.addEventListener("keydown", (event) => {
     if (isDiscoveryOpen()) {
-      if (event.key === "Escape" || event.key === "Enter") {
+      if (event.key === "Escape") {
         event.preventDefault();
         closeDiscovery();
       } else {
