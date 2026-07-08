@@ -354,21 +354,22 @@
     ui.feedback.style.transform = `scaleX(${clampedScale})`;
   }
 
-  function flashSurvivalDamage(amount) {
-    if (state.mode !== "survival" || amount >= 0) return;
+  function flashSurvivalChange(amount) {
+    if (state.mode !== "survival" || !amount) return;
+    const damage = amount < 0;
     clearTimeout(state.feedbackTimer);
-    ui.damageText.textContent = amount;
+    ui.damageText.textContent = amount > 0 ? `+${amount}` : amount;
     ui.feedback.classList.remove("survival-damage");
-    ui.damage.classList.remove("survival-damage");
+    ui.damage.classList.remove("survival-change");
     void ui.damage.offsetWidth;
-    ui.feedback.classList.add("survival-damage");
-    ui.damage.classList.add("survival-damage");
+    if (damage) ui.feedback.classList.add("survival-damage");
+    ui.damage.classList.add("survival-change");
     state.feedbackTimer = setTimeout(() => {
       ui.feedback.classList.remove("survival-damage");
-      ui.damage.classList.remove("survival-damage");
+      ui.damage.classList.remove("survival-change");
       ui.damageText.textContent = "";
       state.feedbackTimer = 0;
-    }, transitionDelay(700));
+    }, transitionDelay(560));
   }
 
   function readStorage(key, fallback) {
@@ -970,7 +971,7 @@
     if (type !== "skip") state.guesses++;
     if (type === "correct") state.correct++;
     if (mode.survival) {
-      flashSurvivalDamage(mode.timeChange[type] / 1000);
+      flashSurvivalChange(mode.timeChange[type] / 1000);
       state.time = Math.max(0, state.time + mode.timeChange[type]);
       state.maxTime = Math.max(state.maxTime, state.time);
       ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
@@ -1325,7 +1326,7 @@
     clearTimeout(state.feedbackTimer);
     state.feedbackTimer = 0;
     ui.feedback.classList.remove("survival-damage");
-    ui.damage.classList.remove("survival-damage");
+    ui.damage.classList.remove("survival-change");
     ui.damageText.textContent = "";
     if (!keepResultOpen) {
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
