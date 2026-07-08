@@ -688,7 +688,7 @@
 
 @keyframes blink {
   50% {
-    opacity: 0.55;
+    opacity: 0.25;
   }
 }
 
