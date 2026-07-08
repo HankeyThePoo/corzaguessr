@@ -383,7 +383,7 @@
     const flashClass = amount > 0 ? "survival-reward" : "survival-penalty";
     const duration = transitionDelay(680);
     clearTimeout(state.feedbackTimer);
-    ui.timeChangeText.textContent = amount > 0 ? `+${amount}` : amount;
+    ui.timeChangeText.textContent = amount > 0 ? `+${amount}S` : `${amount}S`;
     ui.feedback.classList.remove("survival-penalty", "survival-reward");
     ui.timeChange.classList.remove("survival-change");
     void ui.feedback.offsetWidth;
