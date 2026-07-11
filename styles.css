@@ -39,13 +39,13 @@
   opacity: 0.55;
 }
 
-#corzaguessr button:focus-visible {
-  outline: 0;
-  box-shadow: none;
-}
-
+#corzaguessr button:focus-visible,
 #corzaguessr input:focus-visible {
   outline: 0;
+}
+
+#corzaguessr button:focus-visible {
+  box-shadow: none;
 }
 
 #corzaguessr .modes,
@@ -195,8 +195,7 @@
 
 #corzaguessr .snippet,
 #corzaguessr .fill,
-#corzaguessr .feedback,
-#corzaguessr .time-change {
+#corzaguessr .feedback {
   position: absolute;
   inset: 0 auto 0 0;
 }
@@ -231,10 +230,8 @@
   will-change: opacity;
 }
 
-#corzaguessr .feedback.survival-penalty {
-  --survival-flash-start: rgba(255, 94, 120, 0.9);
-  --survival-flash-end: rgba(255, 94, 120, 0.2);
-  --survival-flash-shadow: rgba(255, 94, 120, 0.42);
+#corzaguessr .feedback.survival-penalty,
+#corzaguessr .feedback.survival-reward {
   animation: corzaguessr-survival-flash 0.52s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -242,13 +239,13 @@
   --survival-flash-start: rgba(255, 218, 94, 0.95);
   --survival-flash-end: rgba(255, 190, 64, 0.24);
   --survival-flash-shadow: rgba(255, 196, 58, 0.46);
-  animation: corzaguessr-survival-flash 0.52s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #corzaguessr .time-change {
   display: grid;
+  position: absolute;
+  inset: 0;
   place-items: center;
-  right: 0;
   z-index: 5;
   pointer-events: none;
 }
@@ -474,7 +471,6 @@
 }
 
 #corzaguessr .result-modal {
-  display: flex;
   position: absolute;
   inset: 0;
   z-index: 3;
@@ -553,7 +549,8 @@
   color: transparent;
 }
 
-#corzaguessr .mode-prompt {
+#corzaguessr .mode-prompt,
+#corzaguessr .sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -665,25 +662,9 @@
   text-transform: uppercase;
 }
 
-#corzaguessr .discovery-reset {
-  width: 128px;
-}
-
 #corzaguessr .hide,
 #corzaguessr [hidden] {
   display: none !important;
-}
-
-#corzaguessr .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 @keyframes blink {
