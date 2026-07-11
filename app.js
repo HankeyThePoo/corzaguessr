@@ -10,15 +10,25 @@
   const scriptUrl = new URL(document.currentScript?.src || location.href);
   const tracksUrl = new URL("tracks.json", scriptUrl);
   tracksUrl.search = scriptUrl.search;
-  const steps = [1, 2, 4, 8, 16, 32];
-  const maxTimedClip = 60;
+  const snippetDurations = [1, 2, 4, 8, 16, 32];
+  const maxSnippetDuration = snippetDurations.at(-1);
+  const maxTimedClipSeconds = 60;
   const maxTimedSlots = 50;
-  const storageKey = "corzaguessrDiscoveredV1";
+  const durations = {
+    feedback: 680,
+    slot: 250,
+    result: 350,
+    discovery: 450,
+    progress: 300,
+    modeChange: 120,
+  };
+  const discoveryStorageKey = "corzaguessrDiscoveredV1";
   const personalBestStorageKey = "corzaguessrPersonalBestsV2";
   const dailyStorageKey = "corzaguessrDailyV1";
   const dailyTimeZone = "Europe/Budapest";
   const modePromptText = "SELECT A MODE TO BEGIN";
-  const discoveryDescription = "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
+  const discoveryDescription =
+    "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
   const hiddenTitle = "???????????????????";
   const youtubeOrigin = "https://www.youtube-nocookie.com";
@@ -26,12 +36,20 @@
     youtubeOrigin,
     "https://www.youtube.com",
   ]);
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const interactiveSelector = "button, input, a, .suggest";
+  const budapestDateFormatter = new Intl.DateTimeFormat("en", {
+    timeZone: dailyTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
   const icons = {
     play: "M8 5v14l11-7z",
     pause: "M6 5h4v14H6zM14 5h4v14h-4z",
     stop: "M7 7h10v10H7z",
   };
-  const classicRules = {
+  const classicModeDefaults = {
     timed: false,
     survival: false,
     initialTime: 60000,
@@ -42,11 +60,11 @@
   };
   const modes = {
     classic: {
-      ...classicRules,
+      ...classicModeDefaults,
       description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
     },
     daily: {
-      ...classicRules,
+      ...classicModeDefaults,
       daily: true,
       description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
     },
@@ -85,10 +103,18 @@
         >DISCOVERY</button>
       </div>
       <div class="modes" aria-label="GAME MODE">
-        <button type="button" class="mode daily" aria-pressed="false">DAILY</button>
-        <button type="button" class="mode blitz-button" aria-pressed="false">BLITZ</button>
-        <button type="button" class="mode classic" aria-pressed="false">CLASSIC</button>
-        <button type="button" class="mode survival" aria-pressed="false">SURVIVAL</button>
+        <button type="button" class="mode" data-mode="daily" aria-pressed="false">
+          DAILY
+        </button>
+        <button type="button" class="mode" data-mode="blitz" aria-pressed="false">
+          BLITZ
+        </button>
+        <button type="button" class="mode" data-mode="classic" aria-pressed="false">
+          CLASSIC
+        </button>
+        <button type="button" class="mode" data-mode="survival" aria-pressed="false">
+          SURVIVAL
+        </button>
       </div>
       <div class="card glass">
         <div class="stack">
@@ -214,7 +240,6 @@
     ruleset: $(".ruleset"),
     rulesetText: $(".ruleset-text"),
     rulesetCopy: $(".ruleset-copy"),
-    timeline: $(".timeline"),
     feedback: $(".feedback"),
     timeChange: $(".time-change"),
     timeChangeText: $(".time-change span"),
@@ -224,10 +249,6 @@
     endtime: $(".endtime"),
     spotify: $(".spotify"),
     next: $(".next"),
-    daily: $(".daily"),
-    classic: $(".classic"),
-    blitz: $(".blitz-button"),
-    survival: $(".survival"),
     result: $(".corzaguessr-modal"),
     resultTitle: $(".modal-title"),
     resultMeta: $(".result-meta"),
@@ -244,12 +265,10 @@
     yt: $(".yt"),
     icon: $(".icon path"),
   };
-  const modeButtons = {
-    daily: ui.daily,
-    classic: ui.classic,
-    blitz: ui.blitz,
-    survival: ui.survival,
-  };
+  const modeButtons = Object.fromEntries(
+    [...root.querySelectorAll("[data-mode]")]
+      .map((button) => [button.dataset.mode, button]),
+  );
 
   // State and small utilities -----------------------------------------------
 
@@ -279,16 +298,12 @@
     previousTick: 0,
     session: 0,
     activeSuggestion: -1,
-    progressTimer: 0,
-    feedbackTimer: 0,
-    slotsTimer: 0,
-    resultTimer: 0,
-    discoveryTimer: 0,
     returnFocus: null,
     pageScrollStyles: null,
     resumeAfterDiscovery: false,
     endedDuringDiscovery: false,
   };
+  const timers = new Map();
 
   root.classList.add("awaiting-mode", "rules-visible");
   setBackgroundInert(false);
@@ -298,14 +313,27 @@
   }
 
   function getBudapestDate(date = new Date()) {
-    const parts = new Intl.DateTimeFormat("en", {
-      timeZone: dailyTimeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(date);
+    const parts = budapestDateFormatter.formatToParts(date);
     const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
     return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function currentMode() {
+    return modes[state.mode];
+  }
+
+  function clearTimer(name) {
+    clearTimeout(timers.get(name));
+    timers.delete(name);
+  }
+
+  function setTimer(name, callback, delay) {
+    clearTimer(name);
+    const timer = setTimeout(() => {
+      timers.delete(name);
+      callback();
+    }, delay);
+    timers.set(name, timer);
   }
 
   function announce(message) {
@@ -359,9 +387,7 @@
   }
 
   function transitionDelay(milliseconds) {
-    return matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? 0
-      : milliseconds;
+    return reducedMotion.matches ? 0 : milliseconds;
   }
 
   function setBackgroundInert(inert) {
@@ -381,8 +407,8 @@
   function flashSurvivalChange(amount) {
     if (state.mode !== "survival" || !amount) return;
     const flashClass = amount > 0 ? "survival-reward" : "survival-penalty";
-    const duration = transitionDelay(680);
-    clearTimeout(state.feedbackTimer);
+    const duration = transitionDelay(durations.feedback);
+    clearTimer("feedback");
     ui.timeChangeText.textContent = amount > 0 ? `+${amount}S` : `${amount}S`;
     ui.feedback.classList.remove("survival-penalty", "survival-reward");
     ui.timeChange.classList.remove("survival-change");
@@ -390,11 +416,10 @@
     void ui.timeChange.offsetWidth;
     ui.feedback.classList.add(flashClass);
     ui.timeChange.classList.add("survival-change");
-    state.feedbackTimer = setTimeout(() => {
+    setTimer("feedback", () => {
       ui.feedback.classList.remove("survival-penalty", "survival-reward");
       ui.timeChange.classList.remove("survival-change");
       ui.timeChangeText.textContent = "";
-      state.feedbackTimer = 0;
     }, duration);
   }
 
@@ -418,7 +443,7 @@
   }
 
   function loadDiscoveries() {
-    const saved = readStorage(storageKey, []);
+    const saved = readStorage(discoveryStorageKey, []);
     return new Set(
       Array.isArray(saved)
         ? saved.filter((title) => typeof title === "string")
@@ -428,7 +453,7 @@
 
   function saveDiscoveries() {
     writeStorage(
-      storageKey,
+      discoveryStorageKey,
       [...state.discovered],
       "DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.",
     );
@@ -447,7 +472,7 @@
   function validSnippetTotal(value, current) {
     return Number.isSafeInteger(value) &&
       value >= current &&
-      value <= current * steps.at(-1)
+      value <= current * maxSnippetDuration
       ? value
       : 0;
   }
@@ -505,7 +530,7 @@
     const completed = started && saved?.completed === true;
     const step = Number.isSafeInteger(saved?.step) &&
       saved.step >= 0 &&
-      saved.step < steps.length
+      saved.step < snippetDurations.length
       ? saved.step
       : 0;
     return {
@@ -525,15 +550,15 @@
     );
   }
 
-  function isDailyDone(date = getBudapestDate()) {
+  function isDailyDone(date = state.dailyDate) {
     return state.daily.date === date && state.daily.completed;
   }
 
-  function isDailyStarted(date = getBudapestDate()) {
+  function isDailyStarted(date = state.dailyDate) {
     return state.daily.date === date && state.daily.started;
   }
 
-  function isDailyInProgress(date = getBudapestDate()) {
+  function isDailyInProgress(date = state.dailyDate) {
     return isDailyStarted(date) && !state.daily.completed;
   }
 
@@ -620,7 +645,7 @@
     if (pausePlayer) sendPlayerCommand("pauseVideo");
 
     const icon = playing
-      ? modes[state.mode].timed ? "pause" : "stop"
+      ? currentMode().timed ? "pause" : "stop"
       : "play";
     ui.icon.setAttribute("d", icons[icon]);
     ui.play.setAttribute("aria-label", icon === "play" ? "PLAY" : icon === "pause" ? "PAUSE" : "STOP");
@@ -650,10 +675,9 @@
     cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
     setProgress("0:00", 0);
-    state.progressTimer = setTimeout(() => {
-      state.progressTimer = 0;
+    setTimer("progress", () => {
       ui.fill.style.transition = "";
-    }, 300);
+    }, transitionDelay(durations.progress));
   }
 
   function startClassic() {
@@ -669,7 +693,7 @@
   function startClock() {
     if (state.frame || state.status !== "playing") return;
     const session = state.session;
-    const mode = modes[state.mode];
+    const mode = currentMode();
 
     const tick = (now) => {
       if (session !== state.session || state.status !== "playing") {
@@ -685,9 +709,9 @@
         state.elapsed += delta;
         setProgress(
           formatTime(state.elapsed / 1000),
-          state.elapsed / (steps.at(-1) * 1000) + 0.0025,
+          state.elapsed / (maxSnippetDuration * 1000) + 0.0025,
         );
-        if (state.elapsed >= steps[state.step] * 1000) {
+        if (state.elapsed >= snippetDurations[state.step] * 1000) {
           setPlaying(false, true);
           return;
         }
@@ -720,11 +744,65 @@
     state.track = null;
     state.trackStarted = false;
     ui.skip.disabled = true;
-    if (modes[state.mode].daily) applyModeAvailability();
-    else showRules(modes[state.mode].description);
+    if (currentMode().daily) applyModeAvailability();
+    else showRules(currentMode().description);
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
     announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
+  }
+
+  function handlePlayerStateChange(playerState) {
+    if (playerState === 1) {
+      if (!state.track || isModalOpen() || state.status === "ended") return;
+      markDailyStarted();
+      state.trackStarted = true;
+      ui.skip.disabled = false;
+      setPlaying(true);
+      startClock();
+      focusGuess();
+      return;
+    }
+
+    if (playerState === 3) {
+      cancelClock();
+      return;
+    }
+
+    if (
+      playerState === 0 &&
+      state.track &&
+      state.trackStarted &&
+      state.status !== "ended"
+    ) {
+      if (isDiscoveryOpen()) state.endedDuringDiscovery = true;
+      else handleTrackEnded();
+    }
+  }
+
+  function handlePlayerMessage(event) {
+    if (
+      event.source !== ui.yt.contentWindow ||
+      !youtubeOrigins.has(event.origin)
+    ) return;
+
+    let data;
+    try {
+      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+    } catch {
+      return;
+    }
+    if (!data || typeof data !== "object") return;
+
+    if (data.event === "onReady") {
+      state.playerReady = true;
+      sendPlayerCommand("addEventListener", "onStateChange");
+      sendPlayerCommand("addEventListener", "onError");
+      if (state.track) loadPlayerTrack(state.status === "playing");
+    } else if (data.event === "onStateChange") {
+      handlePlayerStateChange(data.info);
+    } else if (data.event === "onError") {
+      handlePlayerError();
+    }
   }
 
   // Rendering ---------------------------------------------------------------
@@ -789,9 +867,9 @@
   }
 
   function clearSlots(animate = true) {
-    clearTimeout(state.slotsTimer);
+    clearTimer("slots");
     if (!ui.slots.children.length) return;
-    if (!animate || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!animate || reducedMotion.matches) {
       ui.slots.replaceChildren();
       ui.slots.style.height = "";
       return;
@@ -802,13 +880,13 @@
     ui.slots.style.height = `${ui.slots.offsetHeight}px`;
     void ui.slots.offsetHeight;
     ui.slots.style.height = "0px";
-    state.slotsTimer = setTimeout(() => {
+    setTimer("slots", () => {
       ui.slots.replaceChildren();
       ui.slots.style.height = "";
       ui.play.disabled =
         state.status === "loading" ||
-        (modes[state.mode]?.daily && isDailyDone(state.dailyDate));
-    }, 250);
+        (currentMode()?.daily && isDailyDone(state.dailyDate));
+    }, durations.slot);
   }
 
   function addSlot(text, style = "", replace = false) {
@@ -819,7 +897,7 @@
     item.textContent = text;
     if (!replace || !item.isConnected) {
       ui.slots.prepend(item);
-      if (modes[state.mode].timed) {
+      if (currentMode().timed) {
         while (ui.slots.children.length > maxTimedSlots) {
           ui.slots.lastElementChild.remove();
         }
@@ -829,20 +907,20 @@
   }
 
   function renderPrompt() {
-    if (modes[state.mode].timed) {
+    if (currentMode().timed) {
       addSlot(`GUESS #${state.rounds}`);
       return;
     }
 
-    const seconds = steps[state.step];
-    const last = state.step === steps.length - 1;
+    const seconds = snippetDurations[state.step];
+    const last = state.step === snippetDurations.length - 1;
     ui.endtime.textContent = formatTime(seconds);
-    ui.snippet.style.width = `${seconds / steps.at(-1) * 100}%`;
+    ui.snippet.style.width = `${seconds / maxSnippetDuration * 100}%`;
     ui.skip.textContent = last
       ? "GIVE UP"
-      : `ADD ${steps[state.step + 1] - seconds}S`;
+      : `ADD ${snippetDurations[state.step + 1] - seconds}S`;
     addSlot(
-      last ? "LAST CHANCE TO GUESS" : `GUESS ${state.step + 1} OUT OF ${steps.length}`,
+      last ? "LAST CHANCE TO GUESS" : `GUESS ${state.step + 1} OUT OF ${snippetDurations.length}`,
       last ? "blink" : "",
     );
   }
@@ -921,7 +999,7 @@
   // Game rules --------------------------------------------------------------
 
   function selectTrack() {
-    if (modes[state.mode].daily) {
+    if (currentMode().daily) {
       return state.tracks.reduce((winner, track) => {
         const score = hashDaily(
           `corzaguessr-daily-v1:${state.dailyDate}:${track.dailyNumber}`,
@@ -938,18 +1016,18 @@
 
   function startRound() {
     if (!state.tracks.length) return;
-    const mode = modes[state.mode];
+    const mode = currentMode();
     if (mode.daily && isDailyInProgress(state.dailyDate)) {
       state.step = state.daily.step;
     }
     const selected = selectTrack();
     const timedSeconds = Math.min(
       Math.ceil(state.time / 1000),
-      maxTimedClip,
+      maxTimedClipSeconds,
     );
     const seconds = mode.timed
       ? Math.min(timedSeconds, selected.duration)
-      : steps.at(-1);
+      : maxSnippetDuration;
     const available = Math.max(0, Math.floor(selected.duration - seconds));
 
     state.previousTrack = selected;
@@ -973,7 +1051,7 @@
 
   function togglePlay() {
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
-    const mode = modes[state.mode];
+    const mode = currentMode();
     if (mode.daily && isDailyDone(state.dailyDate) && !state.track) {
       applyModeAvailability();
       return;
@@ -1006,7 +1084,7 @@
       return;
     }
 
-    if (modes[state.mode].timed) {
+    if (currentMode().timed) {
       togglePlay();
       return;
     }
@@ -1023,11 +1101,13 @@
 
   function renderAttempt(type, title) {
     if (type === "skip") {
-      if (modes[state.mode].timed) {
+      if (currentMode().timed) {
         addSlot("SKIPPED", "skip", true);
       } else {
-        const last = state.step === steps.length - 1;
-        const added = last ? 0 : steps[state.step + 1] - steps[state.step];
+        const last = state.step === snippetDurations.length - 1;
+        const added = last
+          ? 0
+          : snippetDurations[state.step + 1] - snippetDurations[state.step];
         addSlot(
           last
             ? "FINAL GUESS SKIPPED"
@@ -1043,7 +1123,7 @@
   }
 
   function resolveTimedAttempt(type) {
-    const mode = modes[state.mode];
+    const mode = currentMode();
     if (type !== "skip") state.guesses++;
     if (type === "correct") state.correct++;
     if (mode.survival) {
@@ -1065,7 +1145,7 @@
       return;
     }
 
-    if (state.step === steps.length - 1) {
+    if (state.step === snippetDurations.length - 1) {
       endGame(false);
       return;
     }
@@ -1127,7 +1207,7 @@
     const record = state.personalBests.classic;
     if (won) {
       record.current++;
-      record.snippetTotal += steps[state.step] || steps[0];
+      record.snippetTotal += snippetDurations[state.step] || snippetDurations[0];
       state.classicResult = {
         won: true,
         streak: record.current,
@@ -1168,7 +1248,7 @@
     if (!state.track || isModalOpen()) return;
     renderAttempt(type, title);
     if (type === "correct") recordDiscovery();
-    if (modes[state.mode].timed) resolveTimedAttempt(type);
+    if (currentMode().timed) resolveTimedAttempt(type);
     else resolveClassicAttempt(type);
   }
 
@@ -1181,30 +1261,21 @@
   function handleTrackEnded() {
     if (!state.track || !state.trackStarted || state.status === "ended") return;
     state.trackStarted = false;
-    if (!modes[state.mode].timed) setPlaying(false);
+    if (!currentMode().timed) setPlaying(false);
     else attempt("skip");
   }
 
   function updateTimedPersonalBest() {
     const accuracy = getAccuracy();
-    if (state.mode === "blitz" && state.correct > state.personalBests.blitz.score) {
-      state.personalBests.blitz = {
-        score: state.correct,
-        accuracy,
-      };
-      markNewPersonalBest();
-      savePersonalBests();
-    } else if (
-      state.mode === "survival" &&
-      Math.floor(state.elapsed) > state.personalBests.survival.score
-    ) {
-      state.personalBests.survival = {
-        score: Math.floor(state.elapsed),
-        accuracy,
-      };
-      markNewPersonalBest();
-      savePersonalBests();
-    }
+    const score = state.mode === "survival"
+      ? Math.floor(state.elapsed)
+      : state.correct;
+    const record = state.personalBests[state.mode];
+    if (score <= record.score) return;
+
+    state.personalBests[state.mode] = { score, accuracy };
+    markNewPersonalBest();
+    savePersonalBests();
   }
 
   function updatePersonalBest(won) {
@@ -1270,7 +1341,8 @@
   }
 
   function formatSurvivalRun() {
-    return `TIME SURVIVED: ${formatTime(state.elapsed / 1000)} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
+    const time = formatTime(state.elapsed / 1000);
+    return `TIME SURVIVED: ${time} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
   }
 
   function formatSurvivalPersonalBest() {
@@ -1278,40 +1350,49 @@
     return `TIME SURVIVED: ${formatTime(score / 1000)} · ACCURACY: ${formatAccuracy(accuracy)}`;
   }
 
-  function getRunModule() {
-    if (state.mode === "daily") return ["RUN:", formatAttempts(state.step + 1)];
-    if (state.mode === "classic") return ["RUN:", formatClassicRun()];
-    if (state.mode === "blitz") return ["RUN:", formatBlitzRun()];
-    return ["RUN:", formatSurvivalRun()];
-  }
-
-  function getPersonalBestModule() {
-    if (state.mode === "daily") {
-      return [getPersonalBestLabel(), formatAttempts(state.personalBests.daily)];
-    }
-    if (state.mode === "classic") {
-      return [getPersonalBestLabel(), formatClassicPersonalBest()];
-    }
-    if (state.mode === "blitz") {
-      return [getPersonalBestLabel(), formatBlitzPersonalBest()];
-    }
-    return [getPersonalBestLabel(), formatSurvivalPersonalBest()];
-  }
+  const resultFormatters = {
+    daily: {
+      run: () => formatAttempts(state.step + 1),
+      personalBest: () => formatAttempts(state.personalBests.daily),
+    },
+    classic: {
+      run: formatClassicRun,
+      personalBest: formatClassicPersonalBest,
+    },
+    blitz: {
+      run: formatBlitzRun,
+      personalBest: formatBlitzPersonalBest,
+    },
+    survival: {
+      run: formatSurvivalRun,
+      personalBest: formatSurvivalPersonalBest,
+    },
+  };
 
   function getResultModules() {
+    const formatter = resultFormatters[state.mode];
     const modules = [];
-    if (!modes[state.mode].timed) modules.push(["TRACK:", state.track.title]);
-    modules.push(getRunModule(), getPersonalBestModule());
+    if (!currentMode().timed) modules.push(["TRACK:", state.track.title]);
+    modules.push(
+      ["RUN:", formatter.run()],
+      [getPersonalBestLabel(), formatter.personalBest()],
+    );
     return modules;
   }
 
-  function renderResultMeta() {
-    setResultMeta(...getResultModules());
+  function openSpotify() {
+    const trackId = state.track?.spotify;
+    if (!trackId) return;
+    window.open(
+      `https://open.spotify.com/track/${trackId}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   }
 
   function endGame(won) {
     if (!state.track) return;
-    const mode = modes[state.mode];
+    const mode = currentMode();
     if (mode.timed || state.status === "playing") setPlaying(false, true);
     state.status = "ended";
     state.trackStarted = false;
@@ -1326,24 +1407,17 @@
     ui.resultTitle.innerHTML = mode.timed
       ? '⏱️ <span class="end">TIME IS UP</span> ⏱️'
       : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
-    renderResultMeta();
+    setResultMeta(...getResultModules());
 
     const hasSpotify = !mode.timed && Boolean(state.track.spotify);
-    ui.spotify.style.display = hasSpotify ? "inline-flex" : "none";
-    ui.spotify.onclick = hasSpotify
-      ? () => window.open(
-          `https://open.spotify.com/track/${state.track.spotify}`,
-          "_blank",
-          "noopener,noreferrer",
-        )
-      : null;
+    ui.spotify.hidden = !hasSpotify;
 
     openResult();
     announce(ui.resultMeta.dataset.announcement);
   }
 
   function openResult() {
-    clearTimeout(state.resultTimer);
+    clearTimer("result");
     ui.card.classList.remove("modal-closing");
     const card = ui.card.getBoundingClientRect();
     const board = ui.board.getBoundingClientRect();
@@ -1362,25 +1436,23 @@
     ui.card.classList.add("modal-closing");
     ui.card.classList.remove("modal-visible");
     reset({ keepResultOpen: true });
-    state.resultTimer = setTimeout(() => {
-      state.resultTimer = 0;
+    setTimer("result", () => {
       ui.card.classList.remove("modal-open", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
       if (isRoundReadyToStart()) focusPlay();
-    }, transitionDelay(350));
+    }, transitionDelay(durations.result));
   }
 
   function cancelProgressTransition() {
-    clearTimeout(state.progressTimer);
-    state.progressTimer = 0;
+    clearTimer("progress");
     ui.fill.style.transition = "";
   }
 
   function resetSession({ keepResultOpen = false } = {}) {
-    const mode = modes[state.mode];
+    const mode = currentMode();
     if (mode.daily) state.dailyDate = getBudapestDate();
-    clearTimeout(state.slotsTimer);
+    clearTimer("slots");
     state.session++;
     cancelClock();
     if (state.track) sendPlayerCommand("pauseVideo");
@@ -1402,8 +1474,7 @@
     });
     state.used.clear();
     ui.status.textContent = "";
-    clearTimeout(state.feedbackTimer);
-    state.feedbackTimer = 0;
+    clearTimer("feedback");
     ui.feedback.classList.remove("survival-penalty", "survival-reward");
     ui.timeChange.classList.remove("survival-change");
     ui.timeChangeText.textContent = "";
@@ -1418,7 +1489,7 @@
 
     ui.endtime.textContent = mode.endTime;
     ui.skip.textContent = mode.skip;
-    ui.snippet.style.width = `${100 / steps.at(-1)}%`;
+    ui.snippet.style.width = `${100 / maxSnippetDuration}%`;
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
     applyModeAvailability();
@@ -1426,14 +1497,17 @@
   }
 
   function renderSavedDailyProgress() {
-    const seconds = steps[state.daily.step] || steps[0];
+    const seconds = snippetDurations[state.daily.step] || snippetDurations[0];
     ui.endtime.textContent = formatTime(seconds);
-    ui.snippet.style.width = `${seconds / steps.at(-1) * 100}%`;
-    setProgress(formatTime(seconds), seconds / steps.at(-1) + 0.0025);
+    ui.snippet.style.width = `${seconds / maxSnippetDuration * 100}%`;
+    setProgress(
+      formatTime(seconds),
+      seconds / maxSnippetDuration + 0.0025,
+    );
   }
 
   function applyModeAvailability() {
-    const mode = modes[state.mode];
+    const mode = currentMode();
     if (mode.daily && isDailyDone(state.dailyDate)) {
       ui.play.disabled = true;
       ui.skip.disabled = true;
@@ -1454,14 +1528,13 @@
   }
 
   function reset(options) {
-    clearTimeout(state.resultTimer);
-    state.resultTimer = 0;
+    clearTimer("result");
     cancelProgressTransition();
     resetSession(options);
   }
 
   function renderModeSelection() {
-    const mode = modes[state.mode];
+    const mode = currentMode();
     root.classList.toggle("timed", mode.timed);
     Object.entries(modeButtons).forEach(([name, button]) => {
       const selected = name === state.mode;
@@ -1470,17 +1543,11 @@
     });
   }
 
-  function setMode(mode) {
-    if (!modes[mode] || (!isAwaitingMode() && state.mode === mode)) return;
-    state.mode = mode;
+  function setMode(modeName) {
+    if (!modes[modeName] || (!isAwaitingMode() && state.mode === modeName)) return;
+    state.mode = modeName;
     renderModeSelection();
-    const message = modes[mode].daily
-      ? isDailyDone()
-        ? getDailyDoneText()
-        : isDailyInProgress()
-          ? getDailyInProgressText()
-          : modes[mode].description
-      : modes[mode].description;
+    const message = getModeRulesText(modeName);
     showRules(message);
     announce(message);
 
@@ -1495,20 +1562,18 @@
   // Initial mode selection --------------------------------------------------
 
   function animateModeChange() {
-    const mode = modes[state.mode];
+    const mode = currentMode();
     state.session++;
     setPlaying(false, true);
     cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
     setProgress(ui.now.textContent, mode.initialProgress);
-    state.progressTimer = setTimeout(() => {
-      state.progressTimer = 0;
+    setTimer("progress", () => {
       resetSession();
-      state.progressTimer = setTimeout(() => {
-        state.progressTimer = 0;
+      setTimer("progress", () => {
         ui.fill.style.transition = "";
-      }, 300);
-    }, 120);
+      }, transitionDelay(durations.progress));
+    }, transitionDelay(durations.modeChange));
   }
 
   function activateMode() {
@@ -1555,7 +1620,7 @@
   }
 
   function openDiscovery() {
-    clearTimeout(state.discoveryTimer);
+    clearTimer("discovery");
     renderDiscovery();
     state.returnFocus = document.activeElement;
     state.resumeAfterDiscovery = state.status === "playing";
@@ -1576,13 +1641,13 @@
   }
 
   function closeDiscovery() {
-    clearTimeout(state.discoveryTimer);
+    clearTimer("discovery");
     root.classList.remove("discovery-visible");
     ui.discoveryButton.setAttribute("aria-expanded", "false");
     ui.discoveryShell.style.height = `${ui.discoveryShell.offsetHeight}px`;
     void ui.discoveryShell.offsetHeight;
     ui.discoveryShell.style.height = "0px";
-    state.discoveryTimer = setTimeout(() => {
+    setTimer("discovery", () => {
       root.classList.remove("discovery-open");
       ui.discoveryModal.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
@@ -1599,7 +1664,7 @@
         setPlaying(true);
       }
       if (isAwaitingMode() && state.mode && state.tracks.length) activateMode();
-    }, transitionDelay(450));
+    }, transitionDelay(durations.discovery));
   }
 
   function toggleDiscovery() {
@@ -1612,7 +1677,7 @@
       "RESET DISCOVERY? THIS HIDES ALL DISCOVERED TRACKS.",
     )) return;
     try {
-      localStorage.removeItem(storageKey);
+      localStorage.removeItem(discoveryStorageKey);
     } catch {
       announce("DISCOVERY COULD NOT BE RESET IN THIS BROWSER.");
       return;
@@ -1641,6 +1706,13 @@
       event.preventDefault();
       first.focus();
     }
+  }
+
+  function bindRulesPreview(element, preview) {
+    element.addEventListener("pointerenter", preview);
+    element.addEventListener("pointerleave", resetRulesPreview);
+    element.addEventListener("focus", preview);
+    element.addEventListener("blur", resetRulesPreview);
   }
 
   // Events and initialization ----------------------------------------------
@@ -1681,17 +1753,12 @@
   ui.play.addEventListener("click", togglePlay);
   ui.skip.addEventListener("click", () => attempt("skip"));
   ui.next.addEventListener("click", closeResult);
+  ui.spotify.addEventListener("click", openSpotify);
   Object.entries(modeButtons).forEach(([name, button]) => {
-    button.addEventListener("pointerenter", () => previewMode(name));
-    button.addEventListener("pointerleave", resetRulesPreview);
-    button.addEventListener("focus", () => previewMode(name));
-    button.addEventListener("blur", resetRulesPreview);
+    bindRulesPreview(button, () => previewMode(name));
     button.addEventListener("click", () => setMode(name));
   });
-  ui.discoveryButton.addEventListener("pointerenter", previewDiscovery);
-  ui.discoveryButton.addEventListener("pointerleave", resetRulesPreview);
-  ui.discoveryButton.addEventListener("focus", previewDiscovery);
-  ui.discoveryButton.addEventListener("blur", resetRulesPreview);
+  bindRulesPreview(ui.discoveryButton, previewDiscovery);
   ui.discoveryButton.addEventListener("click", toggleDiscovery);
   ui.discoveryClose.addEventListener("click", closeDiscovery);
   ui.discoveryReset.addEventListener("click", resetDiscovery);
@@ -1727,7 +1794,7 @@
     if (
       event.key === "Enter" &&
       !isAwaitingMode() &&
-      !event.target.closest?.("button, input, a, .suggest")
+      !event.target.closest?.(interactiveSelector)
     ) {
       event.preventDefault();
       usePlaybackShortcut();
@@ -1737,7 +1804,7 @@
   root.addEventListener("pointerdown", (event) => {
     if (
       isRoundReadyToStart() &&
-      !event.target.closest("button, input, .suggest, a")
+      !event.target.closest(interactiveSelector)
     ) {
       event.preventDefault();
       focusPlay();
@@ -1746,53 +1813,12 @@
     if (
       ui.guess.disabled ||
       isModalOpen() ||
-      event.target.closest("button, input, .suggest")
+      event.target.closest(interactiveSelector)
     ) return;
     focusGuess();
   });
 
-  window.addEventListener("message", (event) => {
-    if (
-      event.source !== ui.yt.contentWindow ||
-      !youtubeOrigins.has(event.origin)
-    ) return;
-
-    let data;
-    try {
-      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-    } catch {
-      return;
-    }
-    if (!data || typeof data !== "object") return;
-
-    if (data.event === "onReady") {
-      state.playerReady = true;
-      sendPlayerCommand("addEventListener", "onStateChange");
-      sendPlayerCommand("addEventListener", "onError");
-      if (state.track) loadPlayerTrack(state.status === "playing");
-    } else if (data.event === "onStateChange" && data.info === 1) {
-      if (!state.track || isModalOpen() || state.status === "ended") return;
-      markDailyStarted();
-      state.trackStarted = true;
-      ui.skip.disabled = false;
-      setPlaying(true);
-      startClock();
-      focusGuess();
-    } else if (data.event === "onStateChange" && data.info === 3) {
-      cancelClock();
-    } else if (
-      data.event === "onStateChange" &&
-      data.info === 0 &&
-      state.track &&
-      state.trackStarted &&
-      state.status !== "ended"
-    ) {
-      if (isDiscoveryOpen()) state.endedDuringDiscovery = true;
-      else handleTrackEnded();
-    } else if (data.event === "onError") {
-      handlePlayerError();
-    }
-  });
+  window.addEventListener("message", handlePlayerMessage);
 
   ui.yt.addEventListener("load", () => {
     ui.yt.contentWindow?.postMessage('{"event":"listening"}', youtubeOrigin);
@@ -1843,29 +1869,30 @@
     return valid;
   }
 
-  fetch(tracksUrl, { headers: { Accept: "application/json" } })
-    .then((response) => {
+  async function loadTracks() {
+    try {
+      const response = await fetch(tracksUrl, {
+        headers: { Accept: "application/json" },
+      });
       if (!response.ok) throw new Error(`Track catalog returned ${response.status}.`);
-      return response.json();
-    })
-    .then((tracks) => {
-      state.tracks = validateTracks(tracks);
+      state.tracks = validateTracks(await response.json());
       renderDiscovery();
       if (state.mode) activateMode();
       else state.status = "ready";
-    })
-    .catch((error) => {
+    } catch (error) {
       console.error("Corzaguessr could not load its track catalog.", error);
       state.status = "error";
       ui.play.disabled = true;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
-      ui.daily.disabled = true;
-      ui.classic.disabled = true;
-      ui.blitz.disabled = true;
-      ui.survival.disabled = true;
+      Object.values(modeButtons).forEach((button) => {
+        button.disabled = true;
+      });
       ui.modePrompt.textContent = "COULD NOT LOAD THE TRACKLIST, PLEASE REFRESH!";
       root.classList.add("mode-error");
       announce("COULD NOT LOAD THE TRACKLIST. PLEASE REFRESH.");
-    });
+    }
+  }
+
+  loadTracks();
 })();
