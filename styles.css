@@ -662,7 +662,6 @@
   text-transform: uppercase;
 }
 
-#corzaguessr .hide,
 #corzaguessr [hidden] {
   display: none !important;
 }
