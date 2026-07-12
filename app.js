@@ -14,7 +14,7 @@
     "https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/";
   const snippetDurations = [1, 2, 4, 8, 16, 32];
   const maxSnippetDuration = snippetDurations.at(-1);
-  const maxTimedClipSeconds = 60;
+  const minimumTimedRemainingSeconds = 60;
   const maxTimedSlots = 50;
   const durations = {
     feedback: 680,
@@ -29,6 +29,9 @@
   const dailyStorageKey = "corzaguessrDailyV1";
   const dailyTimeZone = "Europe/Budapest";
   const modePromptText = "SELECT A MODE TO BEGIN";
+  const dailyAudioErrorText = "COULD NOT LOAD TODAY'S TRACK, PRESS PLAY TO RETRY!";
+  const dailyCatalogLoadingText = "LOADING TODAY'S TRACK...";
+  const dailyCatalogErrorText = "COULD NOT REFRESH TODAY'S TRACK, RETRYING...";
   const discoveryDescription =
     "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
@@ -286,6 +289,13 @@
     classicResult: null,
     daily: loadDaily(),
     dailyDate: getBudapestDate(),
+    catalogDate: null,
+    catalogLoadingDate: null,
+    catalogRequest: 0,
+    pendingCatalog: null,
+    catalogNeedsUiSync: false,
+    catalogRefreshFailedDate: null,
+    catalogRetryAt: 0,
     activeAudio: null,
     preparedAudio: null,
     preparedTrack: null,
@@ -620,6 +630,30 @@
     return hash >>> 0;
   }
 
+  function isDailyRoundProtected() {
+    return (
+      state.mode === "daily" &&
+      (
+        isDailyInProgress(state.dailyDate) ||
+        (isResultOpen() && isDailyStarted(state.dailyDate))
+      )
+    );
+  }
+
+  function dailyNeedsCatalogRefresh(date = getBudapestDate()) {
+    return (
+      state.mode === "daily" &&
+      date !== state.catalogDate &&
+      !isDailyRoundProtected()
+    );
+  }
+
+  function getDailyCatalogStatusText() {
+    return state.catalogRefreshFailedDate === getBudapestDate()
+      ? dailyCatalogErrorText
+      : dailyCatalogLoadingText;
+  }
+
   // Audio streaming ---------------------------------------------------------
 
   function getAudioUrl(track) {
@@ -627,7 +661,7 @@
       `${String(track.dailyNumber).padStart(2, "0")}.mp3`,
       audioFolderUrl,
     );
-    url.hash = `t=${track.at},${Math.min(track.duration, track.at + track.clipSeconds)}`;
+    url.hash = `t=${track.at}`;
     return url.href;
   }
 
@@ -661,7 +695,7 @@
     const token = String(++state.audioLoad);
     track.audioToken = token;
     audio.pause();
-    audio.preload = "metadata";
+    audio.preload = "auto";
     audio.dataset.loadToken = token;
     audio.src = getAudioUrl(track);
     audio.addEventListener("loadedmetadata", () => {
@@ -682,11 +716,14 @@
   function createRoundTrack(selected) {
     if (!selected) return null;
     const mode = currentMode();
-    const clipSeconds = Math.min(
-      mode.timed ? maxTimedClipSeconds : maxSnippetDuration,
+    const minimumRemainingSeconds = Math.min(
+      mode.timed ? minimumTimedRemainingSeconds : maxSnippetDuration,
       selected.duration,
     );
-    const available = Math.max(0, Math.floor(selected.duration - clipSeconds));
+    const available = Math.max(
+      0,
+      Math.floor(selected.duration - minimumRemainingSeconds),
+    );
     return {
       ...selected,
       at: mode.daily
@@ -694,7 +731,6 @@
           `corzaguessr-daily-clip-v1:${state.dailyDate}:${selected.dailyNumber}`,
         ) % (available + 1)
         : Math.floor(Math.random() * (available + 1)),
-      clipSeconds,
     };
   }
 
@@ -709,7 +745,10 @@
   function prepareNextRound() {
     if (!state.mode || !state.tracks.length) return;
     const mode = currentMode();
-    if (mode.daily && (state.track || isDailyDone(state.dailyDate))) return;
+    if (
+      mode.daily &&
+      (dailyNeedsCatalogRefresh() || state.track || isDailyDone(state.dailyDate))
+    ) return;
     if (
       state.preparedAudio &&
       state.preparedTrack &&
@@ -855,8 +894,45 @@
     state.frame = requestAnimationFrame(tick);
   }
 
+  function clearAudioRound() {
+    const audioPlayers = new Set([
+      state.activeAudio,
+      state.preparedAudio,
+    ].filter(Boolean));
+    state.session++;
+    cancelClock();
+    state.activeAudio = null;
+    state.preparedAudio = null;
+    state.preparedTrack = null;
+    state.preparedMode = null;
+    state.track = null;
+    state.trackStarted = false;
+    state.elapsed = 0;
+    state.status = "idle";
+    state.resumeAfterDiscovery = false;
+    state.resumeAudio = null;
+    state.resumeToken = null;
+    state.endedDuringDiscovery = false;
+    audioPlayers.forEach(releaseAudio);
+    setPlaying(false);
+  }
+
+  function handleDailyTrackError() {
+    clearAudioRound();
+    ui.play.disabled = false;
+    ui.skip.disabled = true;
+    clearSlots(false);
+    showRules(dailyAudioErrorText);
+    announce(dailyAudioErrorText);
+  }
+
   function handleTrackError() {
-    if (!state.track || isModalOpen()) return;
+    if (!state.track) return;
+    if (currentMode().daily) {
+      if (!isResultOpen()) handleDailyTrackError();
+      return;
+    }
+    if (isModalOpen()) return;
     const failedTrack = state.track;
     const failedAudio = state.activeAudio;
     state.unavailable.add(failedTrack.dailyNumber);
@@ -867,8 +943,7 @@
     state.trackStarted = false;
     releaseAudio(failedAudio);
     ui.skip.disabled = true;
-    if (currentMode().daily) applyModeAvailability();
-    else showRules(currentMode().description);
+    showRules(currentMode().description);
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
     announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
@@ -888,6 +963,7 @@
     ui.skip.disabled = false;
     setPlaying(true);
     startClock();
+    prepareNextRound();
   }
 
   function handleAudioWaiting(event) {
@@ -915,6 +991,10 @@
   function handleAudioError(event) {
     const audio = event.currentTarget;
     if (audio === state.preparedAudio && state.preparedTrack) {
+      if (state.preparedMode === "daily") {
+        handleDailyTrackError();
+        return;
+      }
       const failedTrack = state.preparedTrack;
       state.unavailable.add(failedTrack.dailyNumber);
       state.preparedAudio = null;
@@ -958,6 +1038,9 @@
     const mode = modes[modeName];
     if (!mode) return modePromptText;
     if (!mode.daily) return mode.description;
+    if (state.mode === modeName && dailyNeedsCatalogRefresh()) {
+      return getDailyCatalogStatusText();
+    }
     if (state.mode === modeName && isDailyDone()) return getDailyDoneText();
     if (state.mode === modeName && isDailyInProgress()) return getDailyInProgressText();
     return mode.description;
@@ -1121,13 +1204,8 @@
   // Game rules --------------------------------------------------------------
 
   function selectTrack() {
-    const availableTracks = state.tracks.filter(
-      (track) => !state.unavailable.has(track.dailyNumber),
-    );
-    if (!availableTracks.length) return null;
-
     if (currentMode().daily) {
-      return availableTracks.reduce((winner, track) => {
+      return state.tracks.reduce((winner, track) => {
         const score = hashDaily(
           `corzaguessr-daily-v1:${state.dailyDate}:${track.dailyNumber}`,
         );
@@ -1135,6 +1213,10 @@
       }, null).track;
     }
 
+    const availableTracks = state.tracks.filter(
+      (track) => !state.unavailable.has(track.dailyNumber),
+    );
+    if (!availableTracks.length) return null;
     const pool = availableTracks.length > 1
       ? availableTracks.filter(
         (track) => track.dailyNumber !== state.previousTrack?.dailyNumber,
@@ -1146,6 +1228,11 @@
   function startRound() {
     if (!state.tracks.length) return;
     const mode = currentMode();
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      applyModeAvailability();
+      void refreshTrackCatalog(getBudapestDate());
+      return;
+    }
     if (mode.daily && isDailyInProgress(state.dailyDate)) {
       state.step = state.daily.step;
     }
@@ -1167,12 +1254,16 @@
     setPlaying(true);
     playActiveAudio(true);
     renderPrompt();
-    prepareNextRound();
   }
 
   function togglePlay() {
     if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
     const mode = currentMode();
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      applyModeAvailability();
+      void refreshTrackCatalog(getBudapestDate());
+      return;
+    }
     if (mode.daily && isDailyDone(state.dailyDate) && !state.track) {
       applyModeAvailability();
       return;
@@ -1374,7 +1465,11 @@
   }
 
   function makeGuess(title = ui.guess.value.trim()) {
-    if (!title || !state.track) return;
+    if (
+      !title ||
+      !state.track ||
+      (currentMode().timed && !state.trackStarted)
+    ) return;
     state.used.add(title);
     attempt(title === state.track.title ? "correct" : "wrong", title);
   }
@@ -1561,6 +1656,8 @@
       ui.card.classList.remove("modal-open", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
+      checkForDailyRollover();
+      syncCatalogUi();
       if (isRoundReadyToStart()) focusPlay();
     }, transitionDelay(durations.result));
   }
@@ -1572,7 +1669,6 @@
 
   function resetSession({ keepResultOpen = false } = {}) {
     const mode = currentMode();
-    if (mode.daily) state.dailyDate = getBudapestDate();
     clearTimer("slots");
     state.session++;
     cancelClock();
@@ -1616,7 +1712,11 @@
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
     applyModeAvailability();
-    prepareNextRound();
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      void refreshTrackCatalog(getBudapestDate());
+    } else {
+      prepareNextRound();
+    }
     if (isRoundReadyToStart()) focusPlay();
   }
 
@@ -1632,6 +1732,13 @@
 
   function applyModeAvailability() {
     const mode = currentMode();
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      ui.play.disabled = true;
+      ui.skip.disabled = true;
+      ui.guess.disabled = true;
+      showRules(getDailyCatalogStatusText());
+      return;
+    }
     if (mode.daily && isDailyDone(state.dailyDate)) {
       ui.play.disabled = true;
       ui.skip.disabled = true;
@@ -1687,8 +1794,7 @@
 
   function animateModeChange() {
     const mode = currentMode();
-    state.session++;
-    setPlaying(false, true);
+    clearAudioRound();
     cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
     setProgress(ui.now.textContent, mode.initialProgress);
@@ -1778,7 +1884,7 @@
       ui.discoveryModal.setAttribute("aria-hidden", "true");
       setBackgroundInert(false);
       unlockPageScroll();
-      state.returnFocus?.focus?.({ preventScroll: true });
+      const returnFocus = state.returnFocus;
       const ended = state.endedDuringDiscovery;
       const resume = state.resumeAfterDiscovery;
       const resumeAudio = state.resumeAudio;
@@ -1800,6 +1906,9 @@
         playActiveAudio();
       }
       if (isAwaitingMode() && state.mode && state.tracks.length) activateMode();
+      checkForDailyRollover();
+      syncCatalogUi();
+      returnFocus?.focus?.({ preventScroll: true });
     }, transitionDelay(durations.discovery));
   }
 
@@ -1957,24 +2066,13 @@
   ui.audioPlayers.forEach((audio) => {
     audio.addEventListener("playing", handleAudioPlaying);
     audio.addEventListener("waiting", handleAudioWaiting);
-    audio.addEventListener("stalled", handleAudioWaiting);
     audio.addEventListener("ended", handleAudioEnded);
     audio.addEventListener("error", handleAudioError);
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && state.status === "playing") setPlaying(false, true);
   });
-  setInterval(() => {
-    const date = getBudapestDate();
-    if (date === state.dailyDate) return;
-    if (state.mode === "daily" && (state.track || isModalOpen())) return;
-    state.dailyDate = date;
-    if (
-      state.mode === "daily" &&
-      state.status !== "playing" &&
-      !isModalOpen()
-    ) resetSession();
-  }, 1000);
+  setInterval(checkForDailyRollover, 1000);
 
   function validateTracks(value) {
     if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
@@ -2004,13 +2102,107 @@
     return valid;
   }
 
+  async function fetchTrackCatalog(date) {
+    const url = new URL(tracksUrl);
+    if (date) url.searchParams.set("date", date);
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`Track catalog returned ${response.status}.`);
+    return validateTracks(await response.json());
+  }
+
+  function commitPendingCatalog() {
+    const catalog = state.pendingCatalog;
+    if (!catalog) return false;
+    if (catalog.date !== getBudapestDate()) {
+      state.pendingCatalog = null;
+      return false;
+    }
+    if (isDailyRoundProtected()) return false;
+
+    discardPreparedAudio();
+    Object.assign(state, {
+      tracks: catalog.tracks,
+      dailyDate: catalog.date,
+      catalogDate: catalog.date,
+      pendingCatalog: null,
+      catalogNeedsUiSync: true,
+      catalogRefreshFailedDate: null,
+      catalogRetryAt: 0,
+    });
+    state.unavailable.clear();
+    renderDiscovery();
+    queueMicrotask(syncCatalogUi);
+    return true;
+  }
+
+  function syncCatalogUi() {
+    if (!state.catalogNeedsUiSync || isModalOpen()) return false;
+    state.catalogNeedsUiSync = false;
+    if (state.mode === "daily") resetSession();
+    else if (!state.track || state.trackStarted) prepareNextRound();
+    return true;
+  }
+
+  async function refreshTrackCatalog(date) {
+    if (!date || date === state.catalogDate) return false;
+    if (state.pendingCatalog?.date === date) return commitPendingCatalog();
+    if (state.catalogLoadingDate === date) return false;
+    if (
+      state.catalogRefreshFailedDate === date &&
+      Date.now() < state.catalogRetryAt
+    ) return false;
+
+    const request = ++state.catalogRequest;
+    state.catalogLoadingDate = date;
+    state.catalogRefreshFailedDate = null;
+    if (state.mode === "daily" && dailyNeedsCatalogRefresh(date)) {
+      clearAudioRound();
+      applyModeAvailability();
+    }
+
+    try {
+      const tracks = await fetchTrackCatalog(date);
+      if (request !== state.catalogRequest || date !== getBudapestDate()) {
+        return false;
+      }
+      state.pendingCatalog = { date, tracks };
+      state.catalogRetryAt = 0;
+      return commitPendingCatalog();
+    } catch (error) {
+      if (request !== state.catalogRequest) return false;
+      console.error("Corzaguessr could not refresh its track catalog.", error);
+      state.catalogRefreshFailedDate = date;
+      state.catalogRetryAt = Date.now() + 5000;
+      if (state.mode === "daily" && dailyNeedsCatalogRefresh(date)) {
+        applyModeAvailability();
+        announce(dailyCatalogErrorText);
+      }
+      return false;
+    } finally {
+      if (request === state.catalogRequest) state.catalogLoadingDate = null;
+    }
+  }
+
+  function checkForDailyRollover() {
+    if (!state.catalogDate || !state.tracks.length || state.status === "error") return;
+    const date = getBudapestDate();
+    if (date === state.catalogDate) return;
+    if (state.pendingCatalog && state.pendingCatalog.date !== date) {
+      state.pendingCatalog = null;
+    }
+    if (state.pendingCatalog?.date === date) {
+      commitPendingCatalog();
+      return;
+    }
+    void refreshTrackCatalog(date);
+  }
+
   async function loadTracks() {
     try {
-      const response = await fetch(tracksUrl, {
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) throw new Error(`Track catalog returned ${response.status}.`);
-      state.tracks = validateTracks(await response.json());
+      state.tracks = await fetchTrackCatalog();
+      state.catalogDate = state.dailyDate;
       renderDiscovery();
       if (state.mode) activateMode();
       else state.status = "ready";
