@@ -269,54 +269,53 @@
   // State and small utilities -----------------------------------------------
 
   const state = {
+    appPhase: "loading",
     mode: null,
-    status: "loading",
-    tracks: [],
-    track: null,
-    previousTrack: null,
     step: 0,
-    elapsed: 0,
-    time: 0,
-    maxTime: modes.survival.initialTime,
     rounds: 0,
     guesses: 0,
     correct: 0,
-    trackStarted: false,
     used: new Set(),
     discovered: loadDiscoveries(),
     personalBests: loadPersonalBests(),
     newPersonalBest: false,
     classicResult: null,
-    daily: loadDaily(),
-    dailyDate: getBudapestDate(),
-    catalogDate: null,
-    catalogLoadingDate: null,
-    catalogRequest: 0,
-    pendingCatalog: null,
-    catalogNeedsUiSync: false,
-    catalogRefreshFailedDate: null,
-    catalogRetryAt: 0,
-    activeAudio: null,
-    preparedAudio: null,
-    preparedTrack: null,
-    preparedMode: null,
-    audioLoad: 0,
-    unavailable: new Set(),
-    frame: 0,
-    previousTick: 0,
-    session: 0,
+    notice: null,
     activeSuggestion: -1,
+  };
+  const roundState = {
+    phase: "idle",
+    current: null,
+    previousDailyNumber: null,
+    nextId: 0,
+  };
+  const dailyState = {
+    progress: loadDaily(),
+    roundDate: getBudapestDate(),
+    retryRound: null,
+  };
+  const catalogState = {
+    applied: {
+      date: null,
+      version: 0,
+      tracks: [],
+    },
+    nextRequestId: 0,
+    refresh: { kind: "idle" },
+    unavailable: new Set(),
+  };
+  const overlayState = {
     returnFocus: null,
     pageScrollStyles: null,
-    resumeAfterDiscovery: false,
-    resumeAudio: null,
-    resumeToken: null,
-    endedDuringDiscovery: false,
+    discoverySuspension: null,
+  };
+  const availabilityState = {
+    signature: null,
   };
   const timers = new Map();
 
   root.classList.add("awaiting-mode", "rules-visible");
-  setBackgroundInert(false);
+  syncBackgroundInert();
 
   function formatTime(seconds) {
     return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, "0")}`;
@@ -330,6 +329,14 @@
 
   function currentMode() {
     return modes[state.mode];
+  }
+
+  function currentRound() {
+    return roundState.current;
+  }
+
+  function currentTrack() {
+    return roundState.current?.track || null;
   }
 
   function clearTimer(name) {
@@ -360,7 +367,7 @@
   }
 
   function focusPlay() {
-    if (!ui.play.disabled && !isModalOpen()) {
+    if (canUsePlayback()) {
       ui.play.focus({ preventScroll: true });
     }
   }
@@ -382,29 +389,35 @@
   }
 
   function canPreviewRules() {
-    return !isModalOpen() && (isAwaitingMode() || (state.mode && !state.track));
+    return !isModalOpen() && (isAwaitingMode() || (state.mode && !currentRound()));
+  }
+
+  function canUsePlayback() {
+    return (
+      state.appPhase === "ready" &&
+      state.mode &&
+      !isAwaitingMode() &&
+      !isModalOpen() &&
+      !ui.play.disabled
+    );
   }
 
   function isRoundReadyToStart() {
-    return (
-      state.mode &&
-      !state.track &&
-      !isAwaitingMode() &&
-      !isModalOpen() &&
-      !ui.play.disabled &&
-      state.status !== "loading"
-    );
+    return canUsePlayback() && !currentRound();
   }
 
   function transitionDelay(milliseconds) {
     return reducedMotion.matches ? 0 : milliseconds;
   }
 
-  function setBackgroundInert(inert) {
-    ui.headerAction.inert = inert;
-    ui.modes.inert = inert;
-    ui.board.inert = inert || isAwaitingMode();
-    ui.slots.inert = inert || isAwaitingMode();
+  function syncBackgroundInert() {
+    const resultOpen = isResultOpen();
+    const discoveryOpen = isDiscoveryOpen();
+    const overlayOpen = resultOpen || discoveryOpen;
+    ui.headerAction.inert = resultOpen;
+    ui.modes.inert = overlayOpen;
+    ui.board.inert = overlayOpen || isAwaitingMode();
+    ui.slots.inert = overlayOpen || isAwaitingMode();
   }
 
   function setProgress(text, scale) {
@@ -555,41 +568,42 @@
   function saveDaily() {
     writeStorage(
       dailyStorageKey,
-      state.daily,
+      dailyState.progress,
       "DAILY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.",
     );
   }
 
-  function isDailyDone(date = state.dailyDate) {
-    return state.daily.date === date && state.daily.completed;
+  function isDailyDone(date = dailyState.roundDate) {
+    return dailyState.progress.date === date && dailyState.progress.completed;
   }
 
-  function isDailyStarted(date = state.dailyDate) {
-    return state.daily.date === date && state.daily.started;
+  function isDailyStarted(date = dailyState.roundDate) {
+    return dailyState.progress.date === date && dailyState.progress.started;
   }
 
-  function isDailyInProgress(date = state.dailyDate) {
-    return isDailyStarted(date) && !state.daily.completed;
+  function isDailyInProgress(date = dailyState.roundDate) {
+    return isDailyStarted(date) && !dailyState.progress.completed;
   }
 
   function getDailyDoneText() {
-    if (state.daily.date === state.dailyDate && state.daily.completed) {
-      const attempts = state.daily.step + 1;
-      const label = state.daily.won ? "COMPLETED" : "FAILED";
+    if (dailyState.progress.date === dailyState.roundDate && dailyState.progress.completed) {
+      const attempts = dailyState.progress.step + 1;
+      const label = dailyState.progress.won ? "COMPLETED" : "FAILED";
       return `${label} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK TOMORROW`;
     }
     return dailyDoneText;
   }
 
   function getDailyInProgressText() {
-    const attempt = state.daily.step + 1;
+    const attempt = dailyState.progress.step + 1;
     return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${attempt}`;
   }
 
   function markDailyStarted() {
-    if (state.mode !== "daily" || isDailyStarted(state.dailyDate)) return;
-    state.daily = {
-      date: state.dailyDate,
+    const date = currentRound()?.roundDate;
+    if (state.mode !== "daily" || !date || isDailyStarted(date)) return;
+    dailyState.progress = {
+      date,
       started: true,
       completed: false,
       won: false,
@@ -599,20 +613,23 @@
   }
 
   function saveDailyStep() {
+    const date = currentRound()?.roundDate;
     if (
       state.mode !== "daily" ||
-      state.daily.date !== state.dailyDate ||
-      !state.daily.started ||
-      state.daily.completed
+      !date ||
+      dailyState.progress.date !== date ||
+      !dailyState.progress.started ||
+      dailyState.progress.completed
     ) return;
-    state.daily.step = state.step;
+    dailyState.progress.step = state.step;
     saveDaily();
   }
 
   function completeDaily(won) {
-    if (state.mode !== "daily") return;
-    state.daily = {
-      date: state.dailyDate,
+    const date = currentRound()?.roundDate;
+    if (state.mode !== "daily" || !date) return;
+    dailyState.progress = {
+      date,
       started: true,
       completed: true,
       won: Boolean(won),
@@ -631,30 +648,436 @@
   }
 
   function isDailyRoundProtected() {
-    return (
-      state.mode === "daily" &&
-      (
-        isDailyInProgress(state.dailyDate) ||
-        (isResultOpen() && isDailyStarted(state.dailyDate))
-      )
-    );
+    if (state.mode !== "daily") return false;
+    const round = currentRound() || dailyState.retryRound;
+    if (round?.modeName !== "daily") return false;
+    return roundState.phase === "result" || isDailyInProgress(round.roundDate);
   }
 
   function dailyNeedsCatalogRefresh(date = getBudapestDate()) {
     return (
       state.mode === "daily" &&
-      date !== state.catalogDate &&
+      date !== catalogState.applied.date &&
       !isDailyRoundProtected()
     );
   }
 
   function getDailyCatalogStatusText() {
-    return state.catalogRefreshFailedDate === getBudapestDate()
+    return catalogState.refresh.kind === "retry" &&
+      catalogState.refresh.date === getBudapestDate()
       ? dailyCatalogErrorText
       : dailyCatalogLoadingText;
   }
 
   // Audio streaming ---------------------------------------------------------
+
+  function createAudioDeck(elements, handlers) {
+    const slots = elements.map((element, id) => ({
+      id,
+      element,
+      generation: 0,
+      role: "empty",
+      round: null,
+      events: null,
+      failed: false,
+    }));
+    let active = null;
+    let standby = null;
+    let nextGeneration = 0;
+    let lastActiveSlotId = null;
+    let transportPhase = "empty";
+    let suspension = null;
+
+    const slotSnapshot = (slot) => slot ? Object.freeze({
+      round: slot.round,
+      slotId: slot.id,
+      generation: slot.generation,
+    }) : null;
+    const isLive = (slot, generation) => (
+      slot.generation === generation && slot.role !== "empty"
+    );
+    const isSuspendedSlot = (slot) => Boolean(
+      suspension &&
+      suspension.slotId === slot.id &&
+      suspension.generation === slot.generation &&
+      suspension.roundId === slot.round?.id
+    );
+
+    function seekToStart(slot) {
+      if (!slot?.round) return;
+      if (slot.element.readyState < HTMLMediaElement.HAVE_METADATA) return;
+      try {
+        slot.element.currentTime = Math.min(
+          slot.round.track.at,
+          Math.max(0, slot.element.duration - 0.05),
+        );
+      } catch {
+        // The media fragment remains the fallback until seeking is possible.
+      }
+    }
+
+    function releaseSlot(slot) {
+      if (!slot) return;
+      slot.events?.abort();
+      slot.events = null;
+      slot.role = "empty";
+      slot.round = null;
+      slot.failed = false;
+      slot.element.pause();
+      slot.element.removeAttribute("src");
+      slot.element.load();
+    }
+
+    function emitFailure(slot, error) {
+      if (!slot || slot.failed) return;
+      slot.failed = true;
+      const role = slot.role;
+      const payload = { ...slotSnapshot(slot), role, error };
+      if (role === "standby") {
+        standby = null;
+        releaseSlot(slot);
+      } else if (role === "active") {
+        transportPhase = "error";
+        if (isSuspendedSlot(slot)) {
+          suspension.terminal = { status: "error", payload };
+          return;
+        }
+      }
+      handlers.onError(payload);
+    }
+
+    function bindSlotEvents(slot) {
+      const generation = slot.generation;
+      const controller = new AbortController();
+      const current = () => isLive(slot, generation);
+      slot.events = controller;
+      slot.element.addEventListener("loadedmetadata", () => {
+        if (current()) seekToStart(slot);
+      }, { signal: controller.signal });
+      slot.element.addEventListener("playing", () => {
+        if (
+          !current() ||
+          slot !== active ||
+          (transportPhase !== "starting" && transportPhase !== "buffering")
+        ) return;
+        transportPhase = "playing";
+        handlers.onPlaying(slotSnapshot(slot));
+      }, { signal: controller.signal });
+      slot.element.addEventListener("waiting", () => {
+        if (!current() || slot !== active || transportPhase === "paused") return;
+        transportPhase = "buffering";
+        handlers.onWaiting(slotSnapshot(slot));
+      }, { signal: controller.signal });
+      slot.element.addEventListener("ended", () => {
+        if (!current() || slot !== active) return;
+        transportPhase = "ended";
+        const payload = slotSnapshot(slot);
+        if (isSuspendedSlot(slot)) {
+          suspension.terminal = { status: "ended", payload };
+        } else {
+          handlers.onEnded(payload);
+        }
+      }, { signal: controller.signal });
+      slot.element.addEventListener("error", () => {
+        if (current()) emitFailure(slot, slot.element.error);
+      }, { signal: controller.signal });
+    }
+
+    function discardStandby() {
+      const slot = standby;
+      standby = null;
+      releaseSlot(slot);
+    }
+
+    function releaseActive() {
+      const slot = active;
+      if (slot) lastActiveSlotId = slot.id;
+      active = null;
+      suspension = null;
+      transportPhase = standby ? "paused" : "empty";
+      releaseSlot(slot);
+    }
+
+    function assignStandby(round) {
+      discardStandby();
+      const available = slots.filter((candidate) => candidate !== active);
+      const slot = available.find((candidate) => candidate.id !== lastActiveSlotId) || available[0];
+      if (!slot) return null;
+      releaseSlot(slot);
+      Object.assign(slot, {
+        generation: ++nextGeneration,
+        role: "standby",
+        round,
+      });
+      slot.element.preload = "auto";
+      standby = slot;
+      bindSlotEvents(slot);
+      slot.element.src = getAudioUrl(round.track);
+      slot.element.load();
+      return slotSnapshot(slot);
+    }
+
+    function getStandby() {
+      return slotSnapshot(standby);
+    }
+
+    function getActive() {
+      const slot = slotSnapshot(active);
+      return slot ? Object.freeze({ ...slot, transportPhase }) : null;
+    }
+
+    function promoteStandby() {
+      if (!standby) return null;
+      const previous = active;
+      active = standby;
+      standby = null;
+      active.role = "active";
+      transportPhase = "paused";
+      if (previous && previous !== active) releaseSlot(previous);
+      return active.round;
+    }
+
+    function playActive({ rewind = false } = {}) {
+      if (!active) return false;
+      const slot = active;
+      const generation = slot.generation;
+      if (rewind) seekToStart(slot);
+      transportPhase = "starting";
+      slot.element.play()?.catch((error) => {
+        if (!isLive(slot, generation) || slot !== active || error?.name === "AbortError") return;
+        if (error?.name === "NotAllowedError") {
+          transportPhase = "paused";
+          handlers.onPlayBlocked(slotSnapshot(slot));
+          return;
+        }
+        emitFailure(slot, error);
+      });
+      return true;
+    }
+
+    function pauseActive() {
+      if (!active) return false;
+      transportPhase = "paused";
+      active.element.pause();
+      return true;
+    }
+
+    function reset({ keepStandby = false } = {}) {
+      releaseActive();
+      if (!keepStandby) discardStandby();
+      transportPhase = standby ? "paused" : "empty";
+    }
+
+    function isPlayRequested() {
+      return transportPhase === "starting" ||
+        transportPhase === "playing" ||
+        transportPhase === "buffering";
+    }
+
+    function suspendActive() {
+      if (!active) return null;
+      suspension = {
+        slotId: active.id,
+        generation: active.generation,
+        roundId: active.round.id,
+        shouldResume: isPlayRequested(),
+        terminal: null,
+      };
+      pauseActive();
+      return Object.freeze({
+        slotId: suspension.slotId,
+        generation: suspension.generation,
+        roundId: suspension.roundId,
+      });
+    }
+
+    function restoreActive(token) {
+      if (
+        !token ||
+        !suspension ||
+        token.slotId !== suspension.slotId ||
+        token.generation !== suspension.generation ||
+        token.roundId !== suspension.roundId ||
+        !active ||
+        active.id !== token.slotId ||
+        active.generation !== token.generation ||
+        active.round.id !== token.roundId
+      ) {
+        suspension = null;
+        return { status: "stale" };
+      }
+      const saved = suspension;
+      suspension = null;
+      if (saved.terminal) return saved.terminal;
+      if (!saved.shouldResume) return { status: "paused", round: active.round };
+      playActive();
+      return { status: "resumed", round: active.round };
+    }
+
+    return {
+      assignStandby,
+      getStandby,
+      getActive,
+      promoteStandby,
+      playActive,
+      pauseActive,
+      releaseActive,
+      discardStandby,
+      reset,
+      suspendActive,
+      restoreActive,
+      isPlayRequested,
+    };
+  }
+
+  function createGameClock({ onTick, onExpire }) {
+    const clock = {
+      kind: "classic",
+      running: false,
+      expired: false,
+      anchorMs: 0,
+      elapsedMs: 0,
+      remainingMs: 0,
+      limitMs: snippetDurations[0] * 1000,
+      maxRemainingMs: 0,
+      frame: 0,
+    };
+    const snapshot = () => Object.freeze({
+      kind: clock.kind,
+      running: clock.running,
+      expired: clock.expired,
+      elapsedMs: clock.elapsedMs,
+      remainingMs: clock.remainingMs,
+      limitMs: clock.limitMs,
+      maxRemainingMs: clock.maxRemainingMs,
+    });
+
+    function cancelFrame() {
+      cancelAnimationFrame(clock.frame);
+      clock.frame = 0;
+    }
+
+    function reachedLimit() {
+      return clock.kind === "classic"
+        ? clock.elapsedMs >= clock.limitMs
+        : clock.remainingMs <= 0;
+    }
+
+    function expireIfNeeded() {
+      if (clock.expired || !reachedLimit()) return false;
+      clock.expired = true;
+      clock.running = false;
+      cancelFrame();
+      onTick(snapshot());
+      onExpire(snapshot());
+      return true;
+    }
+
+    function commit(now = performance.now(), allowExpire = true) {
+      if (!clock.running) return snapshot();
+      const delta = Math.max(0, now - clock.anchorMs);
+      clock.anchorMs = now;
+      if (clock.kind === "classic") {
+        clock.elapsedMs += delta;
+      } else {
+        clock.remainingMs = Math.max(0, clock.remainingMs - delta);
+        if (clock.kind === "survival") clock.elapsedMs += delta;
+      }
+      onTick(snapshot());
+      if (allowExpire) expireIfNeeded();
+      return snapshot();
+    }
+
+    function tick(now) {
+      if (!clock.running) return;
+      commit(now);
+      if (clock.running) clock.frame = requestAnimationFrame(tick);
+    }
+
+    function resetClassic(limitMs) {
+      cancelFrame();
+      Object.assign(clock, {
+        kind: "classic",
+        running: false,
+        expired: false,
+        anchorMs: 0,
+        elapsedMs: 0,
+        remainingMs: 0,
+        limitMs,
+        maxRemainingMs: 0,
+      });
+      onTick(snapshot());
+      return snapshot();
+    }
+
+    function setClassicLimit(limitMs) {
+      commit(performance.now(), false);
+      clock.limitMs = limitMs;
+      expireIfNeeded();
+      onTick(snapshot());
+      return snapshot();
+    }
+
+    function resetTimed(kind, initialMs) {
+      cancelFrame();
+      Object.assign(clock, {
+        kind,
+        running: false,
+        expired: false,
+        anchorMs: 0,
+        elapsedMs: 0,
+        remainingMs: initialMs,
+        limitMs: 0,
+        maxRemainingMs: initialMs,
+      });
+      onTick(snapshot());
+      return snapshot();
+    }
+
+    function resume() {
+      if (clock.running || clock.expired) return false;
+      clock.running = true;
+      clock.anchorMs = performance.now();
+      clock.frame = requestAnimationFrame(tick);
+      return true;
+    }
+
+    function pause() {
+      if (clock.running) commit();
+      clock.running = false;
+      cancelFrame();
+      return snapshot();
+    }
+
+    function adjustRemaining(deltaMs) {
+      if (clock.kind === "classic" || clock.expired) return snapshot();
+      if (clock.running) commit();
+      if (clock.expired) return snapshot();
+      clock.remainingMs = Math.max(0, clock.remainingMs + deltaMs);
+      clock.maxRemainingMs = Math.max(clock.maxRemainingMs, clock.remainingMs);
+      onTick(snapshot());
+      expireIfNeeded();
+      return snapshot();
+    }
+
+    function stop({ flush = true } = {}) {
+      if (flush && clock.running) commit(performance.now(), false);
+      clock.running = false;
+      cancelFrame();
+      return snapshot();
+    }
+
+    return {
+      resetClassic,
+      setClassicLimit,
+      resetTimed,
+      resume,
+      pause,
+      adjustRemaining,
+      stop,
+      snapshot,
+    };
+  }
 
   function getAudioUrl(track) {
     const url = new URL(
@@ -665,55 +1088,7 @@
     return url.href;
   }
 
-  function releaseAudio(audio) {
-    if (!audio) return;
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.removeAttribute("data-load-token");
-    audio.load();
-  }
-
-  function seekAudio(audio, track) {
-    if (!audio || !track) return;
-    const seek = () => {
-      if (
-        audio !== state.activeAudio ||
-        track !== state.track ||
-        audio.dataset.loadToken !== track.audioToken
-      ) return;
-      try {
-        audio.currentTime = Math.min(track.at, Math.max(0, audio.duration - 0.05));
-      } catch {
-        // The media fragment still starts playback at the requested offset.
-      }
-    };
-    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) seek();
-    else audio.addEventListener("loadedmetadata", seek, { once: true });
-  }
-
-  function prepareAudio(audio, track) {
-    const token = String(++state.audioLoad);
-    track.audioToken = token;
-    audio.pause();
-    audio.preload = "auto";
-    audio.dataset.loadToken = token;
-    audio.src = getAudioUrl(track);
-    audio.addEventListener("loadedmetadata", () => {
-      if (
-        audio.dataset.loadToken !== token ||
-        audio !== state.preparedAudio ||
-        track !== state.preparedTrack
-      ) return;
-      try {
-        audio.currentTime = Math.min(track.at, Math.max(0, audio.duration - 0.05));
-      } catch {
-        // Seeking will be retried when this player becomes active.
-      }
-    }, { once: true });
-    audio.load();
-  }
-
-  function createRoundTrack(selected) {
+  function createRoundCandidate(selected) {
     if (!selected) return null;
     const mode = currentMode();
     const minimumRemainingSeconds = Math.min(
@@ -725,107 +1100,121 @@
       Math.floor(selected.duration - minimumRemainingSeconds),
     );
     return {
-      ...selected,
-      at: mode.daily
-        ? hashDaily(
-          `corzaguessr-daily-clip-v1:${state.dailyDate}:${selected.dailyNumber}`,
-        ) % (available + 1)
-        : Math.floor(Math.random() * (available + 1)),
+      id: ++roundState.nextId,
+      modeName: state.mode,
+      catalogVersion: catalogState.applied.version,
+      roundDate: mode.daily ? dailyState.roundDate : null,
+      hasPlayed: false,
+      track: {
+        ...selected,
+        at: mode.daily
+          ? hashDaily(
+            `corzaguessr-daily-clip-v1:${dailyState.roundDate}:${selected.dailyNumber}`,
+          ) % (available + 1)
+          : Math.floor(Math.random() * (available + 1)),
+      },
     };
   }
 
-  function discardPreparedAudio() {
-    const audio = state.preparedAudio;
-    state.preparedAudio = null;
-    state.preparedTrack = null;
-    state.preparedMode = null;
-    releaseAudio(audio);
+  function standbyMatchesSession(standby = audioDeck.getStandby()) {
+    return Boolean(
+      standby &&
+      standby.round.modeName === state.mode &&
+      standby.round.catalogVersion === catalogState.applied.version &&
+      (!currentMode().daily || standby.round.roundDate === dailyState.roundDate)
+    );
   }
 
-  function prepareNextRound() {
-    if (!state.mode || !state.tracks.length) return;
+  function ensureStandby() {
+    if (!state.mode || !catalogState.applied.tracks.length) return;
     const mode = currentMode();
     if (
       mode.daily &&
-      (dailyNeedsCatalogRefresh() || state.track || isDailyDone(state.dailyDate))
+      (dailyNeedsCatalogRefresh() || currentRound() || isDailyDone(dailyState.roundDate))
     ) return;
-    if (
-      state.preparedAudio &&
-      state.preparedTrack &&
-      state.preparedMode === state.mode
-    ) return;
-
-    discardPreparedAudio();
-    const track = createRoundTrack(selectTrack());
-    if (!track) return;
-    const audio = ui.audioPlayers.find((player) => player !== state.activeAudio);
-    if (!audio) return;
-    state.preparedAudio = audio;
-    state.preparedTrack = track;
-    state.preparedMode = state.mode;
-    prepareAudio(audio, track);
+    if (standbyMatchesSession()) return audioDeck.getStandby();
+    audioDeck.discardStandby();
+    const candidate = mode.daily && dailyState.retryRound
+      ? dailyState.retryRound
+      : createRoundCandidate(selectTrack());
+    return candidate ? audioDeck.assignStandby(candidate) : null;
   }
 
-  function takePreparedRound() {
-    if (
-      !state.preparedAudio ||
-      !state.preparedTrack ||
-      state.preparedMode !== state.mode
-    ) prepareNextRound();
-    if (!state.preparedAudio || !state.preparedTrack) return null;
-    const prepared = {
-      audio: state.preparedAudio,
-      track: state.preparedTrack,
-    };
-    state.preparedAudio = null;
-    state.preparedTrack = null;
-    state.preparedMode = null;
-    return prepared;
+  function promotePreparedRound() {
+    if (!standbyMatchesSession()) ensureStandby();
+    if (!standbyMatchesSession()) return null;
+    return audioDeck.promoteStandby();
   }
 
-  function cancelClock() {
-    cancelAnimationFrame(state.frame);
-    state.frame = 0;
-    state.previousTick = 0;
-  }
+  const gameClock = createGameClock({
+    onTick: renderClock,
+    onExpire: handleClockExpired,
+  });
+  const audioDeck = createAudioDeck(ui.audioPlayers, {
+    onPlaying: handleAudioPlaying,
+    onWaiting: handleAudioWaiting,
+    onEnded: handleAudioEnded,
+    onError: handleAudioError,
+    onPlayBlocked: handleAudioPlayBlocked,
+  });
 
-  function setPlaying(playing, pauseAudio = false) {
-    if (!playing) cancelClock();
-    if (state.status !== "ended") {
-      if (playing) state.status = "playing";
-      else if (state.status === "playing") state.status = "paused";
+  function renderClock(clock) {
+    const mode = currentMode();
+    if (!mode) return;
+    if (!mode.timed) {
+      setProgress(
+        formatTime(clock.elapsedMs / 1000),
+        clock.elapsedMs
+          ? clock.elapsedMs / (maxSnippetDuration * 1000) + 0.0025
+          : 0,
+      );
+      return;
     }
-    if (pauseAudio) state.activeAudio?.pause();
+    if (mode.survival) {
+      ui.endtime.textContent = formatTime(Math.ceil(clock.remainingMs / 1000));
+    }
+    setProgress(
+      formatTime((mode.survival ? clock.elapsedMs : clock.remainingMs) / 1000),
+      clock.remainingMs / (mode.survival ? clock.maxRemainingMs : mode.initialTime),
+    );
+  }
 
+  function handleClockExpired(clock) {
+    if (roundState.phase === "result") return;
+    if (clock.kind === "classic") {
+      audioDeck.pauseActive();
+      renderPlaybackIntent(false);
+      return;
+    }
+    endGame();
+  }
+
+  function renderPlaybackIntent(playing) {
     const icon = playing
       ? currentMode().timed ? "pause" : "stop"
       : "play";
     ui.icon.setAttribute("d", icons[icon]);
-    ui.play.setAttribute("aria-label", icon === "play" ? "PLAY" : icon === "pause" ? "PAUSE" : "STOP");
+    ui.play.setAttribute(
+      "aria-label",
+      icon === "play" ? "PLAY" : icon === "pause" ? "PAUSE" : "STOP",
+    );
   }
 
-  function playActiveAudio(rewind = false) {
-    const audio = state.activeAudio;
-    const track = state.track;
-    if (!audio || !track) return;
-    if (rewind) seekAudio(audio, track);
-    const session = state.session;
-    const token = track.audioToken;
-    const play = audio.play();
-    play?.catch((error) => {
-      if (
-        session !== state.session ||
-        audio !== state.activeAudio ||
-        token !== state.track?.audioToken ||
-        error?.name === "AbortError"
-      ) return;
-      if (error?.name === "NotAllowedError") {
-        setPlaying(false);
-        announce("PRESS PLAY TO START THE AUDIO.");
-        return;
-      }
-      handleTrackError();
-    });
+  function pausePlayback({ pauseAudio = true } = {}) {
+    const clock = gameClock.pause();
+    if (pauseAudio) audioDeck.pauseActive();
+    renderPlaybackIntent(false);
+    return clock;
+  }
+
+  function requestPlayback({ rewind = false } = {}) {
+    if (!currentRound() || audioDeck.getActive()?.round.id !== currentRound().id) return false;
+    if (rewind) {
+      currentRound().hasPlayed = false;
+      roundState.phase = "starting";
+    }
+    renderPlaybackIntent(true);
+    return audioDeck.playActive({ rewind });
   }
 
   function rewindClassic() {
@@ -838,173 +1227,105 @@
   }
 
   function startClassic() {
-    if (!state.track) return;
+    if (!currentRound()) return;
     rewindClassic();
-    state.elapsed = 0;
-    state.trackStarted = false;
-    setPlaying(true);
-    playActiveAudio(true);
+    gameClock.resetClassic(snippetDurations[state.step] * 1000);
+    requestPlayback({ rewind: true });
     focusGuess();
   }
 
-  function startClock() {
-    if (state.frame || state.status !== "playing") return;
-    const session = state.session;
-    const mode = currentMode();
-
-    const tick = (now) => {
-      if (session !== state.session || state.status !== "playing") {
-        cancelClock();
-        return;
-      }
-
-      state.previousTick ||= now;
-      const delta = Math.min(now - state.previousTick, 250);
-      state.previousTick = now;
-
-      if (!mode.timed) {
-        state.elapsed += delta;
-        setProgress(
-          formatTime(state.elapsed / 1000),
-          state.elapsed / (maxSnippetDuration * 1000) + 0.0025,
-        );
-        if (state.elapsed >= snippetDurations[state.step] * 1000) {
-          setPlaying(false, true);
-          return;
-        }
-      } else {
-        if (mode.survival) state.elapsed += delta;
-        state.time = Math.max(0, state.time - delta);
-        if (mode.survival) {
-          ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
-        }
-        setProgress(
-          formatTime((mode.survival ? state.elapsed : state.time) / 1000),
-          state.time / (mode.survival ? state.maxTime : mode.initialTime),
-        );
-        if (!state.time) {
-          endGame();
-          return;
-        }
-      }
-
-      state.frame = requestAnimationFrame(tick);
-    };
-
-    state.frame = requestAnimationFrame(tick);
+  function invalidateAudioSession({ discardStandby = true } = {}) {
+    gameClock.stop({ flush: false });
+    audioDeck.reset({ keepStandby: !discardStandby });
+    roundState.current = null;
+    roundState.phase = "idle";
+    overlayState.discoverySuspension = null;
+    renderPlaybackIntent(false);
   }
 
-  function clearAudioRound() {
-    const audioPlayers = new Set([
-      state.activeAudio,
-      state.preparedAudio,
-    ].filter(Boolean));
-    state.session++;
-    cancelClock();
-    state.activeAudio = null;
-    state.preparedAudio = null;
-    state.preparedTrack = null;
-    state.preparedMode = null;
-    state.track = null;
-    state.trackStarted = false;
-    state.elapsed = 0;
-    state.status = "idle";
-    state.resumeAfterDiscovery = false;
-    state.resumeAudio = null;
-    state.resumeToken = null;
-    state.endedDuringDiscovery = false;
-    audioPlayers.forEach(releaseAudio);
-    setPlaying(false);
-  }
-
-  function handleDailyTrackError() {
-    clearAudioRound();
-    ui.play.disabled = false;
-    ui.skip.disabled = true;
+  function handleDailyTrackError(round = currentRound()) {
+    dailyState.retryRound = round;
+    invalidateAudioSession();
+    state.notice = "daily-audio-error";
     clearSlots(false);
-    showRules(dailyAudioErrorText);
+    applyModeAvailability({ force: true });
     announce(dailyAudioErrorText);
   }
 
-  function handleTrackError() {
-    if (!state.track) return;
-    if (currentMode().daily) {
-      if (!isResultOpen()) handleDailyTrackError();
+  function handleActiveTrackError(round) {
+    if (
+      roundState.phase === "result" ||
+      !currentRound() ||
+      round.id !== currentRound().id
+    ) return;
+    if (round.modeName === "daily") {
+      if (!isResultOpen()) handleDailyTrackError(round);
       return;
     }
-    if (isModalOpen()) return;
-    const failedTrack = state.track;
-    const failedAudio = state.activeAudio;
-    state.unavailable.add(failedTrack.dailyNumber);
-    state.session++;
-    setPlaying(false, true);
-    state.activeAudio = null;
-    state.track = null;
-    state.trackStarted = false;
-    releaseAudio(failedAudio);
+    pausePlayback();
+    if (roundState.phase === "result") return;
+    const failedTrack = round.track;
+    catalogState.unavailable.add(failedTrack.dailyNumber);
+    audioDeck.releaseActive();
+    roundState.current = null;
+    roundState.phase = "idle";
     ui.skip.disabled = true;
     showRules(currentMode().description);
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
     announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
-    prepareNextRound();
+    ensureStandby();
   }
 
-  function handleAudioPlaying(event) {
+  function handleAudioPlaying(payload) {
     if (
-      event.currentTarget !== state.activeAudio ||
-      !state.track ||
-      event.currentTarget.dataset.loadToken !== state.track.audioToken ||
+      !currentRound() ||
+      payload.round.id !== currentRound().id ||
       isModalOpen() ||
-      state.status === "ended"
+      roundState.phase === "result"
     ) return;
+    currentRound().hasPlayed = true;
+    roundState.phase = "active";
     markDailyStarted();
-    state.trackStarted = true;
     ui.skip.disabled = false;
-    setPlaying(true);
-    startClock();
-    prepareNextRound();
+    renderPlaybackIntent(true);
+    gameClock.resume();
+    ensureStandby();
   }
 
-  function handleAudioWaiting(event) {
-    if (
-      event.currentTarget === state.activeAudio &&
-      event.currentTarget.dataset.loadToken === state.track?.audioToken &&
-      state.status === "playing"
-    ) {
-      cancelClock();
-    }
+  function handleAudioWaiting(payload) {
+    if (!currentRound() || payload.round.id !== currentRound().id) return;
+    gameClock.pause();
   }
 
-  function handleAudioEnded(event) {
+  function handleAudioEnded(payload) {
     if (
-      event.currentTarget !== state.activeAudio ||
-      !state.track ||
-      event.currentTarget.dataset.loadToken !== state.track.audioToken ||
-      !state.trackStarted ||
-      state.status === "ended"
+      !currentRound() ||
+      payload.round.id !== currentRound().id ||
+      !currentRound().hasPlayed ||
+      roundState.phase === "result"
     ) return;
-    if (isDiscoveryOpen()) state.endedDuringDiscovery = true;
-    else handleTrackEnded();
+    handleTrackEnded();
   }
 
-  function handleAudioError(event) {
-    const audio = event.currentTarget;
-    if (audio === state.preparedAudio && state.preparedTrack) {
-      if (state.preparedMode === "daily") {
-        handleDailyTrackError();
+  function handleAudioError(payload) {
+    if (payload.role === "standby") {
+      if (payload.round.modeName === "daily") {
+        handleDailyTrackError(payload.round);
         return;
       }
-      const failedTrack = state.preparedTrack;
-      state.unavailable.add(failedTrack.dailyNumber);
-      state.preparedAudio = null;
-      state.preparedTrack = null;
-      state.preparedMode = null;
-      releaseAudio(audio);
-      prepareNextRound();
-    } else if (audio === state.activeAudio) {
-      handleTrackError();
+      catalogState.unavailable.add(payload.round.track.dailyNumber);
+      ensureStandby();
+      return;
     }
+    handleActiveTrackError(payload.round);
+  }
+
+  function handleAudioPlayBlocked(payload) {
+    if (!currentRound() || payload.round.id !== currentRound().id) return;
+    gameClock.pause();
+    renderPlaybackIntent(false);
+    announce("PRESS PLAY TO START THE AUDIO.");
   }
 
   // Rendering ---------------------------------------------------------------
@@ -1038,6 +1359,9 @@
     const mode = modes[modeName];
     if (!mode) return modePromptText;
     if (!mode.daily) return mode.description;
+    if (state.mode === modeName && state.notice === "daily-audio-error") {
+      return dailyAudioErrorText;
+    }
     if (state.mode === modeName && dailyNeedsCatalogRefresh()) {
       return getDailyCatalogStatusText();
     }
@@ -1071,45 +1395,70 @@
     ui.guess.disabled = false;
   }
 
-  function clearSlots(animate = true) {
-    clearTimer("slots");
-    if (!ui.slots.children.length) return;
-    if (!animate || reducedMotion.matches) {
-      ui.slots.replaceChildren();
-      ui.slots.style.height = "";
-      return;
+  function createSlotView(container) {
+    const entering = new WeakSet();
+    let pendingClear = null;
+
+    function finishPendingClear(clear = pendingClear) {
+      if (!clear || pendingClear !== clear) return;
+      clearTimer("slots");
+      clear.items.forEach((item) => {
+        entering.delete(item);
+        item.remove();
+      });
+      container.style.height = "";
+      pendingClear = null;
     }
 
-    ui.play.disabled = true;
-    ui.slots.querySelectorAll(".slot").forEach((item) => item.classList.add("fade"));
-    ui.slots.style.height = `${ui.slots.offsetHeight}px`;
-    void ui.slots.offsetHeight;
-    ui.slots.style.height = "0px";
-    setTimer("slots", () => {
-      ui.slots.replaceChildren();
-      ui.slots.style.height = "";
-      ui.play.disabled =
-        state.status === "loading" ||
-        (currentMode()?.daily && isDailyDone(state.dailyDate));
-    }, durations.slot);
-  }
-
-  function addSlot(text, style = "", replace = false) {
-    const item = replace && ui.slots.firstElementChild
-      ? ui.slots.firstElementChild
-      : document.createElement("div");
-    item.className = `slot ${replace ? "" : "fade"} ${style}`.trim();
-    item.textContent = text;
-    if (!replace || !item.isConnected) {
-      ui.slots.prepend(item);
-      if (currentMode().timed) {
-        while (ui.slots.children.length > maxTimedSlots) {
-          ui.slots.lastElementChild.remove();
-        }
+    function clear(animate = true) {
+      finishPendingClear();
+      const items = [...container.children];
+      if (!items.length) return;
+      if (!animate || reducedMotion.matches) {
+        items.forEach((item) => item.remove());
+        container.style.height = "";
+        return;
       }
-      requestAnimationFrame(() => item.classList.remove("fade"));
+
+      items.forEach((item) => {
+        entering.delete(item);
+        item.classList.add("fade");
+      });
+      container.style.height = `${container.offsetHeight}px`;
+      void container.offsetHeight;
+      container.style.height = "0px";
+      const operation = { items };
+      pendingClear = operation;
+      setTimer("slots", () => finishPendingClear(operation), durations.slot);
     }
+
+    function add(text, style = "", replace = false) {
+      finishPendingClear();
+      const item = replace && container.firstElementChild
+        ? container.firstElementChild
+        : document.createElement("div");
+      entering.delete(item);
+      item.className = `slot ${replace ? "" : "fade"} ${style}`.trim();
+      item.textContent = text;
+      if (!replace || !item.isConnected) {
+        container.prepend(item);
+        if (currentMode().timed) {
+          while (container.children.length > maxTimedSlots) {
+            container.lastElementChild.remove();
+          }
+        }
+        entering.add(item);
+        requestAnimationFrame(() => {
+          if (!entering.delete(item) || !item.isConnected) return;
+          item.classList.remove("fade");
+        });
+      }
+    }
+
+    return { clear, add };
   }
+
+  const { clear: clearSlots, add: addSlot } = createSlotView(ui.slots);
 
   function renderPrompt() {
     if (currentMode().timed) {
@@ -1136,15 +1485,15 @@
   }
 
   function renderDiscoveryItems() {
-    if (state.status === "loading" && !state.tracks.length) {
+    if (state.appPhase === "loading" && !catalogState.applied.tracks.length) {
       ui.discoveryCount.textContent = formatDiscoveryCount(0, 0);
       ui.discoveryItems.textContent = "LOADING...";
       return;
     }
-    const validTitles = new Set(state.tracks.map((track) => track.title));
+    const validTitles = new Set(catalogState.applied.tracks.map((track) => track.title));
     const found = [...state.discovered].filter((title) => validTitles.has(title)).length;
-    ui.discoveryCount.textContent = formatDiscoveryCount(found, state.tracks.length);
-    ui.discoveryItems.replaceChildren(...state.tracks.map((track) => {
+    ui.discoveryCount.textContent = formatDiscoveryCount(found, catalogState.applied.tracks.length);
+    ui.discoveryItems.replaceChildren(...catalogState.applied.tracks.map((track) => {
       const item = document.createElement("div");
       item.className = "discovery-item";
       const discovered = state.discovered.has(track.title);
@@ -1161,7 +1510,7 @@
 
   function renderSuggestions() {
     const query = ui.guess.value.trim().toLocaleLowerCase();
-    const titles = state.tracks
+    const titles = catalogState.applied.tracks
       .filter(({ title }) =>
         query &&
         !state.used.has(title) &&
@@ -1205,93 +1554,90 @@
 
   function selectTrack() {
     if (currentMode().daily) {
-      return state.tracks.reduce((winner, track) => {
+      return catalogState.applied.tracks.reduce((winner, track) => {
         const score = hashDaily(
-          `corzaguessr-daily-v1:${state.dailyDate}:${track.dailyNumber}`,
+          `corzaguessr-daily-v1:${dailyState.roundDate}:${track.dailyNumber}`,
         );
         return !winner || score > winner.score ? { track, score } : winner;
       }, null).track;
     }
 
-    const availableTracks = state.tracks.filter(
-      (track) => !state.unavailable.has(track.dailyNumber),
+    const availableTracks = catalogState.applied.tracks.filter(
+      (track) => !catalogState.unavailable.has(track.dailyNumber),
     );
     if (!availableTracks.length) return null;
     const pool = availableTracks.length > 1
       ? availableTracks.filter(
-        (track) => track.dailyNumber !== state.previousTrack?.dailyNumber,
+        (track) => track.dailyNumber !== roundState.previousDailyNumber,
       )
       : availableTracks;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
   function startRound() {
-    if (!state.tracks.length) return;
+    if (!canUsePlayback() || !catalogState.applied.tracks.length) return;
     const mode = currentMode();
     if (mode.daily && dailyNeedsCatalogRefresh()) {
       applyModeAvailability();
-      void refreshTrackCatalog(getBudapestDate());
+      reconcileApp();
       return;
     }
-    if (mode.daily && isDailyInProgress(state.dailyDate)) {
-      state.step = state.daily.step;
+    if (mode.daily && isDailyInProgress(dailyState.roundDate)) {
+      state.step = dailyState.progress.step;
     }
-    const prepared = takePreparedRound();
+    gameClock.pause();
+    const prepared = promotePreparedRound();
     if (!prepared) return;
-    const previousAudio = state.activeAudio;
-    state.activeAudio = prepared.audio;
-    state.previousTrack = prepared.track;
-    state.track = prepared.track;
-    if (previousAudio && previousAudio !== state.activeAudio) {
-      releaseAudio(previousAudio);
+    prepared.hasPlayed = false;
+    roundState.current = prepared;
+    roundState.phase = "starting";
+    roundState.previousDailyNumber = prepared.track.dailyNumber;
+    state.notice = null;
+    if (mode.daily && dailyState.retryRound?.id === prepared.id) {
+      dailyState.retryRound = null;
     }
     state.used.clear();
     state.rounds++;
-    state.trackStarted = false;
-    state.session++;
     ui.skip.disabled = true;
-    if (!mode.timed) setProgress(mode.initialText, mode.initialProgress);
-    setPlaying(true);
-    playActiveAudio(true);
+    if (!mode.timed) {
+      gameClock.resetClassic(snippetDurations[state.step] * 1000);
+      setProgress(mode.initialText, mode.initialProgress);
+    }
+    renderPlaybackIntent(true);
+    audioDeck.playActive({ rewind: true });
     renderPrompt();
   }
 
   function togglePlay() {
-    if (ui.play.disabled || state.status === "loading" || isModalOpen()) return;
+    if (!canUsePlayback()) return;
     const mode = currentMode();
     if (mode.daily && dailyNeedsCatalogRefresh()) {
       applyModeAvailability();
-      void refreshTrackCatalog(getBudapestDate());
+      reconcileApp();
       return;
     }
-    if (mode.daily && isDailyDone(state.dailyDate) && !state.track) {
+    if (mode.daily && isDailyDone(dailyState.roundDate) && !currentRound()) {
       applyModeAvailability();
       return;
     }
-    if (!state.track) {
+    if (!currentRound()) {
       showGuess();
       startRound();
-    } else if (state.status === "playing") {
-      setPlaying(false, true);
+    } else if (audioDeck.isPlayRequested()) {
+      pausePlayback();
       if (!mode.timed) rewindClassic();
     } else if (!mode.timed) {
       startClassic();
     } else {
-      setPlaying(true);
-      playActiveAudio();
+      requestPlayback();
     }
     focusGuess();
   }
 
   function usePlaybackShortcut() {
-    if (
-      !state.mode ||
-      ui.play.disabled ||
-      state.status === "loading" ||
-      isModalOpen()
-    ) return;
+    if (!canUsePlayback()) return;
 
-    if (!state.track) {
+    if (!currentRound()) {
       togglePlay();
       return;
     }
@@ -1305,8 +1651,9 @@
   }
 
   function recordDiscovery() {
-    if (!state.track || state.discovered.has(state.track.title)) return;
-    state.discovered.add(state.track.title);
+    const track = currentTrack();
+    if (!track || state.discovered.has(track.title)) return;
+    state.discovered.add(track.title);
     saveDiscoveries();
     renderDiscovery();
   }
@@ -1338,16 +1685,13 @@
     const mode = currentMode();
     if (type !== "skip") state.guesses++;
     if (type === "correct") state.correct++;
+    let clock = gameClock.snapshot();
     if (mode.survival) {
       flashSurvivalChange(mode.timeChange[type] / 1000);
-      state.time = Math.max(0, state.time + mode.timeChange[type]);
-      state.maxTime = Math.max(state.maxTime, state.time);
-      ui.endtime.textContent = formatTime(Math.ceil(state.time / 1000));
-      setProgress(formatTime(state.elapsed / 1000), state.time / state.maxTime);
+      clock = gameClock.adjustRemaining(mode.timeChange[type]);
     }
-    setPlaying(false);
     announce(type === "correct" ? "CORRECT." : type === "wrong" ? "INCORRECT." : "SKIPPED.");
-    if (!state.time) endGame();
+    if (roundState.phase === "result" || clock.expired || !clock.remainingMs) endGame();
     else startRound();
   }
 
@@ -1366,7 +1710,9 @@
     saveDailyStep();
     renderPrompt();
     announce(type === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
-    if (state.status !== "playing") {
+    if (audioDeck.isPlayRequested()) {
+      gameClock.setClassicLimit(snippetDurations[state.step] * 1000);
+    } else {
       if (type === "skip") startClassic();
       else togglePlay();
     }
@@ -1457,7 +1803,11 @@
   }
 
   function attempt(type, title = "") {
-    if (!state.track || isModalOpen()) return;
+    if (!currentRound() || isModalOpen()) return;
+    if (currentMode().timed) {
+      const clock = pausePlayback();
+      if (clock.expired || roundState.phase === "result") return;
+    }
     renderAttempt(type, title);
     if (type === "correct") recordDiscovery();
     if (currentMode().timed) resolveTimedAttempt(type);
@@ -1467,24 +1817,26 @@
   function makeGuess(title = ui.guess.value.trim()) {
     if (
       !title ||
-      !state.track ||
-      (currentMode().timed && !state.trackStarted)
+      !currentRound() ||
+      (currentMode().timed && !currentRound().hasPlayed)
     ) return;
     state.used.add(title);
-    attempt(title === state.track.title ? "correct" : "wrong", title);
+    attempt(title === currentTrack().title ? "correct" : "wrong", title);
   }
 
   function handleTrackEnded() {
-    if (!state.track || !state.trackStarted || state.status === "ended") return;
-    state.trackStarted = false;
-    if (!currentMode().timed) setPlaying(false);
+    if (!currentRound() || !currentRound().hasPlayed || roundState.phase === "result") return;
+    const clock = gameClock.pause();
+    if (clock.expired || roundState.phase === "result") return;
+    currentRound().hasPlayed = false;
+    if (!currentMode().timed) renderPlaybackIntent(false);
     else attempt("skip");
   }
 
   function updateTimedPersonalBest() {
     const accuracy = getAccuracy();
     const score = state.mode === "survival"
-      ? Math.floor(state.elapsed)
+      ? Math.floor(gameClock.snapshot().elapsedMs)
       : state.correct;
     const record = state.personalBests[state.mode];
     if (score <= record.score) return;
@@ -1557,7 +1909,7 @@
   }
 
   function formatSurvivalRun() {
-    const time = formatTime(state.elapsed / 1000);
+    const time = formatTime(gameClock.snapshot().elapsedMs / 1000);
     return `TIME SURVIVED: ${time} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
   }
 
@@ -1588,7 +1940,7 @@
   function getResultModules() {
     const formatter = resultFormatters[state.mode];
     const modules = [];
-    if (!currentMode().timed) modules.push(["TRACK:", state.track.title]);
+    if (!currentMode().timed) modules.push(["TRACK:", currentTrack().title]);
     modules.push(
       ["RUN:", formatter.run()],
       [getPersonalBestLabel(), formatter.personalBest()],
@@ -1597,7 +1949,7 @@
   }
 
   function openSpotify() {
-    const trackId = state.track?.spotify;
+    const trackId = currentTrack()?.spotify;
     if (!trackId) return;
     window.open(
       `https://open.spotify.com/track/${trackId}`,
@@ -1607,12 +1959,13 @@
   }
 
   function endGame(won) {
-    if (!state.track) return;
+    if (!currentRound() || roundState.phase === "result") return;
     const mode = currentMode();
-    if (mode.timed || state.status === "playing") setPlaying(false, true);
-    state.status = "ended";
-    state.trackStarted = false;
-    state.session++;
+    gameClock.stop();
+    audioDeck.pauseActive();
+    renderPlaybackIntent(false);
+    roundState.phase = "result";
+    currentRound().hasPlayed = false;
     ui.play.disabled = true;
     ui.skip.disabled = true;
     ui.guess.disabled = true;
@@ -1625,7 +1978,7 @@
       : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
     setResultMeta(...getResultModules());
 
-    const hasSpotify = !mode.timed && Boolean(state.track.spotify);
+    const hasSpotify = !mode.timed && Boolean(currentTrack().spotify);
     ui.spotify.hidden = !hasSpotify;
 
     openResult();
@@ -1640,7 +1993,7 @@
     ui.card.style.setProperty("--modal-y", `${board.top - card.top + board.height / 2}px`);
     ui.card.classList.add("modal-open");
     ui.result.setAttribute("aria-hidden", "false");
-    setBackgroundInert(true);
+    syncBackgroundInert();
     ui.next.focus({ preventScroll: true });
     requestAnimationFrame(() => {
       ui.card.classList.add("modal-visible");
@@ -1655,9 +2008,8 @@
     setTimer("result", () => {
       ui.card.classList.remove("modal-open", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
-      setBackgroundInert(false);
-      checkForDailyRollover();
-      syncCatalogUi();
+      syncBackgroundInert();
+      reconcileApp();
       if (isRoundReadyToStart()) focusPlay();
     }, transitionDelay(durations.result));
   }
@@ -1667,29 +2019,30 @@
     ui.fill.style.transition = "";
   }
 
-  function resetSession({ keepResultOpen = false } = {}) {
+  function finalizeSessionReset() {
+    applyModeAvailability({ force: true });
+    reconcileApp();
+    if (isRoundReadyToStart()) focusPlay();
+  }
+
+  function resetSession({ keepResultOpen = false, finalize = true } = {}) {
     const mode = currentMode();
-    clearTimer("slots");
-    state.session++;
-    cancelClock();
-    const activeAudio = state.activeAudio;
-    state.activeAudio = null;
-    releaseAudio(activeAudio);
+    gameClock.stop({ flush: false });
+    audioDeck.releaseActive();
+    if (!standbyMatchesSession()) audioDeck.discardStandby();
+    roundState.current = null;
+    roundState.phase = "idle";
+    dailyState.retryRound = null;
 
     Object.assign(state, {
-      status: "idle",
-      track: null,
       step: 0,
-      elapsed: 0,
-      time: mode.initialTime,
-      maxTime: modes.survival.initialTime,
       rounds: 0,
       guesses: 0,
       correct: 0,
-      trackStarted: false,
       activeSuggestion: -1,
       newPersonalBest: false,
       classicResult: null,
+      notice: null,
     });
     state.used.clear();
     ui.status.textContent = "";
@@ -1701,8 +2054,7 @@
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
     }
-    setBackgroundInert(keepResultOpen);
-    ui.play.disabled = false;
+    syncBackgroundInert();
     ui.skip.disabled = true;
     clearSlots();
 
@@ -1710,18 +2062,17 @@
     ui.skip.textContent = mode.skip;
     ui.snippet.style.width = `${100 / maxSnippetDuration}%`;
     setProgress(mode.initialText, mode.initialProgress);
-    setPlaying(false);
-    applyModeAvailability();
-    if (mode.daily && dailyNeedsCatalogRefresh()) {
-      void refreshTrackCatalog(getBudapestDate());
+    if (mode.timed) {
+      gameClock.resetTimed(mode.survival ? "survival" : "blitz", mode.initialTime);
     } else {
-      prepareNextRound();
+      gameClock.resetClassic(snippetDurations[0] * 1000);
     }
-    if (isRoundReadyToStart()) focusPlay();
+    renderPlaybackIntent(false);
+    if (finalize) finalizeSessionReset();
   }
 
   function renderSavedDailyProgress() {
-    const seconds = snippetDurations[state.daily.step] || snippetDurations[0];
+    const seconds = snippetDurations[dailyState.progress.step] || snippetDurations[0];
     ui.endtime.textContent = formatTime(seconds);
     ui.snippet.style.width = `${seconds / maxSnippetDuration * 100}%`;
     setProgress(
@@ -1730,8 +2081,44 @@
     );
   }
 
-  function applyModeAvailability() {
+  function getAvailabilitySignature() {
+    if (state.appPhase !== "ready") {
+      return `app-${state.appPhase}-${state.mode || "no-mode"}`;
+    }
     const mode = currentMode();
+    if (!mode) return "no-mode";
+    if (mode.daily && state.notice === "daily-audio-error") return "daily-audio-error";
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      return `daily-catalog-${getDailyCatalogStatusText()}`;
+    }
+    if (mode.daily && isDailyDone(dailyState.roundDate)) {
+      return `daily-done-${dailyState.roundDate}-${dailyState.progress.won}-${dailyState.progress.step}`;
+    }
+    if (mode.daily && isDailyInProgress(dailyState.roundDate)) {
+      return `daily-progress-${dailyState.roundDate}-${dailyState.progress.step}`;
+    }
+    return `mode-${state.mode}`;
+  }
+
+  function applyModeAvailability({ force = false } = {}) {
+    const signature = getAvailabilitySignature();
+    if (!force && signature === availabilityState.signature) return;
+    availabilityState.signature = signature;
+    if (state.appPhase !== "ready") {
+      ui.play.disabled = true;
+      ui.skip.disabled = true;
+      ui.guess.disabled = true;
+      return;
+    }
+    const mode = currentMode();
+    if (!mode) return;
+    if (mode.daily && state.notice === "daily-audio-error") {
+      ui.play.disabled = false;
+      ui.skip.disabled = true;
+      ui.guess.disabled = true;
+      showRules(dailyAudioErrorText);
+      return;
+    }
     if (mode.daily && dailyNeedsCatalogRefresh()) {
       ui.play.disabled = true;
       ui.skip.disabled = true;
@@ -1739,7 +2126,7 @@
       showRules(getDailyCatalogStatusText());
       return;
     }
-    if (mode.daily && isDailyDone(state.dailyDate)) {
+    if (mode.daily && isDailyDone(dailyState.roundDate)) {
       ui.play.disabled = true;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
@@ -1747,14 +2134,17 @@
       renderSavedDailyProgress();
       return;
     }
-    if (mode.daily && isDailyInProgress(state.dailyDate)) {
-      ui.play.disabled = state.status === "loading";
+    if (mode.daily && isDailyInProgress(dailyState.roundDate)) {
+      ui.play.disabled = false;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
       showRules(getDailyInProgressText());
       renderSavedDailyProgress();
       return;
     }
+    ui.play.disabled = false;
+    ui.skip.disabled = true;
+    ui.guess.disabled = true;
     showRules(mode.description);
   }
 
@@ -1783,7 +2173,7 @@
     announce(message);
 
     if (isAwaitingMode()) {
-      if (state.tracks.length) activateMode();
+      if (catalogState.applied.tracks.length) activateMode();
       return;
     }
 
@@ -1794,12 +2184,17 @@
 
   function animateModeChange() {
     const mode = currentMode();
-    clearAudioRound();
+    state.appPhase = "transitioning";
+    invalidateAudioSession();
+    state.notice = null;
     cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
     setProgress(ui.now.textContent, mode.initialProgress);
-    setTimer("progress", () => {
-      resetSession();
+    applyModeAvailability({ force: true });
+    setTimer("mode-transition", () => {
+      resetSession({ finalize: false });
+      state.appPhase = "ready";
+      finalizeSessionReset();
       setTimer("progress", () => {
         ui.fill.style.transition = "";
       }, transitionDelay(durations.progress));
@@ -1811,11 +2206,11 @@
       !isAwaitingMode() ||
       isDiscoveryOpen() ||
       !state.mode ||
-      !state.tracks.length
+      !catalogState.applied.tracks.length
     ) return;
     root.classList.remove("awaiting-mode");
     ui.modePrompt.setAttribute("aria-hidden", "true");
-    setBackgroundInert(false);
+    syncBackgroundInert();
     animateModeChange();
   }
 
@@ -1826,10 +2221,10 @@
   }
 
   function lockPageScroll() {
-    if (state.pageScrollStyles) return;
+    if (overlayState.pageScrollStyles) return;
     const html = document.documentElement;
     const body = document.body;
-    state.pageScrollStyles = {
+    overlayState.pageScrollStyles = {
       htmlOverflow: html.style.overflow,
       htmlScrollbarGutter: html.style.scrollbarGutter,
       bodyOverflow: body.style.overflow,
@@ -1840,28 +2235,28 @@
   }
 
   function unlockPageScroll() {
-    if (!state.pageScrollStyles) return;
+    if (!overlayState.pageScrollStyles) return;
     const html = document.documentElement;
     const body = document.body;
-    html.style.overflow = state.pageScrollStyles.htmlOverflow;
-    html.style.scrollbarGutter = state.pageScrollStyles.htmlScrollbarGutter;
-    body.style.overflow = state.pageScrollStyles.bodyOverflow;
-    state.pageScrollStyles = null;
+    html.style.overflow = overlayState.pageScrollStyles.htmlOverflow;
+    html.style.scrollbarGutter = overlayState.pageScrollStyles.htmlScrollbarGutter;
+    body.style.overflow = overlayState.pageScrollStyles.bodyOverflow;
+    overlayState.pageScrollStyles = null;
   }
 
   function openDiscovery() {
     clearTimer("discovery");
+    gameClock.pause();
+    if (roundState.phase === "result") return;
     renderDiscovery();
-    state.returnFocus = document.activeElement;
-    state.resumeAfterDiscovery = state.status === "playing";
-    state.resumeAudio = state.activeAudio;
-    state.resumeToken = state.track?.audioToken || null;
-    state.endedDuringDiscovery = false;
-    if (state.resumeAfterDiscovery) setPlaying(false, true);
-    setBackgroundInert(true);
-    ui.headerAction.inert = false;
+    overlayState.returnFocus = document.activeElement;
+    overlayState.discoverySuspension = audioDeck.suspendActive();
+    if (overlayState.discoverySuspension) {
+      renderPlaybackIntent(false);
+    }
     lockPageScroll();
     root.classList.add("discovery-open");
+    syncBackgroundInert();
     ui.discoveryButton.setAttribute("aria-expanded", "true");
     ui.discoveryModal.setAttribute("aria-hidden", "false");
     ui.discoveryShell.style.height = "0px";
@@ -1882,32 +2277,21 @@
     setTimer("discovery", () => {
       root.classList.remove("discovery-open");
       ui.discoveryModal.setAttribute("aria-hidden", "true");
-      setBackgroundInert(false);
+      syncBackgroundInert();
       unlockPageScroll();
-      const returnFocus = state.returnFocus;
-      const ended = state.endedDuringDiscovery;
-      const resume = state.resumeAfterDiscovery;
-      const resumeAudio = state.resumeAudio;
-      const resumeToken = state.resumeToken;
-      state.endedDuringDiscovery = false;
-      state.resumeAfterDiscovery = false;
-      state.resumeAudio = null;
-      state.resumeToken = null;
-      if (ended) {
+      const returnFocus = overlayState.returnFocus;
+      const suspension = overlayState.discoverySuspension;
+      overlayState.discoverySuspension = null;
+      const restored = audioDeck.restoreActive(suspension);
+      if (restored.status === "ended") {
         handleTrackEnded();
-      } else if (
-        resume &&
-        state.track &&
-        state.status !== "ended" &&
-        state.activeAudio === resumeAudio &&
-        state.track.audioToken === resumeToken
-      ) {
-        setPlaying(true);
-        playActiveAudio();
+      } else if (restored.status === "error") {
+        handleAudioError(restored.payload);
+      } else if (restored.status === "resumed") {
+        renderPlaybackIntent(true);
       }
-      if (isAwaitingMode() && state.mode && state.tracks.length) activateMode();
-      checkForDailyRollover();
-      syncCatalogUi();
+      if (isAwaitingMode() && state.mode && catalogState.applied.tracks.length) activateMode();
+      reconcileApp();
       returnFocus?.focus?.({ preventScroll: true });
     }, transitionDelay(durations.discovery));
   }
@@ -1976,7 +2360,7 @@
     }
     if (event.key !== "Enter") return;
     event.preventDefault();
-    if (!state.track) {
+    if (!currentRound()) {
       usePlaybackShortcut();
       return;
     }
@@ -2063,16 +2447,10 @@
     focusGuess();
   });
 
-  ui.audioPlayers.forEach((audio) => {
-    audio.addEventListener("playing", handleAudioPlaying);
-    audio.addEventListener("waiting", handleAudioWaiting);
-    audio.addEventListener("ended", handleAudioEnded);
-    audio.addEventListener("error", handleAudioError);
-  });
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && state.status === "playing") setPlaying(false, true);
+    if (document.hidden && audioDeck.isPlayRequested()) pausePlayback();
   });
-  setInterval(checkForDailyRollover, 1000);
+  setInterval(reconcileApp, 1000);
 
   function validateTracks(value) {
     if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
@@ -2112,103 +2490,128 @@
     return validateTracks(await response.json());
   }
 
-  function commitPendingCatalog() {
-    const catalog = state.pendingCatalog;
-    if (!catalog) return false;
-    if (catalog.date !== getBudapestDate()) {
-      state.pendingCatalog = null;
+  function invalidateUnstartedOldDaily(today) {
+    if (state.mode !== "daily" || catalogState.applied.date === today) return false;
+    if (isDailyRoundProtected()) return false;
+    const current = currentRound();
+    const standby = audioDeck.getStandby();
+    const retry = dailyState.retryRound;
+    if (
+      current?.modeName === "daily" ||
+      standby?.round.modeName === "daily" ||
+      (retry?.modeName === "daily" && retry.roundDate !== today)
+    ) {
+      invalidateAudioSession();
+      dailyState.retryRound = null;
+      state.notice = null;
+      ui.skip.disabled = true;
+      clearSlots(false);
+      return true;
+    }
+    return false;
+  }
+
+  function applyStagedCatalog(today) {
+    const refresh = catalogState.refresh;
+    if (refresh.kind !== "staged") return false;
+    if (refresh.date !== today) {
+      catalogState.refresh = { kind: "idle" };
       return false;
     }
     if (isDailyRoundProtected()) return false;
 
-    discardPreparedAudio();
-    Object.assign(state, {
-      tracks: catalog.tracks,
-      dailyDate: catalog.date,
-      catalogDate: catalog.date,
-      pendingCatalog: null,
-      catalogNeedsUiSync: true,
-      catalogRefreshFailedDate: null,
-      catalogRetryAt: 0,
-    });
-    state.unavailable.clear();
+    audioDeck.discardStandby();
+    catalogState.applied = {
+      date: refresh.date,
+      version: catalogState.applied.version + 1,
+      tracks: refresh.tracks,
+    };
+    catalogState.refresh = { kind: "idle" };
+    catalogState.unavailable.clear();
+    dailyState.roundDate = refresh.date;
+    dailyState.retryRound = null;
+    state.notice = null;
+    if (state.mode === "daily" && !currentRound()) {
+      state.step = isDailyInProgress(refresh.date) ? dailyState.progress.step : 0;
+      gameClock.resetClassic(snippetDurations[state.step] * 1000);
+    }
     renderDiscovery();
-    queueMicrotask(syncCatalogUi);
     return true;
   }
 
-  function syncCatalogUi() {
-    if (!state.catalogNeedsUiSync || isModalOpen()) return false;
-    state.catalogNeedsUiSync = false;
-    if (state.mode === "daily") resetSession();
-    else if (!state.track || state.trackStarted) prepareNextRound();
-    return true;
-  }
-
-  async function refreshTrackCatalog(date) {
-    if (!date || date === state.catalogDate) return false;
-    if (state.pendingCatalog?.date === date) return commitPendingCatalog();
-    if (state.catalogLoadingDate === date) return false;
+  function ensureCatalogRequest(date) {
+    if (!date || !catalogState.applied.date || date === catalogState.applied.date) return false;
+    const refresh = catalogState.refresh;
     if (
-      state.catalogRefreshFailedDate === date &&
-      Date.now() < state.catalogRetryAt
+      (refresh.kind === "loading" || refresh.kind === "staged") &&
+      refresh.date === date
+    ) return false;
+    if (
+      refresh.kind === "retry" &&
+      refresh.date === date &&
+      Date.now() < refresh.retryAt
     ) return false;
 
-    const request = ++state.catalogRequest;
-    state.catalogLoadingDate = date;
-    state.catalogRefreshFailedDate = null;
-    if (state.mode === "daily" && dailyNeedsCatalogRefresh(date)) {
-      clearAudioRound();
-      applyModeAvailability();
-    }
-
-    try {
-      const tracks = await fetchTrackCatalog(date);
-      if (request !== state.catalogRequest || date !== getBudapestDate()) {
-        return false;
-      }
-      state.pendingCatalog = { date, tracks };
-      state.catalogRetryAt = 0;
-      return commitPendingCatalog();
-    } catch (error) {
-      if (request !== state.catalogRequest) return false;
+    const id = ++catalogState.nextRequestId;
+    catalogState.refresh = { kind: "loading", date, id };
+    void fetchTrackCatalog(date).then((tracks) => {
+      if (
+        catalogState.refresh.kind !== "loading" ||
+        catalogState.refresh.id !== id ||
+        date !== getBudapestDate()
+      ) return;
+      catalogState.refresh = { kind: "staged", date, tracks };
+      reconcileApp();
+    }).catch((error) => {
+      if (
+        catalogState.refresh.kind !== "loading" ||
+        catalogState.refresh.id !== id
+      ) return;
       console.error("Corzaguessr could not refresh its track catalog.", error);
-      state.catalogRefreshFailedDate = date;
-      state.catalogRetryAt = Date.now() + 5000;
+      catalogState.refresh = {
+        kind: "retry",
+        date,
+        retryAt: Date.now() + 5000,
+        error,
+      };
       if (state.mode === "daily" && dailyNeedsCatalogRefresh(date)) {
-        applyModeAvailability();
+        if (!isModalOpen()) applyModeAvailability();
         announce(dailyCatalogErrorText);
       }
-      return false;
-    } finally {
-      if (request === state.catalogRequest) state.catalogLoadingDate = null;
-    }
+    });
+    return true;
   }
 
-  function checkForDailyRollover() {
-    if (!state.catalogDate || !state.tracks.length || state.status === "error") return;
-    const date = getBudapestDate();
-    if (date === state.catalogDate) return;
-    if (state.pendingCatalog && state.pendingCatalog.date !== date) {
-      state.pendingCatalog = null;
+  function reconcileApp() {
+    if (state.appPhase !== "ready" || !catalogState.applied.date) return;
+    const today = getBudapestDate();
+    invalidateUnstartedOldDaily(today);
+    ensureCatalogRequest(today);
+    applyStagedCatalog(today);
+    if (
+      state.mode &&
+      state.notice !== "daily-audio-error" &&
+      !isDailyRoundProtected() &&
+      (!currentRound() || currentRound().hasPlayed)
+    ) ensureStandby();
+    if (state.mode && !isModalOpen() && !currentRound()) {
+      applyModeAvailability();
     }
-    if (state.pendingCatalog?.date === date) {
-      commitPendingCatalog();
-      return;
-    }
-    void refreshTrackCatalog(date);
   }
 
   async function loadTracks() {
     try {
-      state.tracks = await fetchTrackCatalog();
-      state.catalogDate = state.dailyDate;
+      const date = getBudapestDate();
+      const tracks = await fetchTrackCatalog();
+      catalogState.applied = { date, version: 1, tracks };
+      dailyState.roundDate = date;
+      catalogState.refresh = { kind: "idle" };
+      state.appPhase = "ready";
       renderDiscovery();
       if (state.mode) activateMode();
-      else state.status = "ready";
     } catch (error) {
       console.error("Corzaguessr could not load its track catalog.", error);
-      state.status = "error";
+      state.appPhase = "error";
       ui.play.disabled = true;
       ui.skip.disabled = true;
       ui.guess.disabled = true;
