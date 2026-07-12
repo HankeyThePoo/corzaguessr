@@ -305,6 +305,9 @@
     unavailable: new Set(),
   };
   const overlayState = {
+    kind: null,
+    phase: "closed",
+    generation: 0,
     returnFocus: null,
     pageScrollStyles: null,
     discoverySuspension: null,
@@ -313,6 +316,7 @@
     signature: null,
   };
   const timers = new Map();
+  const frames = new Map();
 
   root.classList.add("awaiting-mode", "rules-visible");
   syncBackgroundInert();
@@ -353,17 +357,32 @@
     timers.set(name, timer);
   }
 
+  function clearFrame(name) {
+    cancelAnimationFrame(frames.get(name));
+    frames.delete(name);
+  }
+
+  function setFrame(name, callback) {
+    clearFrame(name);
+    const frame = requestAnimationFrame(() => {
+      frames.delete(name);
+      callback();
+    });
+    frames.set(name, frame);
+  }
+
   function announce(message) {
     ui.status.textContent = "";
-    requestAnimationFrame(() => {
+    setFrame("announcement", () => {
       ui.status.textContent = message;
     });
   }
 
   function focusGuess() {
-    if (!ui.guess.disabled && !isModalOpen()) {
-      requestAnimationFrame(() => ui.guess.focus());
-    }
+    if (ui.guess.disabled || isModalOpen()) return;
+    setFrame("guess-focus", () => {
+      if (!ui.guess.disabled && !isModalOpen()) ui.guess.focus();
+    });
   }
 
   function focusPlay() {
@@ -373,11 +392,18 @@
   }
 
   function isResultOpen() {
-    return ui.card.classList.contains("modal-open");
+    return overlayState.kind === "result" && overlayState.phase !== "closed";
   }
 
   function isDiscoveryOpen() {
-    return root.classList.contains("discovery-open");
+    return overlayState.kind === "discovery" && overlayState.phase !== "closed";
+  }
+
+  function isDiscoveryVisible() {
+    return (
+      overlayState.kind === "discovery" &&
+      (overlayState.phase === "opening" || overlayState.phase === "open")
+    );
   }
 
   function isAwaitingMode() {
@@ -385,7 +411,7 @@
   }
 
   function isModalOpen() {
-    return isResultOpen() || isDiscoveryOpen();
+    return overlayState.phase !== "closed";
   }
 
   function canPreviewRules() {
@@ -418,6 +444,40 @@
     ui.modes.inert = overlayOpen;
     ui.board.inert = overlayOpen || isAwaitingMode();
     ui.slots.inert = overlayOpen || isAwaitingMode();
+  }
+
+  function beginOverlayTransition(kind, phase) {
+    overlayState.kind = kind;
+    overlayState.phase = phase;
+    return ++overlayState.generation;
+  }
+
+  function overlayTransitionMatches(kind, phase, generation) {
+    return (
+      overlayState.kind === kind &&
+      overlayState.phase === phase &&
+      overlayState.generation === generation
+    );
+  }
+
+  function canFocusElement(element) {
+    return Boolean(
+      element?.isConnected &&
+      !element.disabled &&
+      !element.hidden &&
+      !element.closest("[inert]")
+    );
+  }
+
+  function restoreOverlayFocus(preferred) {
+    if (isModalOpen()) return;
+    const target = [
+      preferred,
+      canUsePlayback() ? ui.play : null,
+      ui.discoveryButton,
+      ...Object.values(modeButtons),
+    ].find(canFocusElement);
+    target?.focus({ preventScroll: true });
   }
 
   function setProgress(text, scale) {
@@ -1505,7 +1565,16 @@
 
   function renderDiscovery() {
     renderDiscoveryItems();
-    if (isDiscoveryOpen()) requestAnimationFrame(setDiscoveryHeight);
+    if (isDiscoveryVisible()) {
+      const generation = overlayState.generation;
+      setFrame("discovery-layout", () => {
+        if (
+          overlayState.kind === "discovery" &&
+          overlayState.generation === generation &&
+          isDiscoveryVisible()
+        ) setDiscoveryHeight();
+      });
+    }
   }
 
   function renderSuggestions() {
@@ -1986,7 +2055,10 @@
   }
 
   function openResult() {
+    if (overlayState.phase !== "closed") return;
     clearTimer("result");
+    clearFrame("guess-focus");
+    const generation = beginOverlayTransition("result", "opening");
     ui.card.classList.remove("modal-closing");
     const card = ui.card.getBoundingClientRect();
     const board = ui.board.getBoundingClientRect();
@@ -1995,22 +2067,29 @@
     ui.result.setAttribute("aria-hidden", "false");
     syncBackgroundInert();
     ui.next.focus({ preventScroll: true });
-    requestAnimationFrame(() => {
+    setFrame("overlay-open", () => {
+      if (!overlayTransitionMatches("result", "opening", generation)) return;
       ui.card.classList.add("modal-visible");
+      overlayState.phase = "open";
     });
   }
 
   function closeResult() {
-    if (!isResultOpen() || ui.card.classList.contains("modal-closing")) return;
+    if (!isResultOpen() || overlayState.phase === "closing") return;
+    clearFrame("overlay-open");
+    const generation = beginOverlayTransition("result", "closing");
     ui.card.classList.add("modal-closing");
     ui.card.classList.remove("modal-visible");
     reset({ keepResultOpen: true });
     setTimer("result", () => {
-      ui.card.classList.remove("modal-open", "modal-closing");
-      ui.result.setAttribute("aria-hidden", "true");
+      if (!overlayTransitionMatches("result", "closing", generation)) return;
+      overlayState.kind = null;
+      overlayState.phase = "closed";
+      ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       syncBackgroundInert();
       reconcileApp();
-      if (isRoundReadyToStart()) focusPlay();
+      restoreOverlayFocus();
+      ui.result.setAttribute("aria-hidden", "true");
     }, transitionDelay(durations.result));
   }
 
@@ -2045,12 +2124,21 @@
       notice: null,
     });
     state.used.clear();
+    clearFrame("announcement");
+    clearFrame("guess-focus");
     ui.status.textContent = "";
     clearTimer("feedback");
     ui.feedback.classList.remove("survival-penalty", "survival-reward");
     ui.timeChange.classList.remove("survival-change");
     ui.timeChangeText.textContent = "";
     if (!keepResultOpen) {
+      clearTimer("result");
+      clearFrame("overlay-open");
+      if (overlayState.kind === "result") {
+        overlayState.generation++;
+        overlayState.kind = null;
+        overlayState.phase = "closed";
+      }
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
     }
@@ -2217,6 +2305,7 @@
   // Discovery modal ---------------------------------------------------------
 
   function setDiscoveryHeight() {
+    if (!isDiscoveryVisible()) return;
     ui.discoveryShell.style.height = `${ui.discoveryPanel.offsetHeight}px`;
   }
 
@@ -2245,10 +2334,13 @@
   }
 
   function openDiscovery() {
+    if (overlayState.phase !== "closed" || roundState.phase === "result") return;
     clearTimer("discovery");
+    clearFrame("guess-focus");
+    clearFrame("discovery-layout");
     gameClock.pause();
-    if (roundState.phase === "result") return;
     renderDiscovery();
+    const generation = beginOverlayTransition("discovery", "opening");
     overlayState.returnFocus = document.activeElement;
     overlayState.discoverySuspension = audioDeck.suspendActive();
     if (overlayState.discoverySuspension) {
@@ -2260,26 +2352,36 @@
     ui.discoveryButton.setAttribute("aria-expanded", "true");
     ui.discoveryModal.setAttribute("aria-hidden", "false");
     ui.discoveryShell.style.height = "0px";
-    requestAnimationFrame(() => {
+    setFrame("overlay-open", () => {
+      if (!overlayTransitionMatches("discovery", "opening", generation)) return;
       root.classList.add("discovery-visible");
       setDiscoveryHeight();
+      overlayState.phase = "open";
       ui.discoveryModal.focus({ preventScroll: true });
     });
   }
 
   function closeDiscovery() {
+    if (!isDiscoveryOpen() || overlayState.phase === "closing") return;
     clearTimer("discovery");
+    clearFrame("overlay-open");
+    clearFrame("discovery-layout");
+    const generation = beginOverlayTransition("discovery", "closing");
     root.classList.remove("discovery-visible");
     ui.discoveryButton.setAttribute("aria-expanded", "false");
     ui.discoveryShell.style.height = `${ui.discoveryShell.offsetHeight}px`;
     void ui.discoveryShell.offsetHeight;
     ui.discoveryShell.style.height = "0px";
     setTimer("discovery", () => {
-      root.classList.remove("discovery-open");
-      ui.discoveryModal.setAttribute("aria-hidden", "true");
+      if (!overlayTransitionMatches("discovery", "closing", generation)) return;
+      overlayState.kind = null;
+      overlayState.phase = "closed";
+      root.classList.remove("discovery-open", "discovery-visible");
+      ui.discoveryShell.style.height = "";
       syncBackgroundInert();
       unlockPageScroll();
       const returnFocus = overlayState.returnFocus;
+      overlayState.returnFocus = null;
       const suspension = overlayState.discoverySuspension;
       overlayState.discoverySuspension = null;
       const restored = audioDeck.restoreActive(suspension);
@@ -2292,13 +2394,14 @@
       }
       if (isAwaitingMode() && state.mode && catalogState.applied.tracks.length) activateMode();
       reconcileApp();
-      returnFocus?.focus?.({ preventScroll: true });
+      restoreOverlayFocus(returnFocus);
+      ui.discoveryModal.setAttribute("aria-hidden", "true");
     }, transitionDelay(durations.discovery));
   }
 
   function toggleDiscovery() {
-    if (isDiscoveryOpen()) closeDiscovery();
-    else openDiscovery();
+    if (overlayState.phase === "closed") openDiscovery();
+    else if (isDiscoveryOpen()) closeDiscovery();
   }
 
   function resetDiscovery() {
@@ -2396,7 +2499,7 @@
   });
 
   new ResizeObserver(() => {
-    if (root.classList.contains("discovery-visible")) setDiscoveryHeight();
+    if (isDiscoveryVisible()) setDiscoveryHeight();
   }).observe(ui.discoveryPanel);
 
   root.addEventListener("keydown", (event) => {
