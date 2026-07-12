@@ -10,6 +10,8 @@
   const scriptUrl = new URL(document.currentScript?.src || location.href);
   const tracksUrl = new URL("tracks.json", scriptUrl);
   tracksUrl.search = scriptUrl.search;
+  const audioFolderUrl =
+    "https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/";
   const snippetDurations = [1, 2, 4, 8, 16, 32];
   const maxSnippetDuration = snippetDurations.at(-1);
   const maxTimedClipSeconds = 60;
@@ -31,11 +33,6 @@
     "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
   const hiddenTitle = "???????????????????";
-  const youtubeOrigin = "https://www.youtube-nocookie.com";
-  const youtubeOrigins = new Set([
-    youtubeOrigin,
-    "https://www.youtube.com",
-  ]);
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const interactiveSelector = "button, input, a, .suggest";
   const budapestDateFormatter = new Intl.DateTimeFormat("en", {
@@ -218,12 +215,8 @@
       </div>
     </div>
     <p class="sr-only status" aria-live="polite"></p>
-    <iframe
-      class="yt hide"
-      title="CORZAGUESSR AUDIO PLAYER"
-      allow="autoplay; encrypted-media; picture-in-picture"
-      allowfullscreen
-    ></iframe>
+    <audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>
+    <audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>
   `;
 
   const $ = (selector) => root.querySelector(selector);
@@ -262,7 +255,7 @@
     discoveryClose: $(".discovery-close"),
     discoveryReset: $(".discovery-reset"),
     status: $(".status"),
-    yt: $(".yt"),
+    audioPlayers: [...root.querySelectorAll(".audio")],
     icon: $(".icon path"),
   };
   const modeButtons = Object.fromEntries(
@@ -293,7 +286,12 @@
     classicResult: null,
     daily: loadDaily(),
     dailyDate: getBudapestDate(),
-    playerReady: false,
+    activeAudio: null,
+    preparedAudio: null,
+    preparedTrack: null,
+    preparedMode: null,
+    audioLoad: 0,
+    unavailable: new Set(),
     frame: 0,
     previousTick: 0,
     session: 0,
@@ -301,6 +299,8 @@
     returnFocus: null,
     pageScrollStyles: null,
     resumeAfterDiscovery: false,
+    resumeAudio: null,
+    resumeToken: null,
     endedDuringDiscovery: false,
   };
   const timers = new Map();
@@ -620,14 +620,128 @@
     return hash >>> 0;
   }
 
-  // YouTube player ----------------------------------------------------------
+  // Audio streaming ---------------------------------------------------------
 
-  function sendPlayerCommand(func, ...args) {
-    if (!ui.yt.contentWindow) return;
-    ui.yt.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func, args }),
-      youtubeOrigin,
+  function getAudioUrl(track) {
+    const url = new URL(
+      `${String(track.dailyNumber).padStart(2, "0")}.mp3`,
+      audioFolderUrl,
     );
+    url.hash = `t=${track.at},${Math.min(track.duration, track.at + track.clipSeconds)}`;
+    return url.href;
+  }
+
+  function releaseAudio(audio) {
+    if (!audio) return;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.removeAttribute("data-load-token");
+    audio.load();
+  }
+
+  function seekAudio(audio, track) {
+    if (!audio || !track) return;
+    const seek = () => {
+      if (
+        audio !== state.activeAudio ||
+        track !== state.track ||
+        audio.dataset.loadToken !== track.audioToken
+      ) return;
+      try {
+        audio.currentTime = Math.min(track.at, Math.max(0, audio.duration - 0.05));
+      } catch {
+        // The media fragment still starts playback at the requested offset.
+      }
+    };
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) seek();
+    else audio.addEventListener("loadedmetadata", seek, { once: true });
+  }
+
+  function prepareAudio(audio, track) {
+    const token = String(++state.audioLoad);
+    track.audioToken = token;
+    audio.pause();
+    audio.preload = "metadata";
+    audio.dataset.loadToken = token;
+    audio.src = getAudioUrl(track);
+    audio.addEventListener("loadedmetadata", () => {
+      if (
+        audio.dataset.loadToken !== token ||
+        audio !== state.preparedAudio ||
+        track !== state.preparedTrack
+      ) return;
+      try {
+        audio.currentTime = Math.min(track.at, Math.max(0, audio.duration - 0.05));
+      } catch {
+        // Seeking will be retried when this player becomes active.
+      }
+    }, { once: true });
+    audio.load();
+  }
+
+  function createRoundTrack(selected) {
+    if (!selected) return null;
+    const mode = currentMode();
+    const clipSeconds = Math.min(
+      mode.timed ? maxTimedClipSeconds : maxSnippetDuration,
+      selected.duration,
+    );
+    const available = Math.max(0, Math.floor(selected.duration - clipSeconds));
+    return {
+      ...selected,
+      at: mode.daily
+        ? hashDaily(
+          `corzaguessr-daily-clip-v1:${state.dailyDate}:${selected.dailyNumber}`,
+        ) % (available + 1)
+        : Math.floor(Math.random() * (available + 1)),
+      clipSeconds,
+    };
+  }
+
+  function discardPreparedAudio() {
+    const audio = state.preparedAudio;
+    state.preparedAudio = null;
+    state.preparedTrack = null;
+    state.preparedMode = null;
+    releaseAudio(audio);
+  }
+
+  function prepareNextRound() {
+    if (!state.mode || !state.tracks.length) return;
+    const mode = currentMode();
+    if (mode.daily && (state.track || isDailyDone(state.dailyDate))) return;
+    if (
+      state.preparedAudio &&
+      state.preparedTrack &&
+      state.preparedMode === state.mode
+    ) return;
+
+    discardPreparedAudio();
+    const track = createRoundTrack(selectTrack());
+    if (!track) return;
+    const audio = ui.audioPlayers.find((player) => player !== state.activeAudio);
+    if (!audio) return;
+    state.preparedAudio = audio;
+    state.preparedTrack = track;
+    state.preparedMode = state.mode;
+    prepareAudio(audio, track);
+  }
+
+  function takePreparedRound() {
+    if (
+      !state.preparedAudio ||
+      !state.preparedTrack ||
+      state.preparedMode !== state.mode
+    ) prepareNextRound();
+    if (!state.preparedAudio || !state.preparedTrack) return null;
+    const prepared = {
+      audio: state.preparedAudio,
+      track: state.preparedTrack,
+    };
+    state.preparedAudio = null;
+    state.preparedTrack = null;
+    state.preparedMode = null;
+    return prepared;
   }
 
   function cancelClock() {
@@ -636,13 +750,13 @@
     state.previousTick = 0;
   }
 
-  function setPlaying(playing, pausePlayer = false) {
+  function setPlaying(playing, pauseAudio = false) {
     if (!playing) cancelClock();
     if (state.status !== "ended") {
       if (playing) state.status = "playing";
       else if (state.status === "playing") state.status = "paused";
     }
-    if (pausePlayer) sendPlayerCommand("pauseVideo");
+    if (pauseAudio) state.activeAudio?.pause();
 
     const icon = playing
       ? currentMode().timed ? "pause" : "stop"
@@ -651,24 +765,28 @@
     ui.play.setAttribute("aria-label", icon === "play" ? "PLAY" : icon === "pause" ? "PAUSE" : "STOP");
   }
 
-  function loadPlayerTrack(autoplay = true) {
-    if (!state.track) return;
-    const video = {
-      videoId: state.track.id,
-      startSeconds: state.track.at,
-    };
-
-    if (state.playerReady) {
-      sendPlayerCommand(autoplay ? "loadVideoById" : "cueVideoById", video);
-      return;
-    }
-
-    if (!ui.yt.src) {
-      ui.yt.src =
-        `${youtubeOrigin}/embed/${state.track.id}` +
-        "?enablejsapi=1&controls=0&rel=0&modestbranding=1&playsinline=1&autoplay=0" +
-        `&origin=${encodeURIComponent(location.origin)}`;
-    }
+  function playActiveAudio(rewind = false) {
+    const audio = state.activeAudio;
+    const track = state.track;
+    if (!audio || !track) return;
+    if (rewind) seekAudio(audio, track);
+    const session = state.session;
+    const token = track.audioToken;
+    const play = audio.play();
+    play?.catch((error) => {
+      if (
+        session !== state.session ||
+        audio !== state.activeAudio ||
+        token !== state.track?.audioToken ||
+        error?.name === "AbortError"
+      ) return;
+      if (error?.name === "NotAllowedError") {
+        setPlaying(false);
+        announce("PRESS PLAY TO START THE AUDIO.");
+        return;
+      }
+      handleTrackError();
+    });
   }
 
   function rewindClassic() {
@@ -686,7 +804,7 @@
     state.elapsed = 0;
     state.trackStarted = false;
     setPlaying(true);
-    loadPlayerTrack(true);
+    playActiveAudio(true);
     focusGuess();
   }
 
@@ -737,71 +855,75 @@
     state.frame = requestAnimationFrame(tick);
   }
 
-  function handlePlayerError() {
+  function handleTrackError() {
     if (!state.track || isModalOpen()) return;
+    const failedTrack = state.track;
+    const failedAudio = state.activeAudio;
+    state.unavailable.add(failedTrack.dailyNumber);
     state.session++;
     setPlaying(false, true);
+    state.activeAudio = null;
     state.track = null;
     state.trackStarted = false;
+    releaseAudio(failedAudio);
     ui.skip.disabled = true;
     if (currentMode().daily) applyModeAvailability();
     else showRules(currentMode().description);
     clearSlots(false);
     addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
     announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
+    prepareNextRound();
   }
 
-  function handlePlayerStateChange(playerState) {
-    if (playerState === 1) {
-      if (!state.track || isModalOpen() || state.status === "ended") return;
-      markDailyStarted();
-      state.trackStarted = true;
-      ui.skip.disabled = false;
-      setPlaying(true);
-      startClock();
-      focusGuess();
-      return;
-    }
-
-    if (playerState === 3) {
-      cancelClock();
-      return;
-    }
-
+  function handleAudioPlaying(event) {
     if (
-      playerState === 0 &&
-      state.track &&
-      state.trackStarted &&
-      state.status !== "ended"
-    ) {
-      if (isDiscoveryOpen()) state.endedDuringDiscovery = true;
-      else handleTrackEnded();
-    }
-  }
-
-  function handlePlayerMessage(event) {
-    if (
-      event.source !== ui.yt.contentWindow ||
-      !youtubeOrigins.has(event.origin)
+      event.currentTarget !== state.activeAudio ||
+      !state.track ||
+      event.currentTarget.dataset.loadToken !== state.track.audioToken ||
+      isModalOpen() ||
+      state.status === "ended"
     ) return;
+    markDailyStarted();
+    state.trackStarted = true;
+    ui.skip.disabled = false;
+    setPlaying(true);
+    startClock();
+  }
 
-    let data;
-    try {
-      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-    } catch {
-      return;
+  function handleAudioWaiting(event) {
+    if (
+      event.currentTarget === state.activeAudio &&
+      event.currentTarget.dataset.loadToken === state.track?.audioToken &&
+      state.status === "playing"
+    ) {
+      cancelClock();
     }
-    if (!data || typeof data !== "object") return;
+  }
 
-    if (data.event === "onReady") {
-      state.playerReady = true;
-      sendPlayerCommand("addEventListener", "onStateChange");
-      sendPlayerCommand("addEventListener", "onError");
-      if (state.track) loadPlayerTrack(state.status === "playing");
-    } else if (data.event === "onStateChange") {
-      handlePlayerStateChange(data.info);
-    } else if (data.event === "onError") {
-      handlePlayerError();
+  function handleAudioEnded(event) {
+    if (
+      event.currentTarget !== state.activeAudio ||
+      !state.track ||
+      event.currentTarget.dataset.loadToken !== state.track.audioToken ||
+      !state.trackStarted ||
+      state.status === "ended"
+    ) return;
+    if (isDiscoveryOpen()) state.endedDuringDiscovery = true;
+    else handleTrackEnded();
+  }
+
+  function handleAudioError(event) {
+    const audio = event.currentTarget;
+    if (audio === state.preparedAudio && state.preparedTrack) {
+      const failedTrack = state.preparedTrack;
+      state.unavailable.add(failedTrack.dailyNumber);
+      state.preparedAudio = null;
+      state.preparedTrack = null;
+      state.preparedMode = null;
+      releaseAudio(audio);
+      prepareNextRound();
+    } else if (audio === state.activeAudio) {
+      handleTrackError();
     }
   }
 
@@ -999,8 +1121,13 @@
   // Game rules --------------------------------------------------------------
 
   function selectTrack() {
+    const availableTracks = state.tracks.filter(
+      (track) => !state.unavailable.has(track.dailyNumber),
+    );
+    if (!availableTracks.length) return null;
+
     if (currentMode().daily) {
-      return state.tracks.reduce((winner, track) => {
+      return availableTracks.reduce((winner, track) => {
         const score = hashDaily(
           `corzaguessr-daily-v1:${state.dailyDate}:${track.dailyNumber}`,
         );
@@ -1008,9 +1135,11 @@
       }, null).track;
     }
 
-    const pool = state.tracks.length > 1
-      ? state.tracks.filter((track) => track !== state.previousTrack)
-      : state.tracks;
+    const pool = availableTracks.length > 1
+      ? availableTracks.filter(
+        (track) => track.dailyNumber !== state.previousTrack?.dailyNumber,
+      )
+      : availableTracks;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
@@ -1020,33 +1149,25 @@
     if (mode.daily && isDailyInProgress(state.dailyDate)) {
       state.step = state.daily.step;
     }
-    const selected = selectTrack();
-    const timedSeconds = Math.min(
-      Math.ceil(state.time / 1000),
-      maxTimedClipSeconds,
-    );
-    const seconds = mode.timed
-      ? Math.min(timedSeconds, selected.duration)
-      : maxSnippetDuration;
-    const available = Math.max(0, Math.floor(selected.duration - seconds));
-
-    state.previousTrack = selected;
-    state.track = {
-      ...selected,
-      at: mode.daily
-        ? hashDaily(
-          `corzaguessr-daily-clip-v1:${state.dailyDate}:${selected.dailyNumber}`,
-        ) % (available + 1)
-        : Math.floor(Math.random() * (available + 1)),
-    };
+    const prepared = takePreparedRound();
+    if (!prepared) return;
+    const previousAudio = state.activeAudio;
+    state.activeAudio = prepared.audio;
+    state.previousTrack = prepared.track;
+    state.track = prepared.track;
+    if (previousAudio && previousAudio !== state.activeAudio) {
+      releaseAudio(previousAudio);
+    }
     state.used.clear();
     state.rounds++;
     state.trackStarted = false;
     state.session++;
+    ui.skip.disabled = true;
     if (!mode.timed) setProgress(mode.initialText, mode.initialProgress);
     setPlaying(true);
-    loadPlayerTrack(true);
+    playActiveAudio(true);
     renderPrompt();
+    prepareNextRound();
   }
 
   function togglePlay() {
@@ -1065,8 +1186,8 @@
     } else if (!mode.timed) {
       startClassic();
     } else {
-      sendPlayerCommand("playVideo");
       setPlaying(true);
+      playActiveAudio();
     }
     focusGuess();
   }
@@ -1455,7 +1576,9 @@
     clearTimer("slots");
     state.session++;
     cancelClock();
-    if (state.track) sendPlayerCommand("pauseVideo");
+    const activeAudio = state.activeAudio;
+    state.activeAudio = null;
+    releaseAudio(activeAudio);
 
     Object.assign(state, {
       status: "idle",
@@ -1493,6 +1616,7 @@
     setProgress(mode.initialText, mode.initialProgress);
     setPlaying(false);
     applyModeAvailability();
+    prepareNextRound();
     if (isRoundReadyToStart()) focusPlay();
   }
 
@@ -1624,6 +1748,8 @@
     renderDiscovery();
     state.returnFocus = document.activeElement;
     state.resumeAfterDiscovery = state.status === "playing";
+    state.resumeAudio = state.activeAudio;
+    state.resumeToken = state.track?.audioToken || null;
     state.endedDuringDiscovery = false;
     if (state.resumeAfterDiscovery) setPlaying(false, true);
     setBackgroundInert(true);
@@ -1655,13 +1781,23 @@
       state.returnFocus?.focus?.({ preventScroll: true });
       const ended = state.endedDuringDiscovery;
       const resume = state.resumeAfterDiscovery;
+      const resumeAudio = state.resumeAudio;
+      const resumeToken = state.resumeToken;
       state.endedDuringDiscovery = false;
       state.resumeAfterDiscovery = false;
+      state.resumeAudio = null;
+      state.resumeToken = null;
       if (ended) {
         handleTrackEnded();
-      } else if (resume && state.track && state.status !== "ended") {
-        sendPlayerCommand("playVideo");
+      } else if (
+        resume &&
+        state.track &&
+        state.status !== "ended" &&
+        state.activeAudio === resumeAudio &&
+        state.track.audioToken === resumeToken
+      ) {
         setPlaying(true);
+        playActiveAudio();
       }
       if (isAwaitingMode() && state.mode && state.tracks.length) activateMode();
     }, transitionDelay(durations.discovery));
@@ -1818,12 +1954,13 @@
     focusGuess();
   });
 
-  window.addEventListener("message", handlePlayerMessage);
-
-  ui.yt.addEventListener("load", () => {
-    ui.yt.contentWindow?.postMessage('{"event":"listening"}', youtubeOrigin);
+  ui.audioPlayers.forEach((audio) => {
+    audio.addEventListener("playing", handleAudioPlaying);
+    audio.addEventListener("waiting", handleAudioWaiting);
+    audio.addEventListener("stalled", handleAudioWaiting);
+    audio.addEventListener("ended", handleAudioEnded);
+    audio.addEventListener("error", handleAudioError);
   });
-  ui.yt.addEventListener("error", handlePlayerError);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && state.status === "playing") setPlaying(false, true);
   });
@@ -1846,14 +1983,12 @@
     const valid = [];
     for (const item of value) {
       const title = typeof item?.title === "string" ? item.title.trim() : "";
-      const id = typeof item?.id === "string" ? item.id.trim() : "";
       const duration = Number(item?.duration);
       const spotify = typeof item?.spotify === "string" ? item.spotify.trim() : "";
       const dailyNumber = Number(item?.dailyNumber);
       if (
         !title ||
         titles.has(title) ||
-        !/^[\w-]{11}$/.test(id) ||
         !Number.isFinite(duration) ||
         duration <= 0 ||
         !Number.isSafeInteger(dailyNumber) ||
@@ -1863,7 +1998,7 @@
       ) continue;
       titles.add(title);
       dailyNumbers.add(dailyNumber);
-      valid.push({ title, id, duration, spotify, dailyNumber });
+      valid.push({ title, duration, spotify, dailyNumber });
     }
     if (!valid.length) throw new Error("Track catalog has no valid tracks.");
     return valid;
