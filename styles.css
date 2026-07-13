@@ -1,6 +1,12 @@
 #corzaguessr {
   --gradient: linear-gradient(135deg, #49f1fa, #7bb0f7 50%, #8d64f5);
   --line: rgba(255, 255, 255, 0.1);
+  --duration-feedback: 680ms;
+  --duration-slot: 250ms;
+  --duration-result: 350ms;
+  --duration-discovery: 450ms;
+  --duration-progress: 300ms;
+  --duration-mode-change: 120ms;
   color: white;
   padding: 1rem 12px 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
@@ -34,7 +40,7 @@
   font: inherit;
 }
 
-#corzaguessr button:disabled {
+#corzaguessr button:disabled:not(.mode[aria-pressed="true"]) {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -121,7 +127,7 @@
 
 #corzaguessr .slots {
   overflow: hidden;
-  transition: height 0.25s ease;
+  transition: height var(--duration-slot) ease;
 }
 
 #corzaguessr .slots:empty {
@@ -186,6 +192,15 @@
 
 #corzaguessr .mode {
   flex: 1;
+}
+
+#corzaguessr .mode[aria-pressed="true"] {
+  opacity: 1;
+  filter: brightness(1.08) saturate(1.06);
+  box-shadow:
+    inset 0 0 0 2px rgba(50, 50, 58, 0.54),
+    inset 0 -4px 0 rgba(50, 50, 58, 0.62),
+    0 8px 24px rgba(91, 105, 226, 0.28);
 }
 
 #corzaguessr .discovery-button {
@@ -305,7 +320,7 @@
 }
 
 #corzaguessr .time-change.survival-change span {
-  animation: corzaguessr-survival-hit 0.68s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: corzaguessr-survival-hit var(--duration-feedback) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #corzaguessr .tick {
@@ -519,8 +534,8 @@
   overflow-wrap: anywhere;
   white-space: normal;
   transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
+    opacity var(--duration-slot) ease,
+    transform var(--duration-slot) ease;
 }
 
 #corzaguessr .slot.fade {
@@ -548,11 +563,11 @@
   animation: blink 2s infinite;
 }
 
-#corzaguessr .result-modal {
+#corzaguessr .result-modal,
+#corzaguessr .discovery-modal {
   display: flex;
   position: absolute;
   inset: 0;
-  z-index: 3;
   align-items: flex-start;
   justify-content: center;
   padding: 16px;
@@ -562,13 +577,17 @@
   visibility: hidden;
 }
 
+#corzaguessr .result-modal {
+  z-index: 3;
+}
+
 #corzaguessr .modal-open .result-modal {
   pointer-events: auto;
   visibility: visible;
 }
 
 #corzaguessr .modal-closing .result-modal {
-  transition: background 0.35s ease;
+  transition: background var(--duration-result) ease;
 }
 
 #corzaguessr .modal-closing .result-shell {
@@ -579,7 +598,8 @@
   background: rgba(0, 0, 0, 0.55);
 }
 
-#corzaguessr .result-shell {
+#corzaguessr .result-shell,
+#corzaguessr .discovery-shell {
   width: min(96vw, 840px);
 }
 
@@ -662,18 +682,8 @@
 }
 
 #corzaguessr .discovery-modal {
-  display: flex;
-  position: absolute;
-  inset: 0;
   z-index: 4;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 16px;
-  border-radius: inherit;
-  background: rgba(0, 0, 0, 0);
-  pointer-events: none;
-  visibility: hidden;
-  transition: background 0.35s ease;
+  transition: background var(--duration-result) ease;
 }
 
 #corzaguessr .discovery-modal:focus {
@@ -690,10 +700,9 @@
 }
 
 #corzaguessr .discovery-shell {
-  width: min(96vw, 840px);
   height: 0;
   overflow: hidden;
-  transition: height 0.45s ease;
+  transition: height var(--duration-discovery) ease;
 }
 
 #corzaguessr .discovery-panel {
