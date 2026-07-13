@@ -568,7 +568,7 @@
 
     root.dataset.appStatus = state.appStatus;
     root.dataset.sessionStatus = session.status;
-    ["loading", "awaiting-mode", "transitioning", "ready", "error"].forEach((status) => {
+    ["loading", "awaiting-mode", "ready", "error"].forEach((status) => {
       root.classList.toggle(`app-${status}`, state.appStatus === status);
     });
     ["idle", "preparing", "active", "paused", "audio-retry", "result"].forEach((status) => {
