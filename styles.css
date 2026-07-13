@@ -41,11 +41,14 @@
 
 #corzaguessr button:focus-visible,
 #corzaguessr input:focus-visible {
-  outline: 0;
+  outline: 2px solid #49f1fa;
+  outline-offset: 3px;
 }
 
 #corzaguessr button:focus-visible {
-  box-shadow: none;
+  box-shadow:
+    0 0 0 4px rgba(7, 8, 23, 0.82),
+    0 0 20px rgba(73, 241, 250, 0.32);
 }
 
 #corzaguessr .modes,
@@ -137,6 +140,11 @@
   font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  transition:
+    filter 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 #corzaguessr .button,
@@ -152,6 +160,14 @@
   flex: 1;
 }
 
+#corzaguessr .mode[aria-pressed="true"] {
+  opacity: 1;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.72),
+    0 8px 22px rgba(97, 103, 229, 0.32);
+  transform: translateY(-1px);
+}
+
 #corzaguessr .discovery-button {
   width: calc((720px - 2.25rem) / 4);
   max-width: calc((100% - 2.25rem) / 4);
@@ -162,6 +178,10 @@
 #corzaguessr .play {
   width: 68px;
   height: 68px;
+}
+
+#corzaguessr .play:not(:disabled) {
+  box-shadow: 0 8px 24px rgba(91, 105, 226, 0.28);
 }
 
 #corzaguessr .play svg {
@@ -328,6 +348,7 @@
 
 #corzaguessr input {
   width: 100%;
+  min-height: 46px;
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -338,6 +359,9 @@
   font-size: 0.9rem;
   text-align: center;
   text-transform: uppercase;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
 }
 
 #corzaguessr input::placeholder {
@@ -406,7 +430,8 @@
   position: absolute;
   inset: calc(100% + 0.5rem) 0 auto;
   z-index: 10;
-  overflow: hidden;
+  max-height: min(40dvh, 280px);
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
   background: rgba(0, 0, 0, 0.9);
@@ -432,14 +457,15 @@
   align-items: center;
   justify-content: center;
   min-height: 46px;
-  padding: 0 0.9rem;
+  padding: 0.75rem 0.9rem;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
   text-align: center;
   text-transform: uppercase;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   transition:
     opacity 0.25s ease,
     transform 0.25s ease;
@@ -511,7 +537,9 @@
   align-items: center;
   gap: 0.75rem;
   width: 100%;
+  max-height: min(82dvh, 650px);
   padding: 1.2rem;
+  overflow-y: auto;
   text-align: center;
   text-transform: uppercase;
 }
@@ -660,6 +688,97 @@
   line-height: 1.35;
   text-align: center;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+  #corzaguessr .button:not(:disabled):hover,
+  #corzaguessr .play:not(:disabled):hover,
+  #corzaguessr .mode:not(:disabled):hover {
+    filter: brightness(1.08) saturate(1.04);
+    transform: translateY(-1px);
+  }
+
+  #corzaguessr .button:not(:disabled):active,
+  #corzaguessr .play:not(:disabled):active,
+  #corzaguessr .mode:not(:disabled):active {
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  #corzaguessr .discovery-modal {
+    position: fixed;
+    align-items: center;
+    padding: 8px;
+    border-radius: 0;
+  }
+
+  #corzaguessr .discovery-panel {
+    height: min(78dvh, calc(100dvh - 16px));
+  }
+}
+
+@media (max-width: 360px) {
+  #corzaguessr {
+    padding-inline: 8px;
+  }
+
+  #corzaguessr .modes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(100%, 280px);
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  #corzaguessr .mode {
+    width: 100%;
+    min-width: 0;
+    padding: 0.65rem 0.5rem;
+  }
+
+  #corzaguessr .discovery-button {
+    width: min(136px, 100%);
+    max-width: none;
+    margin-bottom: 0.75rem;
+  }
+
+  #corzaguessr .card {
+    padding: 0.75rem;
+  }
+
+  #corzaguessr .controls {
+    gap: 0.65rem;
+  }
+
+  #corzaguessr .play {
+    width: 64px;
+    height: 64px;
+  }
+
+  #corzaguessr .timeline {
+    height: 42px;
+  }
+
+  #corzaguessr .result-shell,
+  #corzaguessr .discovery-shell {
+    width: calc(100% - 16px);
+  }
+
+  #corzaguessr .corzaguessr-modal,
+  #corzaguessr .discovery-panel {
+    padding: 0.85rem;
+  }
+
+  #corzaguessr .actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #corzaguessr .actions .button {
+    flex: 1 1 120px;
+  }
 }
 
 #corzaguessr [hidden] {
