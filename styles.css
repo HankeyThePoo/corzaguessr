@@ -541,11 +541,13 @@
 #corzaguessr .slot.wrong {
   border-color: rgba(239, 68, 68, 0.6);
   background: rgba(239, 68, 68, 0.12);
-  animation: wiggle 0.4s;
 }
 
 #corzaguessr .slot.skip {
   background: rgba(0, 0, 0, 0.4);
+}
+
+#corzaguessr .slot.wiggle {
   animation: wiggle 0.4s;
 }
 
