@@ -706,6 +706,7 @@
 
 #corzaguessr .discovery-items {
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 0.5rem;
   min-height: 0;
@@ -728,6 +729,36 @@
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
+}
+
+#corzaguessr .discovery-item-new {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+#corzaguessr .discovery-track {
+  min-width: 0;
+}
+
+#corzaguessr .discovery-new {
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  #corzaguessr .discovery-new {
+    background: none;
+    color: CanvasText;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 
 @media (hover: hover) {
