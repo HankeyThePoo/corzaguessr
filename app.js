@@ -30,6 +30,7 @@
   const dailyTimeZone = "Europe/Budapest";
   const modePromptText = "SELECT A MODE TO BEGIN";
   const dailyAudioErrorText = "COULD NOT LOAD TODAY'S TRACK, PRESS PLAY TO RETRY!";
+  const trackAudioErrorText = "COULD NOT PLAY TRACK, PRESS PLAY TO RETRY!";
   const dailyCatalogLoadingText = "LOADING TODAY'S TRACK...";
   const dailyCatalogErrorText = "COULD NOT REFRESH TODAY'S TRACK, RETRYING...";
   const discoveryDescription =
@@ -289,6 +290,8 @@
     current: null,
     previousDailyNumber: null,
     nextId: 0,
+    recoveringAudio: false,
+    standbyRefillBlocked: false,
   };
   const dailyState = {
     progress: loadDaily(),
@@ -840,7 +843,8 @@
         }
       }, { signal: controller.signal });
       slot.element.addEventListener("error", () => {
-        if (current()) emitFailure(slot, slot.element.error);
+        const error = slot.element.error;
+        if (current() && error) emitFailure(slot, error);
       }, { signal: controller.signal });
     }
 
@@ -889,8 +893,19 @@
 
     function promoteStandby() {
       if (!standby) return null;
+      const candidate = standby;
+      const error = candidate.element.error;
+      if (candidate.failed || error) {
+        if (candidate.failed) {
+          standby = null;
+          releaseSlot(candidate);
+        } else {
+          emitFailure(candidate, error);
+        }
+        return null;
+      }
       const previous = active;
-      active = standby;
+      active = candidate;
       standby = null;
       active.role = "active";
       transportPhase = "paused";
@@ -1186,8 +1201,10 @@
     );
   }
 
-  function ensureStandby() {
+  function ensureStandby({ retryFailure = false } = {}) {
     if (!state.mode || !catalogState.applied.tracks.length) return;
+    if (roundState.standbyRefillBlocked && !retryFailure) return null;
+    if (retryFailure) roundState.standbyRefillBlocked = false;
     const mode = currentMode();
     if (
       mode.daily &&
@@ -1202,9 +1219,14 @@
   }
 
   function promotePreparedRound() {
-    if (!standbyMatchesSession()) ensureStandby();
-    if (!standbyMatchesSession()) return null;
-    return audioDeck.promoteStandby();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (!standbyMatchesSession()) ensureStandby({ retryFailure: true });
+      if (!standbyMatchesSession()) return null;
+      const prepared = audioDeck.promoteStandby();
+      if (prepared) return prepared;
+      if (currentMode().daily || state.notice === "daily-audio-error") return null;
+    }
+    return null;
   }
 
   const gameClock = createGameClock({
@@ -1300,6 +1322,8 @@
     audioDeck.reset({ keepStandby: !discardStandby });
     roundState.current = null;
     roundState.phase = "idle";
+    roundState.recoveringAudio = false;
+    roundState.standbyRefillBlocked = false;
     overlayState.discoverySuspension = null;
     renderPlaybackIntent(false);
   }
@@ -1313,6 +1337,21 @@
     announce(dailyAudioErrorText);
   }
 
+  function showTrackRetry({ replace = true } = {}) {
+    gameClock.pause();
+    audioDeck.releaseActive();
+    roundState.current = null;
+    roundState.phase = "idle";
+    roundState.recoveringAudio = true;
+    state.notice = "track-audio-error";
+    renderPlaybackIntent(false);
+    applyModeAvailability({ force: true });
+    addSlot(trackAudioErrorText, "blink", replace);
+    announce("THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.");
+    ensureStandby({ retryFailure: true });
+    focusPlay();
+  }
+
   function handleActiveTrackError(round) {
     if (
       roundState.phase === "result" ||
@@ -1323,6 +1362,8 @@
       if (!isResultOpen()) handleDailyTrackError(round);
       return;
     }
+    const mode = currentMode();
+    const wasRecovering = roundState.recoveringAudio;
     pausePlayback();
     if (roundState.phase === "result") return;
     const failedTrack = round.track;
@@ -1331,11 +1372,15 @@
     roundState.current = null;
     roundState.phase = "idle";
     ui.skip.disabled = true;
-    showRules(currentMode().description);
-    clearSlots(false);
-    addSlot("COULD NOT PLAY TRACK, TRY AGAIN!", "blink");
-    announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRY AGAIN.");
-    ensureStandby();
+    state.rounds = Math.max(0, state.rounds - 1);
+    if (mode.timed && !wasRecovering) {
+      announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.");
+      if (startRound({ recovery: true, replacePrompt: true })) {
+        focusGuess();
+        return;
+      }
+    }
+    showTrackRetry();
   }
 
   function handleAudioPlaying(payload) {
@@ -1347,6 +1392,7 @@
     ) return;
     currentRound().hasPlayed = true;
     roundState.phase = "active";
+    roundState.recoveringAudio = false;
     markDailyStarted();
     ui.skip.disabled = false;
     renderPlaybackIntent(true);
@@ -1376,7 +1422,7 @@
         return;
       }
       catalogState.unavailable.add(payload.round.track.dailyNumber);
-      ensureStandby();
+      roundState.standbyRefillBlocked = true;
       return;
     }
     handleActiveTrackError(payload.round);
@@ -1419,6 +1465,9 @@
   function getModeRulesText(modeName) {
     const mode = modes[modeName];
     if (!mode) return modePromptText;
+    if (state.mode === modeName && state.notice === "track-audio-error") {
+      return trackAudioErrorText;
+    }
     if (!mode.daily) return mode.description;
     if (state.mode === modeName && state.notice === "daily-audio-error") {
       return dailyAudioErrorText;
@@ -1521,9 +1570,9 @@
 
   const { clear: clearSlots, add: addSlot } = createSlotView(ui.slots);
 
-  function renderPrompt() {
+  function renderPrompt({ replace = false } = {}) {
     if (currentMode().timed) {
-      addSlot(`GUESS #${state.rounds}`);
+      addSlot(`GUESS #${state.rounds}`, "", replace);
       return;
     }
 
@@ -1537,6 +1586,7 @@
     addSlot(
       last ? "LAST CHANCE TO GUESS" : `GUESS ${state.step + 1} OUT OF ${snippetDurations.length}`,
       last ? "blink" : "",
+      replace,
     );
   }
 
@@ -1639,6 +1689,12 @@
 
   // Game rules --------------------------------------------------------------
 
+  function hasAvailableTrack() {
+    return catalogState.applied.tracks.some(
+      (track) => !catalogState.unavailable.has(track.dailyNumber),
+    );
+  }
+
   function selectTrack() {
     if (currentMode().daily) {
       return catalogState.applied.tracks.reduce((winner, track) => {
@@ -1661,28 +1717,25 @@
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
-  function startRound() {
-    if (!canUsePlayback() || !catalogState.applied.tracks.length) return;
+  function startRound({ recovery = false, replacePrompt = false } = {}) {
+    if (!canUsePlayback() || !catalogState.applied.tracks.length) return false;
     const mode = currentMode();
     if (mode.daily && dailyNeedsCatalogRefresh()) {
       applyModeAvailability();
       reconcileApp();
-      return;
+      return false;
     }
     if (mode.daily && isDailyInProgress(dailyState.roundDate)) {
       state.step = dailyState.progress.step;
     }
     gameClock.pause();
     const prepared = promotePreparedRound();
-    if (!prepared) return;
+    if (!prepared) return false;
     prepared.hasPlayed = false;
     roundState.current = prepared;
     roundState.phase = "starting";
+    roundState.recoveringAudio = roundState.recoveringAudio || recovery;
     roundState.previousDailyNumber = prepared.track.dailyNumber;
-    state.notice = null;
-    if (mode.daily && dailyState.retryRound?.id === prepared.id) {
-      dailyState.retryRound = null;
-    }
     state.used.clear();
     state.rounds++;
     ui.skip.disabled = true;
@@ -1691,8 +1744,20 @@
       setProgress(mode.initialText, mode.initialProgress);
     }
     renderPlaybackIntent(true);
-    audioDeck.playActive();
-    renderPrompt();
+    if (!audioDeck.playActive()) {
+      audioDeck.releaseActive();
+      roundState.current = null;
+      roundState.phase = "idle";
+      state.rounds = Math.max(0, state.rounds - 1);
+      renderPlaybackIntent(false);
+      return false;
+    }
+    state.notice = null;
+    if (mode.daily && dailyState.retryRound?.id === prepared.id) {
+      dailyState.retryRound = null;
+    }
+    renderPrompt({ replace: replacePrompt });
+    return true;
   }
 
   function togglePlay() {
@@ -1708,8 +1773,17 @@
       return;
     }
     if (!currentRound()) {
+      const retryingTrackError = state.notice === "track-audio-error";
+      if (retryingTrackError && !hasAvailableTrack()) {
+        audioDeck.discardStandby();
+        catalogState.unavailable.clear();
+      }
       showGuess();
-      startRound();
+      if (!startRound({ replacePrompt: retryingTrackError })) {
+        if (mode.daily) applyModeAvailability({ force: true });
+        else showTrackRetry();
+        return;
+      }
     } else if (audioDeck.isPlayRequested()) {
       pausePlayback();
       if (!mode.timed) rewindClassic();
@@ -1779,7 +1853,8 @@
     }
     announce(type === "correct" ? "CORRECT." : type === "wrong" ? "INCORRECT." : "SKIPPED.");
     if (roundState.phase === "result" || clock.expired || !clock.remainingMs) endGame();
-    else startRound();
+    else if (startRound()) focusGuess();
+    else showTrackRetry({ replace: false });
   }
 
   function resolveClassicAttempt(type) {
@@ -2128,6 +2203,8 @@
     if (!standbyMatchesSession()) audioDeck.discardStandby();
     roundState.current = null;
     roundState.phase = "idle";
+    roundState.recoveringAudio = false;
+    roundState.standbyRefillBlocked = false;
     dailyState.retryRound = null;
 
     Object.assign(state, {
@@ -2194,6 +2271,7 @@
     }
     const mode = currentMode();
     if (!mode) return "no-mode";
+    if (state.notice === "track-audio-error") return "track-audio-error";
     if (mode.daily && state.notice === "daily-audio-error") return "daily-audio-error";
     if (mode.daily && dailyNeedsCatalogRefresh()) {
       return `daily-catalog-${getDailyCatalogStatusText()}`;
@@ -2219,6 +2297,13 @@
     }
     const mode = currentMode();
     if (!mode) return;
+    if (state.notice === "track-audio-error") {
+      ui.play.disabled = false;
+      ui.skip.disabled = true;
+      ui.guess.disabled = true;
+      showRules(trackAudioErrorText);
+      return;
+    }
     if (mode.daily && state.notice === "daily-audio-error") {
       ui.play.disabled = false;
       ui.skip.disabled = true;
@@ -2293,6 +2378,7 @@
     const mode = currentMode();
     state.appPhase = "transitioning";
     invalidateAudioSession();
+    catalogState.unavailable.clear();
     state.notice = null;
     cancelProgressTransition();
     ui.fill.style.transition = "transform 250ms ease-out";
@@ -2651,6 +2737,7 @@
     };
     catalogState.refresh = { kind: "idle" };
     catalogState.unavailable.clear();
+    roundState.standbyRefillBlocked = false;
     dailyState.roundDate = refresh.date;
     dailyState.retryRound = null;
     state.notice = null;
@@ -2714,6 +2801,7 @@
     if (
       state.mode &&
       state.notice !== "daily-audio-error" &&
+      state.notice !== "track-audio-error" &&
       !isDailyRoundProtected() &&
       (!currentRound() || currentRound().hasPlayed)
     ) ensureStandby();
