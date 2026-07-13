@@ -1,123 +1,3200 @@
-(()=>{(()=>{"use strict";let ee=document.querySelector("#corzaguessr");if(!ee||ee.dataset.corzaguessrReady==="true")return;let D=ee;D.dataset.corzaguessrReady="true";let ue=document.currentScript?.getAttribute("src"),ne=ue?new URL(ue,document.baseURI):new URL(document.baseURI),me=new URL("tracks.json",ne);me.search=ne.search;let Ue=new URL("tracks/",ne),pe="corzaguessrProfile",we="Europe/Budapest",S=[1,2,4,8,16,32],N=32,xe=60,ye=50,fe="????????????????????",h={daily:{id:"daily",description:"ONE SHARED TRACK EACH DAY. GUESS IT IN SIX TRIES.",clock:"classic",daily:!0,initialMs:0,survivalAdjustments:null},blitz:{id:"blitz",description:"GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT.",clock:"blitz",daily:!1,initialMs:6e4,survivalAdjustments:null},classic:{id:"classic",description:"GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED.",clock:"classic",daily:!1,initialMs:0,survivalAdjustments:null},survival:{id:"survival",description:"CORRECT GUESSES ADD TIME. MISTAKES AND SKIPS DRAIN IT.",clock:"survival",daily:!1,initialMs:3e4,survivalAdjustments:{correct:3e3,wrong:-1e3,skip:-2e3}}},te={play:"M8 5v14l11-7z",pause:"M6 5h4v14H6zM14 5h4v14h-4z"},He=new Intl.DateTimeFormat("en",{timeZone:we,year:"numeric",month:"2-digit",day:"2-digit"});function U(e=new Date){let n=He.formatToParts(e),t=new Map(n.map(r=>[r.type,r.value]));return`${t.get("year")??"0000"}-${t.get("month")??"00"}-${t.get("day")??"00"}`}function _(e){let n=Math.max(0,Math.floor(e/1e3)),t=Math.floor(n/60),r=n%60;return`${t}:${String(r).padStart(2,"0")}`}function Y(e){return e===null?"--":`${e}%`}function V(e){return e.guesses?Math.round(e.correct*100/e.guesses):0}function Ee(e){if(!Number.isFinite(e)||e<=0)return"--";let n=Math.round(e*10)/10;return`${Number.isInteger(n)?String(n):n.toFixed(1)}S`}function ge(e){let n=2166136261;for(let t=0;t<e.length;t+=1)n^=e.charCodeAt(t),n=Math.imul(n,16777619);return n>>>0}function Se(e){return e.normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase().replace(/[^a-z0-9]+/g," ").trim()}function Te(e){if(typeof e!="string"||!/^\d{4}-\d{2}-\d{2}$/.test(e))return!1;let n=new Date(`${e}T00:00:00Z`);return!Number.isNaN(n.getTime())&&n.toISOString().slice(0,10)===e}function Ge(){return{classic:{current:0,best:0,snippetTotal:0,bestSnippetTotal:0},daily:0,blitz:{score:0,accuracy:null},survival:{score:0,accuracy:null}}}function Ae(){return{discoveries:new Set,records:Ge(),daily:null}}function j(e=0){return{step:e,rounds:0,guesses:0,correct:0,usedTrackIds:new Set,attempts:[],nextAttemptId:0,newPersonalBest:!1,classicResult:null}}let B={appStatus:"loading",catalog:[],today:U(),mode:null,session:{phase:"idle"},run:j(),profile:Ae(),unavailableTrackIds:new Set,previousTrackId:null,requestSerial:0,catalogError:null};function Ke(e){return{classic:{...e.classic},daily:e.daily,blitz:{...e.blitz},survival:{...e.survival}}}function $(e){return{discoveries:new Set(e.discoveries),records:Ke(e.records),daily:e.daily?{...e.daily}:null}}function F(e){return e.mode?h[e.mode]:null}function re(e,n=e.today){return!!(e.profile.daily?.date===n&&e.profile.daily.completed)}function Ye(e,n=e.today){return!!(e.profile.daily?.date===n&&e.profile.daily.started&&!e.profile.daily.completed)}function W(e,n){return n!=="daily"||!Ye(e)?0:e.profile.daily?.step??0}function Be(e){return e.session.phase==="active"}function $e(e,n,t,r){let a={id:e.nextAttemptId+1,text:n,tone:t},o=[a,...e.attempts];return r&&o.length>ye&&(o.length=ye),{...e,attempts:o,nextAttemptId:a.id}}function Fe(e,n,t){let r=F(e);if(!r)return"";if(n!=="skip")return t??"UNKNOWN TRACK";if(r.clock!=="classic")return"SKIPPED";if(e.run.step>=S.length-1)return"FINAL GUESS SKIPPED";let a=S[e.run.step]??1,s=(S[e.run.step+1]??a)-a;return`GUESS ${e.run.step+1} SKIPPED, ${s} SECOND${s===1?"":"S"} ADDED`}function Re(e){return e.current?e.snippetTotal/e.current:0}function ze(e){return e.best?e.bestSnippetTotal/e.best:0}function qe(e){return e.current>e.best||e.current===e.best&&e.current>0&&(!e.bestSnippetTotal||e.snippetTotal<e.bestSnippetTotal)}function Q(e,n,t,r){let a=h[n.mode],o=$(e.profile),s={...e.run,newPersonalBest:!1};if(n.mode==="daily"){let c=t===!0;if(o.daily={date:n.date??e.today,trackId:n.track.id,started:!0,completed:!0,won:c,step:s.step},c){let f=s.step+1;(!o.records.daily||f<o.records.daily)&&(o.records.daily=f,s={...s,newPersonalBest:!0})}}else if(n.mode==="classic"){let c=o.records.classic;if(t===!0){c.current+=1,c.snippetTotal+=S[s.step]??S[0];let f={won:!0,streak:c.current,averageSeconds:Re(c)};qe(c)?(c.best=c.current,c.bestSnippetTotal=c.snippetTotal,s={...s,newPersonalBest:!0,classicResult:f}):s={...s,classicResult:f}}else{let f={won:!1,streak:c.current,averageSeconds:Re(c)};(c.current||c.snippetTotal)&&(c.current=0,c.snippetTotal=0),s={...s,classicResult:f}}}else{let c=V(s),f=n.mode==="survival"?Math.floor(r.elapsedMs):s.correct,M=o.records[n.mode];f>M.score&&(o.records[n.mode]={score:f,accuracy:c},s={...s,newPersonalBest:!0})}let d=s.newPersonalBest?"NEW PERSONAL BEST":"PERSONAL BEST",m=[];if(a.clock==="classic"&&m.push({label:"TRACK",value:n.track.title,highlight:!1}),n.mode==="daily")m.push({label:"RUN",value:`ATTEMPTS: ${s.step+1}`,highlight:!1},{label:d,value:o.records.daily?`ATTEMPTS: ${o.records.daily}`:"ATTEMPTS: --",highlight:s.newPersonalBest});else if(n.mode==="classic"){let c=s.classicResult??{won:!1,streak:0,averageSeconds:0},f=c.won?"STREAK":"STREAK ENDED";m.push({label:"RUN",value:`${f}: ${c.streak} \xB7 AVERAGE SNIPPET: ${Ee(c.averageSeconds)}`,highlight:!1},{label:d,value:`STREAK: ${o.records.classic.best} \xB7 AVERAGE SNIPPET: ${Ee(ze(o.records.classic))}`,highlight:s.newPersonalBest})}else n.mode==="blitz"?m.push({label:"RUN",value:`CORRECT GUESSES: ${s.correct} \xB7 ACCURACY: ${Y(V(s))}`,highlight:!1},{label:d,value:`CORRECT GUESSES: ${o.records.blitz.score} \xB7 ACCURACY: ${Y(o.records.blitz.accuracy)}`,highlight:s.newPersonalBest}):m.push({label:"RUN",value:`TIME SURVIVED: ${_(r.elapsedMs)} \xB7 ACCURACY: ${Y(V(s))}`,highlight:!1},{label:d,value:`TIME SURVIVED: ${_(o.records.survival.score)} \xB7 ACCURACY: ${Y(o.records.survival.accuracy)}`,highlight:s.newPersonalBest});let u=a.clock!=="classic"?"TIME IS UP":t===!0?"YOU GOT IT":"YOU GOT IT ALL WRONG",y=m.map(c=>`${c.label}. ${c.value}`).join(". "),p={heading:u,success:a.clock==="classic"?t===!0:null,modules:m,spotifyId:a.clock==="classic"?n.track.spotifyId:null,announcement:y};return{state:{...e,profile:o,run:s,session:{phase:"result",round:n,result:p}},commands:[{type:"STOP_MEDIA"},{type:"PERSIST_PROFILE"},{type:"OPEN_RESULT"},{type:"ANNOUNCE",message:y}]}}function be(e,n,t,r,a){let o=e.requestSerial+1;return{state:{...e,requestSerial:o,session:{phase:"preparing",requestId:o,round:null,retry:n,countOnCommit:r,automaticRetriesRemaining:a}},commands:[{type:"REQUEST_ROUND",requestId:o,retry:n,round:t,countOnCommit:r}]}}function Ve(e,n){switch(n.type){case"CATALOG_READY":return{state:{...e,appStatus:"lobby",catalog:n.tracks,profile:n.profile,today:n.today,catalogError:null},commands:[]};case"CATALOG_FAILED":return{state:{...e,appStatus:"error",catalogError:n.message},commands:[{type:"ANNOUNCE",message:"COULD NOT LOAD THE TRACKLIST. RETRY AVAILABLE."}]};case"MODE_SELECTED":{if(e.appStatus==="loading"||e.appStatus==="error")return{state:e,commands:[]};let t=W(e,n.mode);return{state:{...e,appStatus:"ready",mode:n.mode,session:{phase:"idle"},run:j(t),unavailableTrackIds:new Set,previousTrackId:null},commands:[{type:"RESET_SERVICES",mode:n.mode},{type:"ANNOUNCE",message:h[n.mode].description},{type:"PREFETCH_ROUND"},{type:"FOCUS_PLAY"}]}}case"PLAY_PRESSED":{let t=F(e);if(!t||e.appStatus!=="ready"||e.session.phase==="result")return{state:e,commands:[]};if(e.session.phase==="idle")return t.daily&&re(e)?{state:e,commands:[{type:"ANNOUNCE",message:"TODAY'S DAILY IS ALREADY COMPLETE."}]}:be(e,"new",null,!0,1);if(e.session.phase==="audio-error")return be(e,e.session.retry,e.session.retry==="same"?e.session.round:null,e.session.countOnCommit,0);if(e.session.phase==="preparing")return{state:e,commands:[]};let r=e.session;if(r.transport==="playing"||r.transport==="starting"||r.transport==="buffering"){let o=[{type:"PAUSE_MEDIA"}];return t.clock==="classic"&&o.push({type:"RESET_CLASSIC_CLOCK",limitMs:(S[e.run.step]??S[0])*1e3}),{state:{...e,session:{...r,transport:"paused"}},commands:o}}let a=[];return t.clock==="classic"&&a.push({type:"RESET_CLASSIC_CLOCK",limitMs:(S[e.run.step]??S[0])*1e3}),a.push({type:"PLAY_ACTIVE",rewind:t.clock==="classic"}),{state:{...e,session:{...r,transport:"starting",hasPlayed:!1}},commands:a}}case"ROUND_ASSIGNED":return e.session.phase!=="preparing"||e.session.requestId!==n.requestId?{state:e,commands:[]}:{state:{...e,session:{...e.session,round:n.round}},commands:[]};case"ROUND_UNAVAILABLE":return e.session.phase!=="preparing"||e.session.requestId!==n.requestId?{state:e,commands:[]}:{state:{...e,session:{phase:"audio-error",round:e.session.round,retry:e.session.retry==="same"?"same":"new",countOnCommit:e.session.countOnCommit,message:n.message}},commands:[{type:"ANNOUNCE",message:n.message},{type:"FOCUS_PLAY"}]};case"AUDIO_PLAYING":{if(e.session.phase==="preparing"&&e.session.round?.id===n.roundId){let t=e.session.round,r=h[t.mode],a=$(e.profile),o=!1;if(r.daily&&t.date){let d=a.daily;(!d||d.date!==t.date||!d.started)&&(a.daily={date:t.date,trackId:t.track.id,started:!0,completed:!1,won:!1,step:e.run.step},o=!0)}let s=[];return r.clock==="classic"&&s.push({type:"RESET_CLASSIC_CLOCK",limitMs:(S[e.run.step]??S[0])*1e3}),s.push({type:"RESUME_CLOCK"},{type:"PREFETCH_ROUND"},{type:"FOCUS_GUESS"}),o&&s.push({type:"PERSIST_PROFILE"}),{state:{...e,profile:a,previousTrackId:t.track.id,run:{...e.run,rounds:e.run.rounds+(t.countOnCommit?1:0),usedTrackIds:new Set},session:{phase:"active",round:t,transport:"playing",hasPlayed:!0,automaticRetriesRemaining:1}},commands:s}}return e.session.phase==="active"&&e.session.round.id===n.roundId?{state:{...e,session:{...e.session,transport:"playing",hasPlayed:!0}},commands:[{type:"RESUME_CLOCK"}]}:{state:e,commands:[]}}case"AUDIO_WAITING":return e.session.phase!=="active"||e.session.round.id!==n.roundId?{state:e,commands:[]}:{state:{...e,session:{...e.session,transport:"buffering"}},commands:[{type:"PAUSE_CLOCK"}]};case"AUDIO_PLAY_BLOCKED":return e.session.phase==="preparing"&&e.session.round?.id===n.roundId?{state:{...e,session:{phase:"audio-error",round:e.session.round,retry:"same",countOnCommit:e.session.countOnCommit,message:"PRESS PLAY TO START THE AUDIO."}},commands:[{type:"PAUSE_CLOCK"},{type:"ANNOUNCE",message:"PRESS PLAY TO START THE AUDIO."},{type:"FOCUS_PLAY"}]}:e.session.phase==="active"&&e.session.round.id===n.roundId?{state:{...e,session:{...e.session,transport:"paused"}},commands:[{type:"PAUSE_CLOCK"},{type:"ANNOUNCE",message:"PRESS PLAY TO START THE AUDIO."}]}:{state:e,commands:[]};case"AUDIO_FAILED":{let t=new Set(e.unavailableTrackIds);if(n.round.mode!=="daily"&&t.add(n.round.track.id),n.role==="standby")return n.round.mode==="daily"&&e.session.phase==="idle"&&e.mode==="daily"?{state:{...e,unavailableTrackIds:t,session:{phase:"audio-error",round:n.round,retry:"same",countOnCommit:!0,message:"COULD NOT LOAD TODAY'S TRACK. PRESS PLAY TO RETRY."}},commands:[{type:"ANNOUNCE",message:"COULD NOT LOAD TODAY'S TRACK. PRESS PLAY TO RETRY."}]}:{state:{...e,unavailableTrackIds:t},commands:e.session.phase==="active"?[{type:"PREFETCH_ROUND"}]:[]};let r=e.session.phase==="preparing"&&e.session.round?.id===n.round.id?e.session:null,a=e.session.phase==="active"&&e.session.round.id===n.round.id?e.session:null;if(!r&&!a)return{state:e,commands:[]};let o=h[n.round.mode],s=a?!1:r?.countOnCommit??n.round.countOnCommit,d=a?a.automaticRetriesRemaining:r?.automaticRetriesRemaining??0,m=[{type:"PAUSE_CLOCK"},{type:"RELEASE_ACTIVE_AUDIO"}];if(o.daily||o.clock==="classic"){let u=o.daily?"COULD NOT LOAD TODAY'S TRACK. PRESS PLAY TO RETRY.":"COULD NOT PLAY THIS TRACK. PRESS PLAY TO RETRY.";return{state:{...e,unavailableTrackIds:t,session:{phase:"audio-error",round:n.round,retry:"same",countOnCommit:s,message:u}},commands:[...m,{type:"ANNOUNCE",message:u},{type:"FOCUS_PLAY"}]}}if(d>0){let u=e.requestSerial+1;return{state:{...e,requestSerial:u,unavailableTrackIds:t,session:{phase:"preparing",requestId:u,round:null,retry:"replacement",countOnCommit:s,automaticRetriesRemaining:d-1}},commands:[...m,{type:"ANNOUNCE",message:"THE TRACK FAILED TO LOAD. TRYING ANOTHER."},{type:"REQUEST_ROUND",requestId:u,retry:"replacement",round:null,countOnCommit:s}]}}return{state:{...e,unavailableTrackIds:t,session:{phase:"audio-error",round:null,retry:"new",countOnCommit:s,message:"COULD NOT PLAY A TRACK. PRESS PLAY TO RETRY."}},commands:[...m,{type:"ANNOUNCE",message:"COULD NOT PLAY A TRACK. PRESS PLAY TO RETRY."},{type:"FOCUS_PLAY"}]}}case"AUDIO_ENDED":return e.session.phase!=="active"||e.session.round.id!==n.roundId||!e.session.hasPlayed?{state:e,commands:[]}:h[e.session.round.mode].clock!=="classic"?{state:e,commands:[{type:"CAPTURE_ATTEMPT",trackId:null}]}:{state:{...e,session:{...e.session,transport:"paused",hasPlayed:!1}},commands:[{type:"PAUSE_MEDIA"}]};case"ATTEMPT_REQUESTED":return Be(e)?h[e.session.round.mode].clock!=="classic"&&!e.session.hasPlayed?{state:e,commands:[]}:n.trackId!==null&&e.run.usedTrackIds.has(n.trackId)?{state:e,commands:[]}:{state:e,commands:[{type:"CAPTURE_ATTEMPT",trackId:n.trackId}]}:{state:e,commands:[]};case"ATTEMPT_APPLY":{if(e.session.phase!=="active"||e.session.round.id!==n.roundId)return{state:e,commands:[]};let t=e.session.round,r=h[t.mode],a=n.trackId===null?null:e.catalog.find(b=>b.id===n.trackId)??null,o=n.trackId===null?"skip":n.trackId===t.track.id?"correct":"wrong",s=e.run;if(n.trackId!==null){let b=new Set(s.usedTrackIds);b.add(n.trackId),s={...s,usedTrackIds:b}}s=$e(s,Fe(e,o,a?.title??null),o==="correct"?"correct":o==="wrong"?"wrong":"skip",r.clock!=="classic");let d=e.profile,m=!1;if(o==="correct"&&!d.discoveries.has(t.track.id)){d=$(d);let b=new Set(d.discoveries);b.add(t.track.id),d={...d,discoveries:b},m=!0}let y=[{type:"CLEAR_GUESS"},{type:"ANNOUNCE",message:o==="correct"?"CORRECT.":o==="wrong"?"INCORRECT.":"SKIPPED."}];if(m&&y.push({type:"PERSIST_PROFILE"}),r.clock==="classic"){let b={...e,profile:d,run:s};if(o==="correct")return Q(b,t,!0,n.clock);if(s.step>=S.length-1)return Q(b,t,!1,n.clock);let k=s.step+1;s={...s,step:k},r.daily&&t.date&&(d===e.profile&&(d=$(d)),d.daily={date:t.date,trackId:t.track.id,started:!0,completed:!1,won:!1,step:k},m=!0);let K=(S[k]??N)*1e3,A=[...y];return m&&!A.some(P=>P.type==="PERSIST_PROFILE")&&A.push({type:"PERSIST_PROFILE"}),n.wasPlaying?A.push({type:"SET_CLASSIC_LIMIT",limitMs:K}):A.push({type:"RESET_CLASSIC_CLOCK",limitMs:K},{type:"PLAY_ACTIVE",rewind:!0}),{state:{...e,profile:d,run:s,session:{...e.session,transport:n.wasPlaying?"playing":"starting",hasPlayed:n.wasPlaying}},commands:A}}o!=="skip"&&(s={...s,guesses:s.guesses+1}),o==="correct"&&(s={...s,correct:s.correct+1});let p=n.clock,c=[...y];if(r.clock==="survival"&&r.survivalAdjustments){let b=r.survivalAdjustments[o],k=Math.max(0,n.clock.remainingMs+b);p={...n.clock,remainingMs:k,maxRemainingMs:Math.max(n.clock.maxRemainingMs,k),expired:k<=0},c.push({type:"ADJUST_CLOCK",deltaMs:b},{type:"FLASH_TIME_CHANGE",seconds:b/1e3})}let f={...e,profile:d,run:s};if(p.expired||p.remainingMs<=0)return Q(f,t,null,p);let M=e.requestSerial+1;return c.push({type:"RELEASE_ACTIVE_AUDIO"},{type:"REQUEST_ROUND",requestId:M,retry:"new",round:null,countOnCommit:!0}),{state:{...e,profile:d,run:s,requestSerial:M,session:{phase:"preparing",requestId:M,round:null,retry:"new",countOnCommit:!0,automaticRetriesRemaining:1}},commands:c}}case"CLOCK_EXPIRED":return e.session.phase!=="active"?{state:e,commands:[]}:h[e.session.round.mode].clock==="classic"?{state:{...e,session:{...e.session,transport:"paused"}},commands:[{type:"PAUSE_MEDIA"}]}:Q(e,e.session.round,null,n.clock);case"RESULT_DISMISSED":{if(e.session.phase!=="result"||!e.mode)return{state:e,commands:[]};let t=W(e,e.mode);return{state:{...e,session:{phase:"idle"},run:j(t),unavailableTrackIds:new Set,previousTrackId:null},commands:[{type:"RESET_SERVICES",mode:e.mode},{type:"PREFETCH_ROUND"},{type:"FOCUS_PLAY"}]}}case"DISCOVERY_RESET":{let t=$(e.profile);return t.discoveries=new Set,{state:{...e,profile:t},commands:[{type:"PERSIST_PROFILE"},{type:"ANNOUNCE",message:"DISCOVERY RESET."}]}}case"DATE_CHANGED":{if(n.date===e.today)return{state:e,commands:[]};let t={...e,today:n.date};return e.mode!=="daily"||e.session.phase!=="idle"?{state:t,commands:[]}:{state:{...t,run:j(W(t,"daily")),unavailableTrackIds:new Set,previousTrackId:null},commands:[{type:"RESET_SERVICES",mode:"daily"},{type:"PREFETCH_ROUND"},{type:"ANNOUNCE",message:"A NEW DAILY TRACK IS AVAILABLE."}]}}}}D.innerHTML=`
-    <div class="app-shell">
-      <header class="brand-bar">
-        <div class="brand-lockup">
-          <p class="eyebrow">AUDIO GUESSING GAME</p>
-          <h1>CORZAGUESSR<span aria-hidden="true">\u2726</span></h1>
-        </div>
-        <button type="button" class="secondary-button discovery-button" aria-haspopup="dialog">
-          DISCOVERY
-        </button>
-      </header>
+(() => {
+  "use strict";
 
-      <section class="mode-grid" aria-label="GAME MODE">
-        <button type="button" class="mode-card" data-mode="daily" aria-pressed="false">
-          <span class="mode-card__top"><strong>DAILY</strong><span class="mode-record" data-record="daily">PB --</span></span>
-          <span>ONE SHARED TRACK. SIX ATTEMPTS.</span>
-        </button>
-        <button type="button" class="mode-card" data-mode="blitz" aria-pressed="false">
-          <span class="mode-card__top"><strong>BLITZ</strong><span class="mode-record" data-record="blitz">PB 0</span></span>
-          <span>SCORE AS MANY AS POSSIBLE IN 60 SECONDS.</span>
-        </button>
-        <button type="button" class="mode-card" data-mode="classic" aria-pressed="false">
-          <span class="mode-card__top"><strong>CLASSIC</strong><span class="mode-record" data-record="classic">PB 0</span></span>
-          <span>BUILD A STREAK WITH PROGRESSIVE CLIPS.</span>
-        </button>
-        <button type="button" class="mode-card" data-mode="survival" aria-pressed="false">
-          <span class="mode-card__top"><strong>SURVIVAL</strong><span class="mode-record" data-record="survival">PB 0:00</span></span>
-          <span>GAIN TIME FOR CORRECT ANSWERS. LOSE IT FOR MISSES.</span>
-        </button>
-      </section>
+  // Configuration -----------------------------------------------------------
 
-      <main class="game-card" aria-busy="true">
-        <div class="game-head">
-          <div>
-            <p class="game-mode-label">SELECT A MODE</p>
-            <p class="game-stat">READY WHEN YOU ARE</p>
+  const root = document.querySelector("#corzaguessr");
+  if (!root || root.dataset.corzaguessrReady) return;
+  root.dataset.corzaguessrReady = "true";
+
+  const scriptUrl = new URL(document.currentScript?.src || location.href);
+  const tracksUrl = new URL("tracks.json", scriptUrl);
+  tracksUrl.search = scriptUrl.search;
+  const audioFolderUrl =
+    "https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/";
+  const snippetDurations = [1, 2, 4, 8, 16, 32];
+  const maxSnippetDuration = snippetDurations.at(-1);
+  const minimumTimedRemainingSeconds = 60;
+  const maxTimedSlots = 50;
+  const durationProperties = {
+    feedback: "--duration-feedback",
+    slot: "--duration-slot",
+    result: "--duration-result",
+    discovery: "--duration-discovery",
+    progress: "--duration-progress",
+  };
+  const rootStyles = getComputedStyle(root);
+  const durations = Object.fromEntries(
+    Object.entries(durationProperties).map(([name, property]) => {
+      const raw = rootStyles.getPropertyValue(property).trim();
+      const milliseconds = raw.endsWith("ms")
+        ? Number.parseFloat(raw)
+        : raw.endsWith("s")
+          ? Number.parseFloat(raw) * 1000
+          : Number.NaN;
+      return [name, Number.isFinite(milliseconds) ? milliseconds : 0];
+    }),
+  );
+  const discoveryStorageKey = "corzaguessrDiscoveredV2";
+  const legacyDiscoveryStorageKey = "corzaguessrDiscoveredV1";
+  const personalBestStorageKey = "corzaguessrPersonalBestsV2";
+  const dailyStorageKey = "corzaguessrDailyV2";
+  const legacyDailyStorageKey = "corzaguessrDailyV1";
+  const dailyTimeZone = "Europe/Budapest";
+  const modePromptText = "SELECT A MODE TO BEGIN";
+  const dailyAudioErrorText = "COULD NOT LOAD TODAY'S TRACK, PRESS PLAY TO RETRY!";
+  const trackAudioErrorText = "COULD NOT PLAY TRACK, PRESS PLAY TO RETRY!";
+  const dailyCatalogLoadingText = "LOADING TODAY'S TRACK...";
+  const dailyCatalogErrorText = "COULD NOT REFRESH TODAY'S TRACK, RETRYING...";
+  const discoveryDescription =
+    "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
+  const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
+  const hiddenTitle = "????????????????????";
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const finePointer = matchMedia("(pointer: fine)");
+  const interactiveSelector = "button, input, a, .suggest";
+  const budapestDateFormatter = new Intl.DateTimeFormat("en", {
+    timeZone: dailyTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const icons = {
+    play: "M8 5v14l11-7z",
+    pause: "M6 5h4v14H6zM14 5h4v14h-4z",
+    stop: "M7 7h10v10H7z",
+  };
+  const classicModeDefaults = {
+    timed: false,
+    survival: false,
+    initialTime: 60000,
+    initialText: "0:00",
+    initialProgress: 0,
+    endTime: "0:01",
+    skip: "ADD 1S",
+  };
+  const modes = {
+    classic: {
+      ...classicModeDefaults,
+      description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
+    },
+    daily: {
+      ...classicModeDefaults,
+      daily: true,
+      description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
+    },
+    blitz: {
+      timed: true,
+      survival: false,
+      initialTime: 60000,
+      initialText: "1:00",
+      initialProgress: 1,
+      endTime: "1:00",
+      skip: "SKIP",
+      description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
+    },
+    survival: {
+      timed: true,
+      survival: true,
+      initialTime: 30000,
+      initialText: "0:00",
+      initialProgress: 1,
+      endTime: "0:30",
+      skip: "SKIP",
+      description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT",
+      timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
+    },
+  };
+
+  root.innerHTML = `
+    <div class="wrap">
+      <h1>CORZAGUESSR&#10022;</h1>
+      <div class="row header-action">
+        <button
+          type="button"
+          class="button discovery-button"
+          aria-controls="corzaguessr-discovery"
+          aria-expanded="false"
+        >DISCOVERY</button>
+      </div>
+      <div class="modes" aria-label="GAME MODE">
+        <button type="button" class="mode" data-mode="daily" aria-pressed="false">
+          DAILY
+        </button>
+        <button type="button" class="mode" data-mode="blitz" aria-pressed="false">
+          BLITZ
+        </button>
+        <button type="button" class="mode" data-mode="classic" aria-pressed="false">
+          CLASSIC
+        </button>
+        <button type="button" class="mode" data-mode="survival" aria-pressed="false">
+          SURVIVAL
+        </button>
+      </div>
+      <div class="card glass">
+        <div class="stack">
+          <div class="board">
+            <div class="controls">
+              <div class="time"><span class="now">0:00</span></div>
+              <button type="button" class="play" aria-label="PLAY" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="${icons.play}"></path>
+                </svg>
+              </button>
+              <div class="time"><span class="endtime">0:01</span></div>
+            </div>
+            <div class="timeline" aria-hidden="true">
+              <div class="snippet"></div>
+              <div class="fill"></div>
+              <div class="feedback"></div>
+              <div class="time-change"><span></span></div>
+              <i class="tick" style="left:3.125%"></i>
+              <i class="tick" style="left:6.25%"></i>
+              <i class="tick" style="left:12.5%"></i>
+              <i class="tick" style="left:25%"></i>
+              <i class="tick" style="left:50%"></i>
+            </div>
+            <div class="auto">
+              <label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label>
+              <input
+                id="corzaguessr-guess"
+                class="guess"
+                placeholder="HAVE A GUESS? SEARCH FOR IT HERE!"
+                autocomplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="corzaguessr-suggestions"
+                aria-expanded="false"
+                disabled
+              >
+              <div class="ruleset" aria-hidden="true">
+                <div class="ruleset-track">
+                  <span class="ruleset-text">${modePromptText}</span>
+                  <span class="ruleset-copy">${modePromptText}</span>
+                </div>
+              </div>
+              <div
+                id="corzaguessr-suggestions"
+                class="suggest"
+                role="listbox"
+              ></div>
+            </div>
+            <div class="row">
+              <button type="button" class="button skip" disabled>ADD 1S</button>
+            </div>
           </div>
-          <button type="button" class="catalog-retry secondary-button" hidden>RETRY TRACKLIST</button>
+          <div class="slots" aria-live="polite" aria-relevant="additions text"></div>
         </div>
-
-        <p class="instruction" aria-live="off">LOADING TRACKLIST...</p>
-
-        <section class="transport" aria-label="AUDIO PLAYER">
-          <div class="time-block">
-            <span class="time-label">CURRENT</span>
-            <strong class="time-current">0:00</strong>
+        <div class="result-modal">
+          <div class="result-shell">
+            <div
+              class="corzaguessr-modal glass"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="corzaguessr-result-title"
+              aria-describedby="corzaguessr-result-meta"
+              aria-hidden="true"
+            >
+              <h3 id="corzaguessr-result-title" class="modal-title"></h3>
+              <div id="corzaguessr-result-meta" class="result-meta"></div>
+              <div class="actions">
+                <button type="button" class="button next">NEW GAME</button>
+                <button type="button" class="button spotify">SPOTIFY</button>
+              </div>
+            </div>
           </div>
-          <button type="button" class="play-button" aria-label="PLAY" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${te.play}"></path></svg>
-          </button>
-          <div class="time-block time-block--end">
-            <span class="time-label">LIMIT</span>
-            <strong class="time-end">0:01</strong>
+        </div>
+        <p class="mode-prompt" role="status" aria-hidden="false">
+          ${modePromptText}
+        </p>
+        <div
+          id="corzaguessr-discovery"
+          class="discovery-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="corzaguessr-discovery-title"
+          aria-hidden="true"
+          tabindex="-1"
+        >
+          <div class="discovery-shell">
+            <div class="discovery-panel glass">
+              <h3 id="corzaguessr-discovery-title" class="discovery-title">
+                <span>DISCOVERY</span>
+                <small>0 / 0 (0%)</small>
+              </h3>
+              <div class="discovery-items" role="list"></div>
+              <div class="actions">
+                <button type="button" class="button discovery-close">CLOSE</button>
+                <button type="button" class="button discovery-reset">RESET</button>
+              </div>
+            </div>
           </div>
-        </section>
-
-        <div class="timeline" aria-hidden="true">
-          <div class="timeline__snippet"></div>
-          <div class="timeline__fill"></div>
-          <div class="timeline__ticks">
-            <i style="left:3.125%"></i><i style="left:6.25%"></i><i style="left:12.5%"></i><i style="left:25%"></i><i style="left:50%"></i>
-          </div>
-          <div class="time-change" aria-hidden="true"></div>
         </div>
-
-        <div class="guess-panel">
-          <label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label>
-          <input
-            id="corzaguessr-guess"
-            class="guess-input"
-            type="text"
-            placeholder="SEARCH FOR A TRACK"
-            autocomplete="off"
-            role="combobox"
-            aria-autocomplete="list"
-            aria-controls="corzaguessr-suggestions"
-            aria-expanded="false"
-            disabled
-          >
-          <div id="corzaguessr-suggestions" class="suggestions" role="listbox" hidden></div>
-        </div>
-
-        <div class="game-actions">
-          <button type="button" class="skip-button primary-button" disabled>ADD 1S</button>
-        </div>
-
-        <ol class="attempt-list" aria-label="ATTEMPT HISTORY" aria-live="polite"></ol>
-      </main>
+      </div>
     </div>
+    <p class="sr-only status" aria-live="polite"></p>
+    <audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>
+    <audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>
+  `;
 
-    <dialog class="result-dialog">
-      <div class="dialog-panel result-panel">
-        <p class="eyebrow">RESULT</p>
-        <h2 class="result-title">ROUND COMPLETE</h2>
-        <div class="result-modules"></div>
-        <div class="dialog-actions">
-          <button type="button" class="primary-button result-next">NEW GAME</button>
-          <button type="button" class="secondary-button result-spotify">SPOTIFY</button>
-        </div>
-      </div>
-    </dialog>
+  const $ = (selector) => root.querySelector(selector);
+  const ui = {
+    headerAction: $(".header-action"),
+    modes: $(".modes"),
+    card: $(".card"),
+    board: $(".board"),
+    slots: $(".slots"),
+    play: $(".play"),
+    skip: $(".skip"),
+    guess: $(".guess"),
+    suggest: $(".suggest"),
+    ruleset: $(".ruleset"),
+    rulesetText: $(".ruleset-text"),
+    rulesetCopy: $(".ruleset-copy"),
+    feedback: $(".feedback"),
+    timeChange: $(".time-change"),
+    timeChangeText: $(".time-change span"),
+    fill: $(".fill"),
+    snippet: $(".snippet"),
+    now: $(".now"),
+    endtime: $(".endtime"),
+    spotify: $(".spotify"),
+    next: $(".next"),
+    result: $(".corzaguessr-modal"),
+    resultTitle: $(".modal-title"),
+    resultMeta: $(".result-meta"),
+    modePrompt: $(".mode-prompt"),
+    discoveryButton: $(".discovery-button"),
+    discoveryModal: $(".discovery-modal"),
+    discoveryShell: $(".discovery-shell"),
+    discoveryPanel: $(".discovery-panel"),
+    discoveryCount: $("#corzaguessr-discovery-title small"),
+    discoveryItems: $(".discovery-items"),
+    discoveryClose: $(".discovery-close"),
+    discoveryReset: $(".discovery-reset"),
+    status: $(".status"),
+    audioPlayers: [...root.querySelectorAll(".audio")],
+    icon: $(".icon path"),
+  };
+  const modeButtons = Object.fromEntries(
+    [...root.querySelectorAll("[data-mode]")]
+      .map((button) => [button.dataset.mode, button]),
+  );
 
-    <dialog class="discovery-dialog">
-      <div class="dialog-panel discovery-panel">
-        <div class="dialog-heading">
-          <div>
-            <p class="eyebrow">COLLECTION</p>
-            <h2>DISCOVERY</h2>
-          </div>
-          <strong class="discovery-count">0 / 0</strong>
-        </div>
-        <div class="discovery-items" role="list"></div>
-        <div class="dialog-actions">
-          <button type="button" class="primary-button discovery-close">CLOSE</button>
-          <button type="button" class="secondary-button discovery-reset">RESET</button>
-        </div>
-      </div>
-    </dialog>
+  // State and small utilities -----------------------------------------------
 
-    <p class="sr-only live-status" aria-live="polite"></p>
-    <audio class="audio-player" preload="metadata" playsinline hidden></audio>
-    <audio class="audio-player" preload="metadata" playsinline hidden></audio>
-  `;function g(e){let n=D.querySelector(e);if(!n)throw new Error(`Corzaguessr could not find ${e}.`);return n}let he=new Map;D.querySelectorAll("[data-mode]").forEach(e=>{let n=e.dataset.mode;n&&n in h&&he.set(n,e)});let Ce=new Map;D.querySelectorAll("[data-record]").forEach(e=>{let n=e.dataset.record;n&&n in h&&Ce.set(n,e)});let z=[...D.querySelectorAll(".audio-player")];if(z.length!==2||!z[0]||!z[1])throw new Error("Corzaguessr requires exactly two audio players.");let l={gameCard:g(".game-card"),modeButtons:he,recordLabels:Ce,gameModeLabel:g(".game-mode-label"),gameStat:g(".game-stat"),instruction:g(".instruction"),play:g(".play-button"),playIcon:g(".play-button path"),currentTime:g(".time-current"),endTime:g(".time-end"),timeline:g(".timeline"),timeChange:g(".time-change"),guess:g(".guess-input"),suggestions:g(".suggestions"),skip:g(".skip-button"),attempts:g(".attempt-list"),discoveryButton:g(".discovery-button"),discoveryDialog:g(".discovery-dialog"),discoveryCount:g(".discovery-count"),discoveryItems:g(".discovery-items"),discoveryClose:g(".discovery-close"),discoveryReset:g(".discovery-reset"),resultDialog:g(".result-dialog"),resultTitle:g(".result-title"),resultModules:g(".result-modules"),resultNext:g(".result-next"),resultSpotify:g(".result-spotify"),retryCatalog:g(".catalog-retry"),liveStatus:g(".live-status"),audioPlayers:[z[0],z[1]]},T=()=>{},v=()=>B;function je(e){let n={kind:"classic",running:!1,expired:!1,anchorMs:0,elapsedMs:0,remainingMs:0,limitMs:S[0]*1e3,maxRemainingMs:0,frame:0},t=Number.NaN;function r(){return{kind:n.kind,running:n.running,expired:n.expired,elapsedMs:n.elapsedMs,remainingMs:n.remainingMs,limitMs:n.limitMs,maxRemainingMs:n.maxRemainingMs}}function a(){n.frame&&cancelAnimationFrame(n.frame),n.frame=0}function o(A=!1){let P=n.kind==="blitz"?n.remainingMs:n.elapsedMs,w=Math.floor(P/1e3);if(A||w!==t||n.kind==="survival"){t=w,e(r());return}let ce=v(),H=F(ce);if(!H)return;let i=0;H.clock==="classic"?i=n.elapsedMs/(N*1e3):H.clock==="survival"?i=n.maxRemainingMs?n.remainingMs/n.maxRemainingMs:0:i=H.initialMs?n.remainingMs/H.initialMs:0,l.timeline.style.setProperty("--progress",String(Math.max(0,Math.min(1,i))))}function s(){return n.kind==="classic"?n.elapsedMs>=n.limitMs:n.remainingMs<=0}function d(){n.expired||!s()||(n.expired=!0,n.running=!1,a(),o(!0),T({type:"CLOCK_EXPIRED",clock:r()}))}function m(A=performance.now(),P=!0){if(!n.running)return r();let w=Math.max(0,A-n.anchorMs);return n.anchorMs=A,n.kind==="classic"?n.elapsedMs+=w:(n.remainingMs=Math.max(0,n.remainingMs-w),n.kind==="survival"&&(n.elapsedMs+=w)),o(),P&&d(),r()}function u(A){n.running&&(m(A),n.running&&(n.frame=requestAnimationFrame(u)))}function y(A){return a(),Object.assign(n,{kind:"classic",running:!1,expired:!1,anchorMs:0,elapsedMs:0,remainingMs:0,limitMs:A,maxRemainingMs:0}),t=Number.NaN,o(!0),r()}function p(A){return m(performance.now(),!1),n.limitMs=A,d(),o(!0),r()}function c(A,P){return a(),Object.assign(n,{kind:A,running:!1,expired:!1,anchorMs:0,elapsedMs:0,remainingMs:P,limitMs:0,maxRemainingMs:P}),t=Number.NaN,o(!0),r()}function f(){return n.running||n.expired?!1:(n.running=!0,n.anchorMs=performance.now(),n.frame=requestAnimationFrame(u),o(!0),!0)}function M(){return n.running&&m(),n.running=!1,a(),o(!0),r()}function b(A){return n.kind==="classic"||n.expired||(n.running&&m(),n.expired)||(n.remainingMs=Math.max(0,n.remainingMs+A),n.maxRemainingMs=Math.max(n.maxRemainingMs,n.remainingMs),d(),o(!0)),r()}function k(){return n.running&&m(performance.now(),!1),n.running=!1,a(),o(!0),r()}function K(){a()}return{resetClassic:y,setClassicLimit:p,resetTimed:c,resume:f,pause:M,adjustRemaining:b,stop:k,snapshot:r,destroy:K}}function se(e){let n=v(),t=F(n);if(!t){l.currentTime.textContent="0:00",l.endTime.textContent="0:01",l.timeline.style.setProperty("--progress","0"),l.timeline.style.setProperty("--snippet",String(1/N));return}let r="0:00",a="0:01",o=0,s=0;t.clock==="classic"?(r=_(e.elapsedMs),a=_(e.limitMs),o=e.elapsedMs/(N*1e3),s=e.limitMs/(N*1e3)):t.clock==="blitz"?(r=_(Math.ceil(e.remainingMs/1e3)*1e3),a=_(t.initialMs),o=t.initialMs?e.remainingMs/t.initialMs:0):(r=_(e.elapsedMs),a=_(Math.ceil(e.remainingMs/1e3)*1e3),o=e.maxRemainingMs?e.remainingMs/e.maxRemainingMs:0),l.currentTime.textContent=r,l.endTime.textContent=a,l.timeline.style.setProperty("--progress",String(Math.max(0,Math.min(1,o)))),l.timeline.style.setProperty("--snippet",String(Math.max(0,Math.min(1,s)))),l.timeline.classList.toggle("timeline--timed",t.clock!=="classic")}let L=je(se);function We(e){let n=new URL(`${String(e.track.id).padStart(2,"0")}.mp3`,Ue);return n.hash=`t=${e.startSeconds}`,n.href}function Qe(e){let n=[{index:0,element:e[0],generation:0,role:"empty",round:null,controller:null,failed:!1},{index:1,element:e[1],generation:0,role:"empty",round:null,controller:null,failed:!1}],t=null,r=null,a="empty";function o(i,E){return i.generation===E&&i.role!=="empty"&&i.round!==null}function s(i){let E=i.round;if(!E||i.element.readyState<HTMLMediaElement.HAVE_METADATA)return;let I=Number.isFinite(i.element.duration)?i.element.duration:E.track.durationSeconds,O=Math.max(0,I-.05);try{i.element.currentTime=Math.min(E.startSeconds,O)}catch{}}function d(i){i.controller?.abort(),i.controller=null,i.generation+=1,i.role="empty",i.round=null,i.failed=!1,i.element.pause(),i.element.removeAttribute("src"),i.element.load()}function m(i){if(i.failed||!i.round||i.role==="empty")return;i.failed=!0;let E=i.round,I=i.role;I==="standby"?(r=null,d(i)):a="error",T({type:"AUDIO_FAILED",round:E,role:I})}function u(i){let E=i.generation,I=new AbortController;i.controller=I;let O=I.signal;i.element.addEventListener("loadedmetadata",()=>{o(i,E)&&s(i)},{signal:O}),i.element.addEventListener("playing",()=>{!o(i,E)||t!==i.index||!i.round||(a="playing",T({type:"AUDIO_PLAYING",roundId:i.round.id}))},{signal:O}),i.element.addEventListener("waiting",()=>{!o(i,E)||t!==i.index||!i.round||a==="paused"||(a="buffering",T({type:"AUDIO_WAITING",roundId:i.round.id}))},{signal:O}),i.element.addEventListener("ended",()=>{!o(i,E)||t!==i.index||!i.round||(a="paused",T({type:"AUDIO_ENDED",roundId:i.round.id}))},{signal:O}),i.element.addEventListener("error",()=>{o(i,E)&&i.element.error&&m(i)},{signal:O})}function y(i,E,I){d(i),i.generation+=1,i.role=I,i.round=E,i.failed=!1,i.element.preload=I==="standby"?"auto":"metadata",u(i),i.element.src=We(E),i.element.load()}function p(i){return i===0?1:0}function c(i){if(t!==null&&n[t].round?.id===i.id||r!==null&&n[r].round?.id===i.id)return!0;let E=p(t);return r!==null&&r!==E&&d(n[r]),r=E,y(n[E],i,"standby"),!0}function f(i){if(r!==null&&n[r].round?.id===i.id){let O=r;r=null,t!==null&&t!==O&&d(n[t]),t=O;let q=n[O];return q.role="active",a="paused",q}let E=p(t);r!==null&&r!==E&&d(n[r]),r=null,t!==null&&t!==E&&d(n[t]),t=E;let I=n[E];return y(I,i,"active"),a="paused",I}function M(i,E){if(!i.round||i.failed)return!1;let I=i.generation;return E&&s(i),a="starting",i.element.play()?.catch(q=>{if(!o(i,I)||t!==i.index)return;let _e=q instanceof DOMException?q.name:"";if(_e!=="AbortError"){if(_e==="NotAllowedError"&&i.round){a="paused",T({type:"AUDIO_PLAY_BLOCKED",roundId:i.round.id});return}m(i)}}),!0}function b(i,E){let I=t!==null&&n[t].round?.id===i.id?n[t]:f(i);return M(I,E)}function k(i){return t===null?!1:M(n[t],i)}function K(){t!==null&&(a="paused",n[t].element.pause())}function A(){if(t===null)return;let i=t;t=null,d(n[i]),a=r===null?"empty":"paused"}function P(){t!==null&&d(n[t]),r!==null&&r!==t&&d(n[r]),t=null,r=null,a="empty"}function w(){return r===null?null:n[r].round}function ce(){return t===null?null:n[t].round}function H(){return a==="starting"||a==="playing"||a==="buffering"}return{prefetch:c,playRound:b,playActive:k,pauseActive:K,releaseActive:A,reset:P,getStandbyRound:w,getActiveRound:ce,isPlayRequested:H}}let C=Qe(l.audioPlayers);function Xe(e){try{let n=localStorage.getItem(e);return n===null?null:JSON.parse(n)}catch{return null}}function Ze(e){let n={discoveries:[...e.discoveries].sort((t,r)=>t-r),records:e.records,daily:e.daily};try{return localStorage.setItem(pe,JSON.stringify(n)),!0}catch{return ve("PROGRESS COULD NOT BE SAVED IN THIS BROWSER."),!1}}function x(e){return Number.isSafeInteger(e)&&Number(e)>=0?Number(e):0}function Je(e){return Number.isSafeInteger(e)&&Number(e)>=0&&Number(e)<=100?Number(e):null}function en(e){let n=e&&typeof e=="object"?e:{},t=x(n.current),r=Math.max(t,x(n.best)),a=x(n.snippetTotal),o=x(n.bestSnippetTotal);return{current:a>=t&&a<=t*N?t:0,best:r,snippetTotal:a>=t&&a<=t*N?a:0,bestSnippetTotal:o>=r&&o<=r*N?o:0}}function Ie(e){let n=e&&typeof e=="object"?e:{};return{score:x(n.score),accuracy:Je(n.accuracy)}}function nn(e){let n=e&&typeof e=="object"?e:{};return{classic:en(n.classic),daily:x(n.daily),blitz:Ie(n.blitz),survival:Ie(n.survival)}}function tn(e,n){if(!e||typeof e!="object")return null;let t=e;if(!Te(t.date))return null;let r=t.started===!0,a=r&&t.completed===!0,o=x(t.step),s=Math.min(S.length-1,o),d=Number.isSafeInteger(t.trackId)?Number(t.trackId):0,m=n.find(u=>u.id===d)??null;return{date:t.date,trackId:m?.id??0,started:r,completed:a,won:a&&t.won===!0,step:s}}function rn(e,n){if(!e||typeof e!="object")return null;let t=e,r=new Set(n.map(s=>s.id)),a=Array.isArray(t.discoveries)?new Set(t.discoveries.filter(s=>Number.isSafeInteger(s)&&r.has(Number(s))).map(Number)):new Set,o=tn(t.daily,n);return{discoveries:a,records:nn(t.records),daily:o&&o.trackId?o:null}}function sn(e,n){return e.filter(t=>t.availableFrom<=n)}function on(e,n,t=null){let r=sn(e,n);if(!r.length)return null;if(t!==null){let s=r.find(d=>d.id===t);if(s)return s}let a=null,o=-1;for(let s of r){let d=ge(`corzaguessr-daily:${n}:${s.id}`);d>o&&(a=s,o=d)}return a}function an(e){return rn(Xe(pe),e)??Ae()}function ln(e){if(!Array.isArray(e)||!e.length)throw new Error("Track catalog is empty or invalid.");let n=new Set,t=new Set,r=[];for(let[a,o]of e.entries()){if(!o||typeof o!="object"||Array.isArray(o))throw new Error(`Track ${a+1} is not an object.`);let s=o,d=Number(s.dailyNumber??s.id),m=typeof s.title=="string"?s.title.trim():"",u=Number(s.duration??s.durationSeconds),y=s.dailyFrom??s.availableFrom??"1970-01-01",p=typeof y=="string"?y.trim():"",c=s.spotify??s.spotifyId,f=typeof c=="string"&&c.trim()?c.trim():null,M=s.isNew===!0;if(!Number.isSafeInteger(d)||d<=0)throw new Error(`Track ${a+1} has an invalid ID.`);if(n.has(d))throw new Error(`Track ID ${d} is duplicated.`);if(!m)throw new Error(`Track ${a+1} has no title.`);if(t.has(m))throw new Error(`Track title "${m}" is duplicated.`);if(!Number.isFinite(u)||u<=0)throw new Error(`Track ${a+1} has an invalid duration.`);if(!Te(p))throw new Error(`Track ${a+1} has an invalid availability date.`);if(f&&!/^[A-Za-z0-9]{22}$/.test(f))throw new Error(`Track ${a+1} has an invalid Spotify ID.`);n.add(d),t.add(m),r.push({id:d,title:m,searchText:Se(m),spotifyId:f,durationSeconds:u,availableFrom:p,markedNew:M})}return r}let oe=0;function ve(e){cancelAnimationFrame(oe),l.liveStatus.textContent="",oe=requestAnimationFrame(()=>{l.liveStatus.textContent=e})}let dn=0;function ae(e,n=new Set){if(!e.mode)return null;if(h[e.mode].daily){let s=e.profile.daily?.date===e.today?e.profile.daily.trackId:null;return on(e.catalog,e.today,s)}let r=e.catalog.filter(s=>!e.unavailableTrackIds.has(s.id)&&!n.has(s.id));if(!r.length)return null;let a=r.length>1&&e.previousTrackId!==null?r.filter(s=>s.id!==e.previousTrackId):r,o=a.length?a:r;return o[Math.floor(Math.random()*o.length)]??null}function Le(e,n,t){if(!e.mode)throw new Error("Cannot create a round without a mode.");let r=h[e.mode],a=Math.min(r.clock==="classic"?N:xe,n.durationSeconds),o=Math.max(0,Math.floor(n.durationSeconds-a)),s=r.daily?e.today:null,d=r.daily&&s?ge(`corzaguessr-daily-clip:${s}:${n.id}`)%(o+1):Math.floor(Math.random()*(o+1));return{id:++dn,mode:e.mode,date:s,track:n,startSeconds:d,countOnCommit:t}}function Me(e,n){return!n||!e.mode||n.mode!==e.mode?!1:n.mode!=="daily"||n.date===e.today}function cn(e){let n=U(),t=0;function r(){t&&clearTimeout(t),t=0}function a(u){let y=U(new Date(u)),p=u+2160*60*1e3;for(;U(new Date(p))===y;)p+=720*60*1e3;let c=u;for(;p-c>1e3;){let f=Math.floor((c+p)/2);U(new Date(f))===y?c=f:p=f}return p}function o(){r();let u=Date.now(),y=a(u);t=window.setTimeout(()=>{s()},Math.max(1e3,y-u+1e3))}function s(){let u=U();u!==n&&(n=u,T({type:"DATE_CHANGED",date:u})),o()}function d(){n=U(),o(),document.addEventListener("visibilitychange",()=>{document.hidden||s()},{signal:e}),window.addEventListener("pageshow",s,{signal:e}),window.addEventListener("focus",s,{signal:e}),window.addEventListener("online",s,{signal:e})}function m(){r()}return{start:d,synchronize:s,destroy:m}}function un(e){let n=e.profile.daily;if(!n||n.date!==e.today)return null;let t=n.step+1;return n.completed?`${n.won?"COMPLETED":"FAILED"} IN ${t} ATTEMPT${t===1?"":"S"}. COME BACK TOMORROW.`:n.started?`DAILY IN PROGRESS. CONTINUE FROM ATTEMPT ${t}.`:null}function mn(e){if(e.appStatus==="loading")return"LOADING TRACKLIST...";if(e.appStatus==="error")return"THE TRACKLIST COULD NOT BE LOADED.";if(!e.mode)return"SELECT A MODE TO BEGIN.";let n=h[e.mode];return e.session.phase==="preparing"?"LOADING TRACK...":e.session.phase==="audio-error"?e.session.message:e.session.phase==="result"?"ROUND COMPLETE.":e.session.phase==="idle"?n.daily?un(e)??n.description:n.description:n.clock!=="classic"?`GUESS #${Math.max(1,e.run.rounds)}`:e.run.step===S.length-1?"LAST CHANCE TO GUESS.":`GUESS ${e.run.step+1} OF ${S.length}.`}function pn(e){return e.mode?e.mode==="classic"?`STREAK ${e.profile.records.classic.current}`:e.mode==="daily"?`ATTEMPT ${(e.session.phase==="active"?e.run.step:W(e,"daily"))+1} / ${S.length}`:`SCORE ${e.run.correct} \xB7 ACCURACY ${Y(V(e.run))}`:"READY WHEN YOU ARE"}function yn(e){if(!e.mode||h[e.mode].clock!=="classic")return"SKIP";let n=S[e.run.step]??S[0];return e.run.step>=S.length-1?"GIVE UP":`ADD ${(S[e.run.step+1]??n)-n}S`}function fn(e,n){return e==="daily"?n.daily?`PB ${n.daily} TRY${n.daily===1?"":"S"}`:"PB --":e==="classic"?`PB ${n.classic.best}`:e==="blitz"?`PB ${n.blitz.score}`:`PB ${_(n.survival.score)}`}function En(e){l.attempts.replaceChildren(...e.map(n=>{let t=document.createElement("li");return t.className=`attempt attempt--${n.tone}`,t.textContent=n.text,t}))}function gn(e,n){if(e.markedNew)return!0;let t=Date.parse(`${e.availableFrom}T00:00:00Z`),r=Date.parse(`${n}T00:00:00Z`),a=Math.floor((r-t)/864e5);return a>=0&&a<=14}function ie(e){let n=[...e.catalog].sort((a,o)=>o.id-a.id),t=n.reduce((a,o)=>a+(e.profile.discoveries.has(o.id)?1:0),0),r=n.length?Math.round(t*100/n.length):0;l.discoveryCount.textContent=`${t} / ${n.length} (${r}%)`,l.discoveryItems.replaceChildren(...n.map(a=>{let o=document.createElement("div");o.className="discovery-item",o.setAttribute("role","listitem");let s=e.profile.discoveries.has(a.id);if(gn(a,e.today)&&!s){let d=document.createElement("span");d.className="new-marker",d.textContent="NEW";let m=document.createElement("span");m.textContent=fe,o.append(d,m),o.setAttribute("aria-label","NEW UNDISCOVERED TRACK")}else o.textContent=s?a.title:fe,s||o.setAttribute("aria-label","UNDISCOVERED TRACK");return o}))}function De(e){l.resultTitle.textContent=e.heading,l.resultTitle.dataset.success=e.success===null?"timed":e.success?"true":"false",l.resultModules.replaceChildren(...e.modules.map(n=>{let t=document.createElement("div");t.className="result-module";let r=document.createElement("span");r.className="result-module__label",r.textContent=n.label;let a=document.createElement("strong");return a.className="result-module__value",n.highlight&&a.classList.add("result-module__value--highlight"),a.textContent=n.value,t.append(r,a),t})),l.resultSpotify.hidden=e.spotifyId===null}function Oe(e,n){D.dataset.appStatus=n.appStatus,D.dataset.session=n.session.phase,D.dataset.mode=n.mode??"none",l.gameCard.setAttribute("aria-busy",String(n.appStatus==="loading"||n.session.phase==="preparing")),l.retryCatalog.hidden=n.appStatus!=="error";for(let[y,p]of l.modeButtons){let c=n.mode===y;p.disabled=n.appStatus==="loading"||n.appStatus==="error",p.setAttribute("aria-pressed",String(c)),p.classList.toggle("mode-card--selected",c)}for(let[y,p]of l.recordLabels)p.textContent=fn(y,n.profile.records);l.gameModeLabel.textContent=n.mode?n.mode.toLocaleUpperCase():"SELECT A MODE",l.gameStat.textContent=pn(n),l.instruction.textContent=mn(n),l.skip.textContent=yn(n);let t=F(n),r=n.session.phase==="active",a=n.session.phase==="preparing",o=n.session.phase==="result",s=!!(t?.daily&&n.session.phase==="idle"&&re(n)),d=n.appStatus==="ready"&&t!==null&&!a&&!o&&!s,m=n.appStatus==="ready"&&r&&!o;l.play.disabled=!d,l.guess.disabled=!m,l.skip.disabled=!m,l.discoveryButton.disabled=n.appStatus==="loading"||n.appStatus==="error"||n.session.phase!=="idle";let u=r&&n.session.transport!=="paused";l.playIcon.setAttribute("d",u?te.pause:te.play),l.play.setAttribute("aria-label",u?"PAUSE":"PLAY"),l.play.classList.toggle("play-button--loading",a||r&&n.session.transport==="buffering"),e.run.attempts!==n.run.attempts&&En(n.run.attempts),(e.profile!==n.profile||e.catalog!==n.catalog||e.today!==n.today)&&ie(n),n.session.phase==="result"&&e.session!==n.session&&De(n.session.result),se(L.snapshot())}let X=matchMedia("(pointer: fine)").matches?"fine-pointer":"coarse-pointer";function Sn(e){let n=[],t=-1;function r(){n=[],t=-1,l.suggestions.replaceChildren(),l.suggestions.hidden=!0,l.guess.setAttribute("aria-expanded","false"),l.guess.removeAttribute("aria-activedescendant")}function a(u){if(!n.length)return;let y=(u+n.length)%n.length,p=l.suggestions.querySelector("[aria-selected='true']");p?.setAttribute("aria-selected","false"),p?.classList.remove("suggestion--active"),t=y;let c=l.suggestions.querySelector(`[data-index="${y}"]`);c&&(c.setAttribute("aria-selected","true"),c.classList.add("suggestion--active"),l.guess.setAttribute("aria-activedescendant",c.id),c.scrollIntoView({block:"nearest"}))}function o(){let u=v(),y=Se(l.guess.value);if(!y||l.guess.disabled){r();return}n=u.catalog.filter(p=>!u.run.usedTrackIds.has(p.id)&&p.searchText.includes(y)).sort((p,c)=>{let f=p.searchText.startsWith(y)?0:p.searchText.includes(` ${y}`)?1:2,M=c.searchText.startsWith(y)?0:c.searchText.includes(` ${y}`)?1:2;return f-M||p.title.localeCompare(c.title)}).slice(0,8),t=n.length?0:-1,l.suggestions.replaceChildren(...n.map((p,c)=>{let f=document.createElement("button");return f.type="button",f.id=`corzaguessr-option-${c}`,f.className=c===0?"suggestion suggestion--active":"suggestion",f.dataset.index=String(c),f.dataset.trackId=String(p.id),f.setAttribute("role","option"),f.setAttribute("aria-selected",String(c===0)),f.textContent=p.title,f})),l.suggestions.hidden=!n.length,l.guess.setAttribute("aria-expanded",String(!!n.length)),n.length?l.guess.setAttribute("aria-activedescendant","corzaguessr-option-0"):l.guess.removeAttribute("aria-activedescendant")}function s(u){let y=n[u];y&&T({type:"ATTEMPT_REQUESTED",trackId:y.id})}l.guess.addEventListener("input",o,{signal:e}),l.guess.addEventListener("keydown",u=>{if(u.key==="Escape"){d();return}if(u.key==="ArrowDown"||u.key==="ArrowUp"){if(!n.length)return;u.preventDefault(),a(t+(u.key==="ArrowDown"?1:-1));return}u.key==="Enter"&&(u.preventDefault(),n.length&&t>=0?s(t):l.guess.value.trim()||T({type:"PLAY_PRESSED"}))},{signal:e}),l.suggestions.addEventListener("pointerover",u=>{let y=u.target?.closest("[data-index]");if(!y)return;let p=Number(y.dataset.index);Number.isInteger(p)&&a(p)},{signal:e}),l.suggestions.addEventListener("click",u=>{let y=u.target?.closest("[data-index]");if(!y)return;let p=Number(y.dataset.index);Number.isInteger(p)&&s(p)},{signal:e});function d(){l.guess.value="",r()}function m(){l.guess.disabled||l.discoveryDialog.open||l.resultDialog.open||X!=="coarse-pointer"&&queueMicrotask(()=>{!l.guess.disabled&&!l.discoveryDialog.open&&!l.resultDialog.open&&l.guess.focus()})}return{clear:d,focus:m,refresh:o}}let R=new AbortController,le=Sn(R.signal);function Tn(){let e=v();if(!e.mode||e.appStatus!=="ready"||e.session.phase==="result"||e.session.phase==="preparing"||e.mode==="daily"&&re(e))return;let n=C.getStandbyRound();if(Me(e,n)&&!e.unavailableTrackIds.has(n.track.id))return;let t=new Set,r=C.getActiveRound();r&&t.add(r.track.id);let a=ae(e,t);a&&C.prefetch(Le(e,a,!0))}function An(e){let n=v();if(n.session.phase!=="preparing"||n.session.requestId!==e.requestId||!n.mode)return;let t=null;if(e.retry==="same"&&e.round)t={...e.round,countOnCommit:e.countOnCommit};else{let r=C.getStandbyRound();if(Me(n,r)&&!n.unavailableTrackIds.has(r.track.id))t={...r,countOnCommit:e.countOnCommit};else{let a=new Set,o=C.getActiveRound();o&&a.add(o.track.id);let s=ae(n,a);if(!s&&n.catalog.length){let d={...n,unavailableTrackIds:new Set};s=ae(d,a)}s&&(t=Le(n,s,e.countOnCommit))}}if(!t){T({type:"ROUND_UNAVAILABLE",requestId:e.requestId,message:"NO PLAYABLE TRACK IS AVAILABLE. PRESS PLAY TO RETRY."});return}T({type:"ROUND_ASSIGNED",requestId:e.requestId,round:t}),C.playRound(t,!0)||T({type:"AUDIO_FAILED",round:t,role:"active"})}function Rn(e){l.timeChange.textContent=`${e>0?"+":""}${e}S`,l.timeChange.classList.remove("time-change--active","time-change--positive","time-change--negative"),l.timeChange.offsetWidth,l.timeChange.classList.add("time-change--active",e>0?"time-change--positive":"time-change--negative"),l.timeChange.addEventListener("animationend",()=>{l.timeChange.classList.remove("time-change--active","time-change--positive","time-change--negative"),l.timeChange.textContent=""},{once:!0})}function bn(){let e=v();e.session.phase==="result"&&(De(e.session.result),l.resultDialog.open||l.resultDialog.showModal(),queueMicrotask(()=>l.resultNext.focus()))}function hn(e){switch(e.type){case"RESET_SERVICES":{C.reset(),le.clear();let n=h[e.mode];if(n.clock==="classic"){let t=v().run.step;L.resetClassic((S[t]??S[0])*1e3)}else L.resetTimed(n.clock,n.initialMs);return}case"REQUEST_ROUND":An(e);return;case"PREFETCH_ROUND":Tn();return;case"PLAY_ACTIVE":{let n=C.getActiveRound();!C.playActive(e.rewind)&&n&&T({type:"AUDIO_FAILED",round:n,role:"active"});return}case"PAUSE_MEDIA":L.pause(),C.pauseActive();return;case"PAUSE_CLOCK":L.pause();return;case"RESUME_CLOCK":L.resume();return;case"RELEASE_ACTIVE_AUDIO":C.releaseActive();return;case"RESET_CLASSIC_CLOCK":L.resetClassic(e.limitMs);return;case"SET_CLASSIC_LIMIT":L.setClassicLimit(e.limitMs);return;case"ADJUST_CLOCK":L.adjustRemaining(e.deltaMs);return;case"STOP_MEDIA":L.stop(),C.pauseActive();return;case"CAPTURE_ATTEMPT":{let n=v();if(n.session.phase!=="active")return;let t=h[n.session.round.mode],r=n.session.transport!=="paused"&&C.isPlayRequested();t.clock!=="classic"&&(L.pause(),C.pauseActive()),T({type:"ATTEMPT_APPLY",roundId:n.session.round.id,trackId:e.trackId,clock:L.snapshot(),wasPlaying:r});return}case"PERSIST_PROFILE":Ze(v().profile);return;case"ANNOUNCE":ve(e.message);return;case"FOCUS_GUESS":le.focus();return;case"FOCUS_PLAY":X!=="coarse-pointer"&&!l.play.disabled&&queueMicrotask(()=>l.play.focus());return;case"CLEAR_GUESS":le.clear();return;case"OPEN_RESULT":bn();return;case"FLASH_TIME_CHANGE":Rn(e.seconds);return}}function Cn(e){let n=e,t=[],r=!1;function a(o){if(t.push(o),!r){r=!0;try{for(;t.length;){let s=t.shift();if(!s)continue;let d=n,m=Ve(n,s);n=m.state,Oe(d,n);for(let u of m.commands)hn(u)}}finally{r=!1}}}return{getState:()=>n,dispatch:a}}let ke=Cn(B);v=ke.getState,T=ke.dispatch;function In(){let e=v();e.session.phase!=="idle"||e.appStatus==="loading"||e.appStatus==="error"||(ie(e),l.discoveryDialog.open||l.discoveryDialog.showModal(),queueMicrotask(()=>l.discoveryClose.focus()))}function Pe(){l.resultDialog.open&&l.resultDialog.close(),T({type:"RESULT_DISMISSED"})}for(let[e,n]of l.modeButtons)n.addEventListener("click",()=>T({type:"MODE_SELECTED",mode:e}),{signal:R.signal});l.play.addEventListener("click",()=>T({type:"PLAY_PRESSED"}),{signal:R.signal}),l.skip.addEventListener("click",()=>T({type:"ATTEMPT_REQUESTED",trackId:null}),{signal:R.signal}),l.discoveryButton.addEventListener("click",In,{signal:R.signal}),l.discoveryClose.addEventListener("click",()=>l.discoveryDialog.close(),{signal:R.signal}),l.discoveryReset.addEventListener("click",()=>{window.confirm("RESET DISCOVERY? THIS HIDES ALL DISCOVERED TRACKS.")&&T({type:"DISCOVERY_RESET"})},{signal:R.signal}),l.discoveryDialog.addEventListener("click",e=>{e.target===l.discoveryDialog&&l.discoveryDialog.close()},{signal:R.signal}),l.resultNext.addEventListener("click",Pe,{signal:R.signal}),l.resultSpotify.addEventListener("click",()=>{let e=v();e.session.phase!=="result"||!e.session.result.spotifyId||window.open(`https://open.spotify.com/track/${e.session.result.spotifyId}`,"_blank","noopener,noreferrer")},{signal:R.signal}),l.resultDialog.addEventListener("cancel",e=>{e.preventDefault(),Pe()},{signal:R.signal}),D.addEventListener("keydown",()=>{X="keyboard"},{capture:!0,signal:R.signal}),D.addEventListener("pointerdown",e=>{X=e.pointerType==="mouse"&&matchMedia("(pointer: fine)").matches?"fine-pointer":"coarse-pointer"},{capture:!0,signal:R.signal}),document.addEventListener("visibilitychange",()=>{if(!document.hidden)return;let e=v();e.session.phase==="active"&&e.session.transport!=="paused"?T({type:"PLAY_PRESSED"}):e.session.phase==="preparing"&&e.session.round&&C.isPlayRequested()&&(C.pauseActive(),T({type:"AUDIO_PLAY_BLOCKED",roundId:e.session.round.id}))},{signal:R.signal});let de=!1,Z=0,G=0;async function J(){if(de)return;de=!0;let e=++Z;G&&clearTimeout(G),G=0;try{let n=await fetch(me,{headers:{Accept:"application/json"},cache:"no-cache"});if(!n.ok)throw new Error(`Track catalog returned HTTP ${n.status}.`);let t=ln(await n.json());if(e!==Z)return;let r=an(t);T({type:"CATALOG_READY",tracks:t,profile:r,today:U()})}catch(n){if(e!==Z)return;let t=n instanceof Error?n.message:"Unknown track catalog error.";console.error("Corzaguessr could not load its track catalog.",n),T({type:"CATALOG_FAILED",message:t}),G=window.setTimeout(()=>{J()},5e3)}finally{e===Z&&(de=!1)}}l.retryCatalog.addEventListener("click",()=>{J()},{signal:R.signal}),window.addEventListener("online",()=>{v().appStatus==="error"&&J()},{signal:R.signal});let Ne=cn(R.signal);Ne.start();function vn(){R.abort(),Ne.destroy(),L.destroy(),C.reset(),cancelAnimationFrame(oe),G&&clearTimeout(G),D.removeAttribute("data-corzaguessr-ready")}D.corzaguessrDestroy=vn,Oe(B,B),ie(B),se(L.snapshot()),J()})();})();
+  let pendingDiscoveryMigration = null;
+  let pendingDailyMigration = null;
+
+  const state = {
+    appStatus: "loading",
+    mode: null,
+    previewText: null,
+    inputModality: finePointer.matches ? "pointer-fine" : "pointer-coarse",
+    step: 0,
+    rounds: 0,
+    guesses: 0,
+    correct: 0,
+    used: new Set(),
+    discovered: loadDiscoveries(),
+    personalBests: loadPersonalBests(),
+    newPersonalBest: false,
+    classicResult: null,
+    notice: null,
+    activeSuggestion: -1,
+    suggestions: [],
+    history: [],
+    nextHistoryId: 0,
+    catalogError: null,
+  };
+  const session = {
+    status: "idle",
+    current: null,
+    pending: null,
+    previousDailyNumber: null,
+    nextId: 0,
+    promptEntryId: null,
+    retryEntryId: null,
+    playbackRequested: false,
+    recovery: {
+      automaticRetriesRemaining: 1,
+      prefetchBlocked: false,
+      reuseCommittedRound: false,
+    },
+  };
+  const dailyState = {
+    progress: loadDaily(),
+    roundDate: getBudapestDate(),
+    retryRound: null,
+  };
+  const catalogState = {
+    applied: {
+      date: null,
+      version: 0,
+      tracks: [],
+    },
+    nextRequestId: 0,
+    request: { kind: "idle" },
+    unavailable: new Set(),
+  };
+  const overlayState = {
+    kind: null,
+    phase: "closed",
+    generation: 0,
+    returnFocus: null,
+    pageScrollStyles: null,
+    discoverySuspension: null,
+  };
+  const availabilityState = {
+    signature: null,
+    rulesText: null,
+  };
+  const timers = new Map();
+  const frames = new Map();
+
+  renderUi({ force: true });
+
+  function formatTime(seconds) {
+    return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, "0")}`;
+  }
+
+  function getBudapestDate(date = new Date()) {
+    const parts = budapestDateFormatter.formatToParts(date);
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function currentMode() {
+    return modes[state.mode];
+  }
+
+  function currentRound() {
+    return session.current;
+  }
+
+  function pendingRound() {
+    return session.pending;
+  }
+
+  function ownedRound() {
+    return currentRound() || pendingRound();
+  }
+
+  function currentTrack() {
+    return currentRound()?.track || null;
+  }
+
+  function clearTimer(name) {
+    clearTimeout(timers.get(name));
+    timers.delete(name);
+  }
+
+  function setTimer(name, callback, delay) {
+    clearTimer(name);
+    const timer = setTimeout(() => {
+      timers.delete(name);
+      callback();
+    }, delay);
+    timers.set(name, timer);
+  }
+
+  function clearFrame(name) {
+    cancelAnimationFrame(frames.get(name));
+    frames.delete(name);
+  }
+
+  function setFrame(name, callback) {
+    clearFrame(name);
+    const frame = requestAnimationFrame(() => {
+      frames.delete(name);
+      callback();
+    });
+    frames.set(name, frame);
+  }
+
+  function announce(message) {
+    ui.status.textContent = "";
+    setFrame("announcement", () => {
+      ui.status.textContent = message;
+    });
+  }
+
+  function shouldRestoreGuessFocus() {
+    return state.inputModality === "keyboard" || state.inputModality === "pointer-fine";
+  }
+
+  function focusGuess() {
+    if (!shouldRestoreGuessFocus() || !getUiModel().guessEnabled || isModalOpen()) return;
+    setFrame("guess-focus", () => {
+      if (getUiModel().guessEnabled && !isModalOpen()) ui.guess.focus();
+    });
+  }
+
+  function focusPlay() {
+    if (canUsePlayback()) {
+      ui.play.focus({ preventScroll: true });
+    }
+  }
+
+  function isResultOpen() {
+    return overlayState.kind === "result" && overlayState.phase !== "closed";
+  }
+
+  function isDiscoveryOpen() {
+    return overlayState.kind === "discovery" && overlayState.phase !== "closed";
+  }
+
+  function isDiscoveryVisible() {
+    return (
+      overlayState.kind === "discovery" &&
+      (overlayState.phase === "opening" || overlayState.phase === "open")
+    );
+  }
+
+  function isAwaitingMode() {
+    return state.appStatus === "awaiting-mode";
+  }
+
+  function isModalOpen() {
+    return overlayState.phase !== "closed";
+  }
+
+  function canPreviewRules() {
+    return !isModalOpen() && (
+      isAwaitingMode() ||
+      (state.mode && session.status !== "active" && session.status !== "paused")
+    );
+  }
+
+  function canUsePlayback() {
+    return getUiModel().playEnabled;
+  }
+
+  function isRoundReadyToStart() {
+    return canUsePlayback() && !ownedRound() && (
+      session.status === "idle" || session.status === "audio-retry"
+    );
+  }
+
+  function transitionDelay(milliseconds) {
+    return reducedMotion.matches ? 0 : milliseconds;
+  }
+
+  function syncBackgroundInert() {
+    const resultOpen = isResultOpen();
+    const discoveryOpen = isDiscoveryOpen();
+    const overlayOpen = resultOpen || discoveryOpen;
+    ui.headerAction.inert = overlayOpen;
+    ui.modes.inert = overlayOpen;
+    ui.board.inert = overlayOpen || isAwaitingMode();
+    ui.slots.inert = overlayOpen || isAwaitingMode();
+  }
+
+  function getPersistentRulesText() {
+    if (state.appStatus === "loading") {
+      return state.catalogError ? dailyCatalogErrorText : "LOADING TRACKLIST...";
+    }
+    if (state.appStatus === "error") {
+      return "COULD NOT LOAD THE TRACKLIST, RETRYING...";
+    }
+    if (!state.mode) return modePromptText;
+    if (session.status === "preparing") return "LOADING TRACK...";
+    return getModeRulesText(state.mode);
+  }
+
+  function getUiModel() {
+    const mode = currentMode();
+    const overlayOpen = isModalOpen();
+    const appReady = state.appStatus === "ready";
+    const inputVisible = Boolean(
+      currentRound() && (session.status === "active" || session.status === "paused"),
+    );
+    const dailyBlocked = Boolean(
+      mode?.daily && (
+        dailyNeedsCatalogRefresh() ||
+        (isDailyDone(dailyState.roundDate) && !currentRound())
+      ),
+    );
+    const playStatus = ["idle", "active", "paused", "audio-retry"].includes(session.status) ||
+      (session.status === "preparing" && Boolean(pendingRound()) && !session.playbackRequested);
+    const playEnabled = Boolean(
+      appReady &&
+      mode &&
+      !overlayOpen &&
+      !dailyBlocked &&
+      playStatus &&
+      !isAwaitingMode(),
+    );
+    const roundControlsAvailable = Boolean(
+      appReady &&
+      currentRound() &&
+      !overlayOpen &&
+      (session.status === "active" || session.status === "paused"),
+    );
+    const rulesText = state.previewText || getPersistentRulesText();
+    const icon = session.playbackRequested
+      ? mode?.timed ? "pause" : "stop"
+      : "play";
+    return {
+      appReady,
+      awaitingMode: isAwaitingMode(),
+      mode,
+      inputVisible,
+      rulesText,
+      icon,
+      playEnabled,
+      skipEnabled: roundControlsAvailable,
+      guessEnabled: roundControlsAvailable,
+      modesEnabled: state.appStatus !== "error",
+    };
+  }
+
+  function renderUi({ force = false } = {}) {
+    const view = getUiModel();
+    const signature = JSON.stringify({
+      app: state.appStatus,
+      session: session.status,
+      mode: state.mode,
+      notice: state.notice,
+      preview: state.previewText,
+      overlay: `${overlayState.kind || "none"}:${overlayState.phase}`,
+      dailyDate: dailyState.roundDate,
+      dailyProgress: dailyState.progress,
+      current: currentRound()?.id || null,
+      playback: session.playbackRequested,
+    });
+    if (!force && availabilityState.signature === signature) return;
+    availabilityState.signature = signature;
+
+    root.dataset.appStatus = state.appStatus;
+    root.dataset.sessionStatus = session.status;
+    ["loading", "awaiting-mode", "ready", "error"].forEach((status) => {
+      root.classList.toggle(`app-${status}`, state.appStatus === status);
+    });
+    ["idle", "preparing", "active", "paused", "audio-retry", "result"].forEach((status) => {
+      root.classList.toggle(`session-${status}`, session.status === status);
+    });
+    root.classList.toggle("awaiting-mode", view.awaitingMode);
+    root.classList.toggle("rules-visible", !view.inputVisible);
+    root.classList.toggle("timed", Boolean(view.mode?.timed));
+    root.classList.toggle("mode-error", state.appStatus === "error");
+    ui.modePrompt.setAttribute("aria-hidden", String(!view.awaitingMode));
+
+    ui.play.disabled = !view.playEnabled;
+    ui.skip.disabled = !view.skipEnabled;
+    ui.guess.disabled = !view.guessEnabled;
+    Object.entries(modeButtons).forEach(([name, button]) => {
+      const selected = name === state.mode;
+      button.disabled = !view.modesEnabled || selected;
+      button.setAttribute("aria-pressed", String(selected));
+    });
+
+    ui.icon.setAttribute("d", icons[view.icon]);
+    ui.play.setAttribute(
+      "aria-label",
+      view.icon === "play" ? "PLAY" : view.icon === "pause" ? "PAUSE" : "STOP",
+    );
+
+    if (force || availabilityState.rulesText !== view.rulesText) {
+      availabilityState.rulesText = view.rulesText;
+      ui.modePrompt.textContent = view.rulesText;
+      ui.rulesetText.textContent = view.rulesText;
+      ui.rulesetCopy.textContent = view.rulesText;
+      ui.ruleset.classList.remove("scroll");
+      if (!reducedMotion.matches) {
+        void ui.ruleset.offsetWidth;
+        ui.ruleset.classList.add("scroll");
+      }
+    }
+    if (view.inputVisible) ui.ruleset.classList.remove("scroll");
+    syncBackgroundInert();
+  }
+
+  function beginOverlayTransition(kind, phase) {
+    overlayState.kind = kind;
+    overlayState.phase = phase;
+    return ++overlayState.generation;
+  }
+
+  function overlayTransitionMatches(kind, phase, generation) {
+    return (
+      overlayState.kind === kind &&
+      overlayState.phase === phase &&
+      overlayState.generation === generation
+    );
+  }
+
+  function canFocusElement(element) {
+    return Boolean(
+      element?.isConnected &&
+      !element.disabled &&
+      !element.hidden &&
+      !element.closest("[inert]")
+    );
+  }
+
+  function restoreOverlayFocus(preferred) {
+    if (isModalOpen()) return;
+    const target = [
+      preferred,
+      canUsePlayback() ? ui.play : null,
+      ui.discoveryButton,
+      ...Object.values(modeButtons),
+    ].find(canFocusElement);
+    target?.focus({ preventScroll: true });
+  }
+
+  function setProgress(text, scale) {
+    const clampedScale = Math.max(0, Math.min(1, scale));
+    ui.now.textContent = text;
+    ui.fill.style.transform = `scaleX(${clampedScale})`;
+    ui.feedback.style.transform = `scaleX(${clampedScale})`;
+  }
+
+  function flashSurvivalChange(amount) {
+    if (state.mode !== "survival" || !amount) return;
+    const flashClass = amount > 0 ? "survival-reward" : "survival-penalty";
+    const duration = transitionDelay(durations.feedback);
+    clearTimer("feedback");
+    ui.timeChangeText.textContent = amount > 0 ? `+${amount}S` : `${amount}S`;
+    ui.feedback.classList.remove("survival-penalty", "survival-reward");
+    ui.timeChange.classList.remove("survival-change");
+    void ui.feedback.offsetWidth;
+    void ui.timeChange.offsetWidth;
+    ui.feedback.classList.add(flashClass);
+    ui.timeChange.classList.add("survival-change");
+    setTimer("feedback", () => {
+      ui.feedback.classList.remove("survival-penalty", "survival-reward");
+      ui.timeChange.classList.remove("survival-change");
+      ui.timeChangeText.textContent = "";
+    }, duration);
+  }
+
+  function readStorage(key, fallback) {
+    try {
+      const saved = localStorage.getItem(key);
+      return saved === null ? fallback : JSON.parse(saved);
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeStorage(key, value, errorMessage) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      announce(errorMessage);
+      return false;
+    }
+  }
+
+  function loadDiscoveries() {
+    const saved = readStorage(discoveryStorageKey, null);
+    if (Array.isArray(saved)) {
+      return new Set(saved.filter(
+        (dailyNumber) => Number.isSafeInteger(dailyNumber) && dailyNumber > 0,
+      ));
+    }
+    const legacy = readStorage(legacyDiscoveryStorageKey, null);
+    pendingDiscoveryMigration = Array.isArray(legacy)
+      ? legacy.filter((title) => typeof title === "string")
+      : null;
+    return new Set();
+  }
+
+  function saveDiscoveries() {
+    return writeStorage(
+      discoveryStorageKey,
+      [...state.discovered].sort((a, b) => a - b),
+      "DISCOVERY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.",
+    );
+  }
+
+  function validRecord(value) {
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  }
+
+  function validAccuracy(value) {
+    return Number.isSafeInteger(value) && value >= 0 && value <= 100
+      ? value
+      : null;
+  }
+
+  function validSnippetTotal(value, current) {
+    return Number.isSafeInteger(value) &&
+      value >= current &&
+      value <= current * maxSnippetDuration
+      ? value
+      : 0;
+  }
+
+  function loadClassicPersonalBest(saved) {
+    const current = validRecord(saved?.current);
+    const best = validRecord(saved?.best);
+    const snippetTotal = validSnippetTotal(saved?.snippetTotal, current);
+    const activeCurrent = snippetTotal ? current : 0;
+    const savedBestSnippetTotal = validSnippetTotal(saved?.bestSnippetTotal, best);
+    const resolvedBest = Math.max(activeCurrent, best);
+    const bestSnippetTotal = activeCurrent > best
+      ? snippetTotal
+      : savedBestSnippetTotal || (activeCurrent === best ? snippetTotal : 0);
+    return {
+      current: activeCurrent,
+      best: resolvedBest,
+      snippetTotal: activeCurrent ? snippetTotal : 0,
+      bestSnippetTotal,
+    };
+  }
+
+  function loadTimedPersonalBest(saved) {
+    const source = saved && typeof saved === "object"
+      ? saved
+      : {};
+    return {
+      score: validRecord(source?.score),
+      accuracy: validAccuracy(source?.accuracy),
+    };
+  }
+
+  function loadPersonalBests() {
+    const saved = readStorage(personalBestStorageKey, {});
+    const source = saved && typeof saved === "object" ? saved : {};
+    return {
+      classic: loadClassicPersonalBest(source?.classic),
+      daily: validRecord(source?.daily),
+      blitz: loadTimedPersonalBest(source?.blitz),
+      survival: loadTimedPersonalBest(source?.survival),
+    };
+  }
+
+  function savePersonalBests() {
+    writeStorage(
+      personalBestStorageKey,
+      state.personalBests,
+      "PERSONAL BESTS COULD NOT BE SAVED IN THIS BROWSER.",
+    );
+  }
+
+  function normalizeDailyProgress(saved) {
+    const started = saved?.started === true;
+    const completed = started && saved?.completed === true;
+    const step = Number.isSafeInteger(saved?.step) &&
+      saved.step >= 0 &&
+      saved.step < snippetDurations.length
+      ? saved.step
+      : 0;
+    return {
+      date: /^\d{4}-\d{2}-\d{2}$/.test(saved?.date) ? saved.date : "",
+      dailyNumber: Number.isSafeInteger(saved?.dailyNumber) && saved.dailyNumber > 0
+        ? saved.dailyNumber
+        : null,
+      started,
+      completed,
+      won: completed && saved?.won === true,
+      step,
+    };
+  }
+
+  function loadDaily() {
+    const saved = readStorage(dailyStorageKey, null);
+    if (saved && typeof saved === "object") {
+      const normalized = normalizeDailyProgress(saved);
+      if (!normalized.started || (normalized.date && normalized.dailyNumber)) {
+        return normalized;
+      }
+    }
+    const legacy = readStorage(legacyDailyStorageKey, null);
+    pendingDailyMigration = legacy && typeof legacy === "object" ? legacy : null;
+    return normalizeDailyProgress(legacy);
+  }
+
+  function saveDaily() {
+    return writeStorage(
+      dailyStorageKey,
+      dailyState.progress,
+      "DAILY PROGRESS COULD NOT BE SAVED IN THIS BROWSER.",
+    );
+  }
+
+  function isDailyDone(date = dailyState.roundDate) {
+    return dailyState.progress.date === date && dailyState.progress.completed;
+  }
+
+  function isDailyStarted(date = dailyState.roundDate) {
+    return dailyState.progress.date === date && dailyState.progress.started;
+  }
+
+  function isDailyInProgress(date = dailyState.roundDate) {
+    return isDailyStarted(date) && !dailyState.progress.completed;
+  }
+
+  function getDailyDoneText() {
+    if (dailyState.progress.date === dailyState.roundDate && dailyState.progress.completed) {
+      const attempts = dailyState.progress.step + 1;
+      const label = dailyState.progress.won ? "COMPLETED" : "FAILED";
+      return `${label} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK TOMORROW`;
+    }
+    return dailyDoneText;
+  }
+
+  function getDailyInProgressText() {
+    const attempt = dailyState.progress.step + 1;
+    return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${attempt}`;
+  }
+
+  function markDailyStarted() {
+    const date = currentRound()?.roundDate;
+    if (state.mode !== "daily" || !date || isDailyStarted(date)) return;
+    dailyState.progress = {
+      date,
+      dailyNumber: currentTrack()?.dailyNumber || null,
+      started: true,
+      completed: false,
+      won: false,
+      step: 0,
+    };
+    saveDaily();
+  }
+
+  function saveDailyStep() {
+    const date = currentRound()?.roundDate;
+    if (
+      state.mode !== "daily" ||
+      !date ||
+      dailyState.progress.date !== date ||
+      !dailyState.progress.started ||
+      dailyState.progress.completed
+    ) return;
+    dailyState.progress.step = state.step;
+    saveDaily();
+  }
+
+  function completeDaily(won) {
+    const date = currentRound()?.roundDate;
+    if (state.mode !== "daily" || !date) return;
+    dailyState.progress = {
+      date,
+      dailyNumber: currentTrack()?.dailyNumber || dailyState.progress.dailyNumber || null,
+      started: true,
+      completed: true,
+      won: Boolean(won),
+      step: state.step,
+    };
+    saveDaily();
+  }
+
+  function hashDaily(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function isDailyRoundProtected() {
+    if (state.mode !== "daily") return false;
+    const round = ownedRound() || dailyState.retryRound;
+    if (round?.modeName !== "daily") return false;
+    return session.status === "result" || isDailyInProgress(round.roundDate);
+  }
+
+  function dailyNeedsCatalogRefresh(date = getBudapestDate()) {
+    return (
+      state.mode === "daily" &&
+      date !== catalogState.applied.date &&
+      !isDailyRoundProtected()
+    );
+  }
+
+  function getDailyCatalogStatusText() {
+    return catalogState.request.kind === "retry" &&
+      catalogState.request.date === getBudapestDate()
+      ? dailyCatalogErrorText
+      : dailyCatalogLoadingText;
+  }
+
+  // Audio streaming ---------------------------------------------------------
+
+  function createAudioDeck(elements, handlers) {
+    const slots = elements.map((element, id) => ({
+      id,
+      element,
+      generation: 0,
+      role: "empty",
+      round: null,
+      events: null,
+      failed: false,
+    }));
+    let active = null;
+    let standby = null;
+    let nextGeneration = 0;
+    let lastActiveSlotId = null;
+    let transportPhase = "empty";
+    let suspension = null;
+
+    const slotSnapshot = (slot) => slot ? Object.freeze({
+      round: slot.round,
+      slotId: slot.id,
+      generation: slot.generation,
+    }) : null;
+    const isLive = (slot, generation) => (
+      slot.generation === generation && slot.role !== "empty"
+    );
+    const isSuspendedSlot = (slot) => Boolean(
+      suspension &&
+      suspension.slotId === slot.id &&
+      suspension.generation === slot.generation &&
+      suspension.roundId === slot.round?.id
+    );
+
+    function seekToStart(slot) {
+      if (!slot?.round) return;
+      if (slot.element.readyState < HTMLMediaElement.HAVE_METADATA) return;
+      try {
+        slot.element.currentTime = Math.min(
+          slot.round.track.at,
+          Math.max(0, slot.element.duration - 0.05),
+        );
+      } catch {
+        // The media fragment remains the fallback until seeking is possible.
+      }
+    }
+
+    function releaseSlot(slot) {
+      if (!slot) return;
+      slot.events?.abort();
+      slot.events = null;
+      slot.role = "empty";
+      slot.round = null;
+      slot.failed = false;
+      const releasedElement = slot.element;
+      releasedElement.pause();
+      releasedElement.removeAttribute("src");
+      releasedElement.load();
+      const freshElement = releasedElement.cloneNode(false);
+      releasedElement.replaceWith(freshElement);
+      slot.element = freshElement;
+    }
+
+    function emitFailure(slot, error) {
+      if (!slot || slot.failed) return;
+      slot.failed = true;
+      const role = slot.role;
+      const payload = { ...slotSnapshot(slot), role, error };
+      if (role === "standby") {
+        standby = null;
+        releaseSlot(slot);
+      } else if (role === "active") {
+        transportPhase = "error";
+        if (isSuspendedSlot(slot)) {
+          suspension.terminal = { status: "error", payload };
+          return;
+        }
+      }
+      handlers.onError(payload);
+    }
+
+    function bindSlotEvents(slot) {
+      const generation = slot.generation;
+      const controller = new AbortController();
+      const current = () => isLive(slot, generation);
+      slot.events = controller;
+      slot.element.addEventListener("loadedmetadata", () => {
+        if (current()) seekToStart(slot);
+      }, { signal: controller.signal });
+      slot.element.addEventListener("playing", () => {
+        if (
+          !current() ||
+          slot !== active ||
+          (transportPhase !== "starting" && transportPhase !== "buffering")
+        ) return;
+        transportPhase = "playing";
+        handlers.onPlaying(slotSnapshot(slot));
+      }, { signal: controller.signal });
+      slot.element.addEventListener("waiting", () => {
+        if (!current() || slot !== active || transportPhase === "paused") return;
+        transportPhase = "buffering";
+        handlers.onWaiting(slotSnapshot(slot));
+      }, { signal: controller.signal });
+      slot.element.addEventListener("ended", () => {
+        if (!current() || slot !== active) return;
+        transportPhase = "ended";
+        const payload = slotSnapshot(slot);
+        if (isSuspendedSlot(slot)) {
+          suspension.terminal = { status: "ended", payload };
+        } else {
+          handlers.onEnded(payload);
+        }
+      }, { signal: controller.signal });
+      slot.element.addEventListener("error", () => {
+        const error = slot.element.error;
+        if (current() && error) emitFailure(slot, error);
+      }, { signal: controller.signal });
+    }
+
+    function discardStandby() {
+      const slot = standby;
+      standby = null;
+      releaseSlot(slot);
+    }
+
+    function releaseActive() {
+      const slot = active;
+      if (slot) lastActiveSlotId = slot.id;
+      active = null;
+      suspension = null;
+      transportPhase = standby ? "paused" : "empty";
+      releaseSlot(slot);
+    }
+
+    function assignStandby(round) {
+      discardStandby();
+      const available = slots.filter((candidate) => candidate !== active);
+      const slot = available.find((candidate) => candidate.id !== lastActiveSlotId) || available[0];
+      if (!slot) return null;
+      releaseSlot(slot);
+      Object.assign(slot, {
+        generation: ++nextGeneration,
+        role: "standby",
+        round,
+      });
+      slot.element.preload = "auto";
+      standby = slot;
+      bindSlotEvents(slot);
+      slot.element.src = getAudioUrl(round.track);
+      slot.element.load();
+      return slotSnapshot(slot);
+    }
+
+    function getStandby() {
+      return slotSnapshot(standby);
+    }
+
+    function getActive() {
+      const slot = slotSnapshot(active);
+      return slot ? Object.freeze({ ...slot, transportPhase }) : null;
+    }
+
+    function promoteStandby() {
+      if (!standby) return { status: "unavailable" };
+      const candidate = standby;
+      const error = candidate.element.error;
+      if (candidate.failed || error) {
+        const payload = {
+          ...slotSnapshot(candidate),
+          role: "standby",
+          error: error || new Error("Prepared media failed before promotion."),
+        };
+        candidate.failed = true;
+        standby = null;
+        releaseSlot(candidate);
+        return { status: "audio-failed", payload };
+      }
+      const previous = active;
+      active = candidate;
+      standby = null;
+      active.role = "active";
+      transportPhase = "paused";
+      if (previous && previous !== active) releaseSlot(previous);
+      return { status: "ready", round: active.round };
+    }
+
+    function playActive({ rewind = false } = {}) {
+      if (!active) return false;
+      const slot = active;
+      const generation = slot.generation;
+      if (rewind) seekToStart(slot);
+      transportPhase = "starting";
+      slot.element.play()?.catch((error) => {
+        if (!isLive(slot, generation) || slot !== active || error?.name === "AbortError") return;
+        if (error?.name === "NotAllowedError") {
+          transportPhase = "paused";
+          handlers.onPlayBlocked(slotSnapshot(slot));
+          return;
+        }
+        emitFailure(slot, error);
+      });
+      return true;
+    }
+
+    function pauseActive() {
+      if (!active) return false;
+      transportPhase = "paused";
+      active.element.pause();
+      return true;
+    }
+
+    function reset({ keepStandby = false } = {}) {
+      releaseActive();
+      if (!keepStandby) discardStandby();
+      transportPhase = standby ? "paused" : "empty";
+    }
+
+    function isPlayRequested() {
+      return transportPhase === "starting" ||
+        transportPhase === "playing" ||
+        transportPhase === "buffering";
+    }
+
+    function suspendActive() {
+      if (!active) return null;
+      suspension = {
+        slotId: active.id,
+        generation: active.generation,
+        roundId: active.round.id,
+        shouldResume: isPlayRequested(),
+        terminal: null,
+      };
+      pauseActive();
+      return Object.freeze({
+        slotId: suspension.slotId,
+        generation: suspension.generation,
+        roundId: suspension.roundId,
+      });
+    }
+
+    function restoreActive(token) {
+      if (
+        !token ||
+        !suspension ||
+        token.slotId !== suspension.slotId ||
+        token.generation !== suspension.generation ||
+        token.roundId !== suspension.roundId ||
+        !active ||
+        active.id !== token.slotId ||
+        active.generation !== token.generation ||
+        active.round.id !== token.roundId
+      ) {
+        suspension = null;
+        return { status: "stale" };
+      }
+      const saved = suspension;
+      suspension = null;
+      if (saved.terminal) return saved.terminal;
+      if (!saved.shouldResume) return { status: "paused", round: active.round };
+      playActive();
+      return { status: "resumed", round: active.round };
+    }
+
+    return {
+      assignStandby,
+      getStandby,
+      getActive,
+      promoteStandby,
+      playActive,
+      pauseActive,
+      releaseActive,
+      discardStandby,
+      reset,
+      suspendActive,
+      restoreActive,
+      isPlayRequested,
+    };
+  }
+
+  function createGameClock({ onTick, onExpire }) {
+    const clock = {
+      kind: "classic",
+      running: false,
+      expired: false,
+      anchorMs: 0,
+      elapsedMs: 0,
+      remainingMs: 0,
+      limitMs: snippetDurations[0] * 1000,
+      maxRemainingMs: 0,
+      frame: 0,
+    };
+    const snapshot = () => Object.freeze({
+      kind: clock.kind,
+      running: clock.running,
+      expired: clock.expired,
+      elapsedMs: clock.elapsedMs,
+      remainingMs: clock.remainingMs,
+      limitMs: clock.limitMs,
+      maxRemainingMs: clock.maxRemainingMs,
+    });
+
+    function cancelFrame() {
+      cancelAnimationFrame(clock.frame);
+      clock.frame = 0;
+    }
+
+    function reachedLimit() {
+      return clock.kind === "classic"
+        ? clock.elapsedMs >= clock.limitMs
+        : clock.remainingMs <= 0;
+    }
+
+    function expireIfNeeded() {
+      if (clock.expired || !reachedLimit()) return false;
+      clock.expired = true;
+      clock.running = false;
+      cancelFrame();
+      onTick(snapshot());
+      onExpire(snapshot());
+      return true;
+    }
+
+    function commit(now = performance.now(), allowExpire = true) {
+      if (!clock.running) return snapshot();
+      const delta = Math.max(0, now - clock.anchorMs);
+      clock.anchorMs = now;
+      if (clock.kind === "classic") {
+        clock.elapsedMs += delta;
+      } else {
+        clock.remainingMs = Math.max(0, clock.remainingMs - delta);
+        if (clock.kind === "survival") clock.elapsedMs += delta;
+      }
+      onTick(snapshot());
+      if (allowExpire) expireIfNeeded();
+      return snapshot();
+    }
+
+    function tick(now) {
+      if (!clock.running) return;
+      commit(now);
+      if (clock.running) clock.frame = requestAnimationFrame(tick);
+    }
+
+    function resetClassic(limitMs) {
+      cancelFrame();
+      Object.assign(clock, {
+        kind: "classic",
+        running: false,
+        expired: false,
+        anchorMs: 0,
+        elapsedMs: 0,
+        remainingMs: 0,
+        limitMs,
+        maxRemainingMs: 0,
+      });
+      onTick(snapshot());
+      return snapshot();
+    }
+
+    function setClassicLimit(limitMs) {
+      commit(performance.now(), false);
+      clock.limitMs = limitMs;
+      expireIfNeeded();
+      onTick(snapshot());
+      return snapshot();
+    }
+
+    function resetTimed(kind, initialMs) {
+      cancelFrame();
+      Object.assign(clock, {
+        kind,
+        running: false,
+        expired: false,
+        anchorMs: 0,
+        elapsedMs: 0,
+        remainingMs: initialMs,
+        limitMs: 0,
+        maxRemainingMs: initialMs,
+      });
+      onTick(snapshot());
+      return snapshot();
+    }
+
+    function resume() {
+      if (clock.running || clock.expired) return false;
+      clock.running = true;
+      clock.anchorMs = performance.now();
+      clock.frame = requestAnimationFrame(tick);
+      return true;
+    }
+
+    function pause() {
+      if (clock.running) commit();
+      clock.running = false;
+      cancelFrame();
+      return snapshot();
+    }
+
+    function adjustRemaining(deltaMs) {
+      if (clock.kind === "classic" || clock.expired) return snapshot();
+      if (clock.running) commit();
+      if (clock.expired) return snapshot();
+      clock.remainingMs = Math.max(0, clock.remainingMs + deltaMs);
+      clock.maxRemainingMs = Math.max(clock.maxRemainingMs, clock.remainingMs);
+      onTick(snapshot());
+      expireIfNeeded();
+      return snapshot();
+    }
+
+    function stop({ flush = true } = {}) {
+      if (flush && clock.running) commit(performance.now(), false);
+      clock.running = false;
+      cancelFrame();
+      return snapshot();
+    }
+
+    return {
+      resetClassic,
+      setClassicLimit,
+      resetTimed,
+      resume,
+      pause,
+      adjustRemaining,
+      stop,
+      snapshot,
+    };
+  }
+
+  function getAudioUrl(track) {
+    const url = new URL(
+      `${String(track.dailyNumber).padStart(2, "0")}.mp3`,
+      audioFolderUrl,
+    );
+    url.hash = `t=${track.at}`;
+    return url.href;
+  }
+
+  function createRoundCandidate(selected) {
+    if (!selected) return null;
+    const mode = currentMode();
+    const minimumRemainingSeconds = Math.min(
+      mode.timed ? minimumTimedRemainingSeconds : maxSnippetDuration,
+      selected.duration,
+    );
+    const available = Math.max(
+      0,
+      Math.floor(selected.duration - minimumRemainingSeconds),
+    );
+    return {
+      id: ++session.nextId,
+      modeName: state.mode,
+      catalogVersion: catalogState.applied.version,
+      roundDate: mode.daily ? dailyState.roundDate : null,
+      hasPlayed: false,
+      track: {
+        ...selected,
+        at: mode.daily
+          ? hashDaily(
+            `corzaguessr-daily-clip-v1:${dailyState.roundDate}:${selected.dailyNumber}`,
+          ) % (available + 1)
+          : Math.floor(Math.random() * (available + 1)),
+      },
+    };
+  }
+
+  function standbyMatchesSession(standby = audioDeck.getStandby()) {
+    return Boolean(
+      standby &&
+      standby.round.modeName === state.mode &&
+      standby.round.catalogVersion === catalogState.applied.version &&
+      (!currentMode().daily || standby.round.roundDate === dailyState.roundDate)
+    );
+  }
+
+  function createRoundPreparationOwner() {
+    function reset() {
+      catalogState.unavailable.clear();
+      session.recovery.automaticRetriesRemaining = 1;
+      session.recovery.prefetchBlocked = false;
+      session.recovery.reuseCommittedRound = false;
+    }
+
+    function quarantine(round) {
+      if (!round) return;
+      if (round.modeName === "daily") dailyState.retryRound = round;
+      else catalogState.unavailable.add(round.track.dailyNumber);
+    }
+
+    function prefetch({ manualRetry = false } = {}) {
+      if (!state.mode || !catalogState.applied.tracks.length) {
+        return { status: "unavailable" };
+      }
+      if (session.recovery.prefetchBlocked && !manualRetry) {
+        return { status: "audio-failed" };
+      }
+      if (manualRetry) session.recovery.prefetchBlocked = false;
+      const mode = currentMode();
+      if (mode.daily && dailyNeedsCatalogRefresh()) {
+        return { status: "catalog-pending" };
+      }
+      if (mode.daily && (ownedRound() || isDailyDone(dailyState.roundDate))) {
+        return { status: "unavailable" };
+      }
+      if (standbyMatchesSession()) {
+        return { status: "ready", prepared: audioDeck.getStandby() };
+      }
+      audioDeck.discardStandby();
+      const isDailyRetry = Boolean(mode.daily && dailyState.retryRound);
+      const candidate = isDailyRetry
+        ? dailyState.retryRound
+        : createRoundCandidate(selectTrack());
+      if (!candidate) return { status: "unavailable" };
+      const prepared = audioDeck.assignStandby(candidate);
+      return prepared
+        ? { status: isDailyRetry ? "daily-retry" : "ready", prepared }
+        : { status: "audio-failed", round: candidate };
+    }
+
+    function prepare({ manualRetry = false } = {}) {
+      const prefetched = prefetch({ manualRetry });
+      if (prefetched.status !== "ready" && prefetched.status !== "daily-retry") {
+        return prefetched;
+      }
+      const promotion = audioDeck.promoteStandby();
+      if (promotion.status === "ready") {
+        return { status: prefetched.status, round: promotion.round };
+      }
+      const round = promotion.payload?.round || prefetched.prepared?.round || null;
+      quarantine(round);
+      session.recovery.prefetchBlocked = true;
+      return {
+        status: promotion.status === "audio-failed" ? "audio-failed" : "unavailable",
+        round,
+        error: promotion.payload?.error || null,
+      };
+    }
+
+    return { prepare, prefetch, quarantine, reset };
+  }
+
+  const roundPreparation = createRoundPreparationOwner();
+
+  const gameClock = createGameClock({
+    onTick: renderClock,
+    onExpire: handleClockExpired,
+  });
+  const audioDeck = createAudioDeck(ui.audioPlayers, {
+    onPlaying: handleAudioPlaying,
+    onWaiting: handleAudioWaiting,
+    onEnded: handleAudioEnded,
+    onError: handleAudioError,
+    onPlayBlocked: handleAudioPlayBlocked,
+  });
+
+  function renderClock(clock) {
+    const mode = currentMode();
+    if (!mode) return;
+    if (!mode.timed) {
+      setProgress(
+        formatTime(clock.elapsedMs / 1000),
+        clock.elapsedMs
+          ? clock.elapsedMs / (maxSnippetDuration * 1000) + 0.0025
+          : 0,
+      );
+      return;
+    }
+    if (mode.survival) {
+      ui.endtime.textContent = formatTime(Math.ceil(clock.remainingMs / 1000));
+    }
+    setProgress(
+      formatTime((mode.survival ? clock.elapsedMs : clock.remainingMs) / 1000),
+      clock.remainingMs / (mode.survival ? clock.maxRemainingMs : mode.initialTime),
+    );
+  }
+
+  function handleClockExpired(clock) {
+    if (session.status === "result") return;
+    if (clock.kind === "classic") {
+      audioDeck.pauseActive();
+      session.status = "paused";
+      renderPlaybackIntent(false);
+      return;
+    }
+    endGame();
+  }
+
+  function renderPlaybackIntent(playing) {
+    session.playbackRequested = Boolean(playing);
+    renderUi();
+  }
+
+  function pausePlayback({ pauseAudio = true } = {}) {
+    const clock = gameClock.pause();
+    if (pauseAudio) audioDeck.pauseActive();
+    if (currentRound() && session.status !== "result") session.status = "paused";
+    renderPlaybackIntent(false);
+    return clock;
+  }
+
+  function requestPlayback({ rewind = false } = {}) {
+    if (!currentRound() || audioDeck.getActive()?.round.id !== currentRound().id) return false;
+    if (rewind) {
+      currentRound().hasPlayed = false;
+      session.status = "paused";
+    }
+    renderPlaybackIntent(true);
+    return audioDeck.playActive({ rewind });
+  }
+
+  function rewindClassic() {
+    cancelProgressTransition();
+    ui.fill.style.transition = "transform var(--duration-slot) ease-out";
+    setProgress("0:00", 0);
+    setTimer("progress", () => {
+      ui.fill.style.transition = "";
+    }, transitionDelay(durations.progress));
+  }
+
+  function startClassic() {
+    if (!currentRound()) return;
+    rewindClassic();
+    gameClock.resetClassic(snippetDurations[state.step] * 1000);
+    requestPlayback({ rewind: true });
+    focusGuess();
+  }
+
+  function invalidateAudioSession({ discardStandby = true } = {}) {
+    gameClock.stop({ flush: false });
+    audioDeck.reset({ keepStandby: !discardStandby });
+    session.current = null;
+    session.pending = null;
+    session.status = "idle";
+    session.promptEntryId = null;
+    session.retryEntryId = null;
+    session.playbackRequested = false;
+    session.recovery.prefetchBlocked = false;
+    overlayState.discoverySuspension = null;
+    renderUi();
+  }
+
+  function handleDailyTrackError(round = ownedRound()) {
+    if (!round) return;
+    session.recovery.reuseCommittedRound = Boolean(
+      currentRound()?.id === round.id && round.hasPlayed,
+    );
+    dailyState.retryRound = round;
+    gameClock.pause();
+    audioDeck.releaseActive();
+    audioDeck.discardStandby();
+    session.current = null;
+    session.pending = null;
+    session.status = "audio-retry";
+    session.playbackRequested = false;
+    session.recovery.prefetchBlocked = true;
+    state.notice = "daily-audio-error";
+    replacePromptWithTechnicalError(dailyAudioErrorText);
+    renderUi({ force: true });
+    announce(dailyAudioErrorText);
+  }
+
+  function showTrackRetry() {
+    gameClock.pause();
+    audioDeck.releaseActive();
+    session.current = null;
+    session.pending = null;
+    session.status = "audio-retry";
+    session.playbackRequested = false;
+    session.recovery.prefetchBlocked = true;
+    state.notice = "track-audio-error";
+    replacePromptWithTechnicalError(trackAudioErrorText);
+    renderUi({ force: true });
+    announce("THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.");
+    focusPlay();
+  }
+
+  function handleActiveTrackError(round) {
+    if (
+      session.status === "result" ||
+      !ownedRound() ||
+      round.id !== ownedRound().id
+    ) return;
+    if (round.modeName === "daily") {
+      if (!isResultOpen()) handleDailyTrackError(round);
+      return;
+    }
+    const mode = currentMode();
+    session.recovery.reuseCommittedRound = Boolean(
+      currentRound()?.id === round.id && round.hasPlayed,
+    );
+    replacePromptWithTechnicalError(
+      round.modeName === "daily" ? dailyAudioErrorText : trackAudioErrorText,
+    );
+    pausePlayback();
+    if (session.status === "result") return;
+    roundPreparation.quarantine(round);
+    audioDeck.releaseActive();
+    session.current = null;
+    session.pending = null;
+    session.status = "idle";
+    session.playbackRequested = false;
+    if (mode.timed && session.recovery.automaticRetriesRemaining > 0) {
+      session.recovery.automaticRetriesRemaining--;
+      session.recovery.prefetchBlocked = false;
+      announce("THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.");
+      const recovery = startRound({ recovery: true });
+      if (recovery.status === "ready") return;
+    }
+    showTrackRetry();
+  }
+
+  function handleAudioPlaying(payload) {
+    if (pendingRound() && payload.round.id === pendingRound().id) {
+      if (isModalOpen() || session.status === "result") return;
+      const committed = pendingRound();
+      session.pending = null;
+      session.current = committed;
+      session.status = "active";
+      session.playbackRequested = true;
+      committed.hasPlayed = true;
+      session.previousDailyNumber = committed.track.dailyNumber;
+      state.used.clear();
+      if (!session.recovery.reuseCommittedRound) state.rounds++;
+      state.notice = null;
+      if (currentMode().daily && dailyState.retryRound?.id === committed.id) {
+        dailyState.retryRound = null;
+      }
+      if (!currentMode().timed) {
+        gameClock.resetClassic(snippetDurations[state.step] * 1000);
+        setProgress(currentMode().initialText, currentMode().initialProgress);
+      }
+      renderPrompt({ replaceRetry: true });
+      session.recovery.reuseCommittedRound = false;
+      markDailyStarted();
+      renderUi({ force: true });
+      gameClock.resume();
+      roundPreparation.prefetch();
+      focusGuess();
+      return;
+    }
+    if (
+      !currentRound() ||
+      payload.round.id !== currentRound().id ||
+      isModalOpen() ||
+      session.status === "result"
+    ) return;
+    currentRound().hasPlayed = true;
+    session.status = "active";
+    session.playbackRequested = true;
+    markDailyStarted();
+    renderUi();
+    gameClock.resume();
+  }
+
+  function handleAudioWaiting(payload) {
+    if (!ownedRound() || payload.round.id !== ownedRound().id) return;
+    gameClock.pause();
+  }
+
+  function handleAudioEnded(payload) {
+    if (
+      !currentRound() ||
+      payload.round.id !== currentRound().id ||
+      !currentRound().hasPlayed ||
+      session.status === "result"
+    ) return;
+    handleTrackEnded();
+  }
+
+  function handleAudioError(payload) {
+    if (payload.role === "standby") {
+      roundPreparation.quarantine(payload.round);
+      session.recovery.prefetchBlocked = true;
+      if (
+        payload.round.modeName === "daily" &&
+        !currentRound() &&
+        session.status !== "result"
+      ) handleDailyTrackError(payload.round);
+      return;
+    }
+    handleActiveTrackError(payload.round);
+  }
+
+  function handleAudioPlayBlocked(payload) {
+    if (!ownedRound() || payload.round.id !== ownedRound().id) return;
+    gameClock.pause();
+    if (currentRound()) session.status = "paused";
+    else session.status = "preparing";
+    renderPlaybackIntent(false);
+    announce("PRESS PLAY TO START THE AUDIO.");
+  }
+
+  // Rendering ---------------------------------------------------------------
+
+  function clearGuess() {
+    ui.guess.value = "";
+    closeSuggestions();
+  }
+
+  function closeSuggestions() {
+    state.activeSuggestion = -1;
+    state.suggestions = [];
+    ui.suggest.replaceChildren();
+    ui.suggest.style.display = "none";
+    ui.guess.setAttribute("aria-expanded", "false");
+    ui.guess.removeAttribute("aria-activedescendant");
+  }
+
+  function getModeRulesText(modeName) {
+    const mode = modes[modeName];
+    if (!mode) return modePromptText;
+    if (state.mode === modeName && state.notice === "track-audio-error") {
+      return trackAudioErrorText;
+    }
+    if (!mode.daily) return mode.description;
+    if (state.mode === modeName && state.notice === "daily-audio-error") {
+      return dailyAudioErrorText;
+    }
+    if (state.mode === modeName && dailyNeedsCatalogRefresh()) {
+      return getDailyCatalogStatusText();
+    }
+    if (state.mode === modeName && isDailyDone()) return getDailyDoneText();
+    if (state.mode === modeName && isDailyInProgress()) return getDailyInProgressText();
+    return mode.description;
+  }
+
+  function previewMode(modeName) {
+    if (!canPreviewRules()) return;
+    state.previewText = getModeRulesText(modeName);
+    renderUi();
+  }
+
+  function previewDiscovery() {
+    if (!canPreviewRules()) return;
+    state.previewText = discoveryDescription;
+    renderUi();
+  }
+
+  function resetRulesPreview() {
+    if (!canPreviewRules()) return;
+    state.previewText = null;
+    renderUi();
+  }
+
+  function showGuess() {
+    state.previewText = null;
+    renderUi();
+  }
+
+  function createSlotView(container) {
+    const entering = new WeakSet();
+    let pendingClear = null;
+
+    function finishPendingClear(clear = pendingClear) {
+      if (!clear || pendingClear !== clear) return;
+      clearTimer("slots");
+      clear.items.forEach((item) => {
+        entering.delete(item);
+        item.remove();
+      });
+      container.style.height = "";
+      pendingClear = null;
+    }
+
+    function clear(animate = true) {
+      finishPendingClear();
+      const items = [...container.children];
+      if (!items.length) return;
+      if (!animate || reducedMotion.matches) {
+        items.forEach((item) => item.remove());
+        container.style.height = "";
+        return;
+      }
+
+      items.forEach((item) => {
+        entering.delete(item);
+        item.classList.add("fade");
+      });
+      container.style.height = `${container.offsetHeight}px`;
+      void container.offsetHeight;
+      container.style.height = "0px";
+      const operation = { items };
+      pendingClear = operation;
+      setTimer("slots", () => finishPendingClear(operation), durations.slot);
+    }
+
+    function add(text, style = "", replace = false) {
+      finishPendingClear();
+      const item = replace && container.firstElementChild
+        ? container.firstElementChild
+        : document.createElement("div");
+      entering.delete(item);
+      item.className = `slot ${replace ? "" : "fade"} ${style}`.trim();
+      item.textContent = text;
+      if (!replace || !item.isConnected) {
+        container.prepend(item);
+        if (currentMode().timed) {
+          while (container.children.length > maxTimedSlots) {
+            container.lastElementChild.remove();
+          }
+        }
+        entering.add(item);
+        requestAnimationFrame(() => {
+          if (!entering.delete(item) || !item.isConnected) return;
+          item.classList.remove("fade");
+        });
+      }
+    }
+
+    return { clear, add };
+  }
+
+  const slotView = createSlotView(ui.slots);
+
+  function clearHistory(animate = true) {
+    state.history = [];
+    session.promptEntryId = null;
+    session.retryEntryId = null;
+    slotView.clear(animate);
+  }
+
+  function addHistoryEntry(text, tone = "", { replaceId = null } = {}) {
+    const replacementIndex = replaceId === null
+      ? -1
+      : state.history.findIndex((entry) => entry.id === replaceId);
+    if (replacementIndex >= 0) {
+      const entry = { id: replaceId, text, tone };
+      state.history[replacementIndex] = entry;
+      if (replacementIndex === 0) slotView.add(text, tone, true);
+      else renderHistoryImmediately();
+      return entry;
+    }
+
+    const entry = { id: ++state.nextHistoryId, text, tone };
+    state.history.unshift(entry);
+    if (currentMode()?.timed && state.history.length > maxTimedSlots) {
+      state.history.length = maxTimedSlots;
+    }
+    slotView.add(text, tone);
+    return entry;
+  }
+
+  function renderHistoryImmediately() {
+    slotView.clear(false);
+    [...state.history].reverse().forEach((entry) => {
+      slotView.add(entry.text, entry.tone);
+    });
+  }
+
+  function replacePromptWithTechnicalError(text) {
+    const replaceId = session.promptEntryId || session.retryEntryId;
+    const entry = addHistoryEntry(text, "blink technical", { replaceId });
+    session.promptEntryId = null;
+    session.retryEntryId = entry.id;
+  }
+
+  function renderPrompt({ replaceRetry = false } = {}) {
+    const replaceId = replaceRetry ? session.retryEntryId : null;
+    let entry;
+    if (currentMode().timed) {
+      entry = addHistoryEntry(`GUESS #${state.rounds}`, "prompt", { replaceId });
+    } else {
+      const seconds = snippetDurations[state.step];
+      const last = state.step === snippetDurations.length - 1;
+      ui.endtime.textContent = formatTime(seconds);
+      ui.snippet.style.width = `${seconds / maxSnippetDuration * 100}%`;
+      ui.skip.textContent = last
+        ? "GIVE UP"
+        : `ADD ${snippetDurations[state.step + 1] - seconds}S`;
+      entry = addHistoryEntry(
+        last ? "LAST CHANCE TO GUESS" : `GUESS ${state.step + 1} OUT OF ${snippetDurations.length}`,
+        last ? "blink prompt" : "prompt",
+        { replaceId },
+      );
+    }
+    session.promptEntryId = entry.id;
+    session.retryEntryId = null;
+  }
+
+  function formatDiscoveryCount(found, total) {
+    const percent = total ? Math.round(found * 100 / total) : 0;
+    return `${found} / ${total} (${percent}%)`;
+  }
+
+  function renderDiscoveryItems() {
+    if (state.appStatus === "loading" && !catalogState.applied.tracks.length) {
+      ui.discoveryCount.textContent = formatDiscoveryCount(0, 0);
+      ui.discoveryItems.textContent = "LOADING...";
+      return;
+    }
+    const discoveryTracks = [...catalogState.applied.tracks]
+      .sort((a, b) => b.dailyNumber - a.dailyNumber);
+    const validNumbers = new Set(discoveryTracks.map((track) => track.dailyNumber));
+    const found = [...state.discovered]
+      .filter((dailyNumber) => validNumbers.has(dailyNumber)).length;
+    ui.discoveryCount.textContent = formatDiscoveryCount(found, discoveryTracks.length);
+    ui.discoveryItems.replaceChildren(...discoveryTracks.map((track) => {
+      const item = document.createElement("div");
+      item.className = "discovery-item";
+      item.setAttribute("role", "listitem");
+      const discovered = state.discovered.has(track.dailyNumber);
+      const title = discovered ? track.title : hiddenTitle;
+      if (track.isNew && !discovered) {
+        item.classList.add("discovery-item-new");
+        const marker = document.createElement("span");
+        marker.className = "discovery-new";
+        marker.textContent = "NEW";
+        marker.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.className = "discovery-track";
+        label.textContent = title;
+        item.append(marker, label, marker.cloneNode(true));
+        item.setAttribute("aria-label", "NEW UNDISCOVERED TRACK");
+      } else {
+        item.textContent = title;
+        if (!discovered) item.setAttribute("aria-hidden", "true");
+      }
+      return item;
+    }));
+  }
+
+  function renderDiscovery() {
+    renderDiscoveryItems();
+    if (isDiscoveryVisible()) {
+      const generation = overlayState.generation;
+      setFrame("discovery-layout", () => {
+        if (
+          overlayState.kind === "discovery" &&
+          overlayState.generation === generation &&
+          isDiscoveryVisible()
+        ) setDiscoveryHeight();
+      });
+    }
+  }
+
+  function renderSuggestions() {
+    const query = ui.guess.value.trim().toLocaleLowerCase();
+    state.suggestions = catalogState.applied.tracks
+      .filter(({ title }) =>
+        query &&
+        !state.used.has(title) &&
+        title.toLocaleLowerCase().includes(query))
+      .slice(0, 8)
+      .map(({ title }) => title);
+
+    state.activeSuggestion = state.suggestions.length ? 0 : -1;
+    ui.suggest.replaceChildren(...state.suggestions.map((title, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = `corzaguessr-option-${index}`;
+      button.textContent = title;
+      button.setAttribute("role", "option");
+      button.setAttribute("aria-selected", String(index === 0));
+      if (index === 0) button.className = "active";
+      return button;
+    }));
+
+    const open = Boolean(state.suggestions.length);
+    ui.suggest.style.display = open ? "block" : "none";
+    ui.guess.setAttribute("aria-expanded", String(open));
+    if (open) ui.guess.setAttribute("aria-activedescendant", "corzaguessr-option-0");
+    else ui.guess.removeAttribute("aria-activedescendant");
+  }
+
+  function setActiveSuggestion(index) {
+    const suggestionCount = state.suggestions.length;
+    if (!suggestionCount) return;
+    state.activeSuggestion = (index + suggestionCount) % suggestionCount;
+    const options = [...ui.suggest.querySelectorAll("[role=option]")];
+    options.forEach((option, optionIndex) => {
+      const active = optionIndex === state.activeSuggestion;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-selected", String(active));
+    });
+    const activeOption = options[state.activeSuggestion];
+    if (activeOption) ui.guess.setAttribute("aria-activedescendant", activeOption.id);
+    else ui.guess.removeAttribute("aria-activedescendant");
+  }
+
+  // Game rules --------------------------------------------------------------
+
+  function hasAvailableTrack() {
+    return catalogState.applied.tracks.some(
+      (track) => !catalogState.unavailable.has(track.dailyNumber),
+    );
+  }
+
+  function getDailyEligibleTracks(date) {
+    return catalogState.applied.tracks.filter((track) => track.dailyFrom <= date);
+  }
+
+  function selectDailyTrackForDate(date, { usePersisted = true } = {}) {
+    const eligible = getDailyEligibleTracks(date);
+    if (!eligible.length) return null;
+    if (
+      usePersisted &&
+      dailyState.progress.date === date &&
+      dailyState.progress.dailyNumber
+    ) {
+      const persisted = eligible.find(
+        (track) => track.dailyNumber === dailyState.progress.dailyNumber,
+      );
+      if (persisted) return persisted;
+    }
+    return eligible.reduce((winner, track) => {
+      const score = hashDaily(`corzaguessr-daily-v1:${date}:${track.dailyNumber}`);
+      return !winner || score > winner.score ? { track, score } : winner;
+    }, null)?.track || null;
+  }
+
+  function persistDailySelectionForDate(date) {
+    const selected = selectDailyTrackForDate(date);
+    if (!selected) return null;
+    const progress = dailyState.progress;
+    if (
+      progress.date === date &&
+      progress.dailyNumber === selected.dailyNumber
+    ) return selected;
+    if (progress.date === date && progress.started) return selected;
+    dailyState.progress = {
+      date,
+      dailyNumber: selected.dailyNumber,
+      started: false,
+      completed: false,
+      won: false,
+      step: 0,
+    };
+    saveDaily();
+    return selected;
+  }
+
+  function removeLegacyStorage(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // A successful V2 write is sufficient; a leftover V1 record is harmless.
+    }
+  }
+
+  function migrateLegacyPersistence() {
+    if (pendingDiscoveryMigration) {
+      const titleToNumber = new Map(
+        catalogState.applied.tracks.map((track) => [track.title, track.dailyNumber]),
+      );
+      const migrated = new Set(
+        pendingDiscoveryMigration
+          .map((title) => titleToNumber.get(title))
+          .filter((dailyNumber) => Number.isSafeInteger(dailyNumber)),
+      );
+      state.discovered = migrated;
+      if (saveDiscoveries()) {
+        removeLegacyStorage(legacyDiscoveryStorageKey);
+        pendingDiscoveryMigration = null;
+      }
+    }
+
+    if (pendingDailyMigration) {
+      const migrated = normalizeDailyProgress(pendingDailyMigration);
+      if (migrated.date) {
+        const selected = selectDailyTrackForDate(migrated.date, { usePersisted: false });
+        migrated.dailyNumber = selected?.dailyNumber || null;
+      }
+      dailyState.progress = migrated;
+      if (saveDaily()) {
+        removeLegacyStorage(legacyDailyStorageKey);
+        pendingDailyMigration = null;
+      }
+    }
+  }
+
+  function selectTrack() {
+    if (currentMode().daily) {
+      return selectDailyTrackForDate(dailyState.roundDate);
+    }
+
+    const availableTracks = catalogState.applied.tracks.filter(
+      (track) => !catalogState.unavailable.has(track.dailyNumber),
+    );
+    if (!availableTracks.length) return null;
+    const pool = availableTracks.length > 1
+      ? availableTracks.filter(
+        (track) => track.dailyNumber !== session.previousDailyNumber,
+      )
+      : availableTracks;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function isPreparedOutcome(outcome) {
+    return outcome.status === "ready" || outcome.status === "daily-retry";
+  }
+
+  function startRound({ recovery = false, manualRetry = false } = {}) {
+    if (!canUsePlayback() || !catalogState.applied.tracks.length) {
+      return { status: "unavailable" };
+    }
+    const mode = currentMode();
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      reconcileApp();
+      renderUi();
+      return { status: "catalog-pending" };
+    }
+    if (mode.daily && isDailyInProgress(dailyState.roundDate)) {
+      state.step = dailyState.progress.step;
+    }
+    gameClock.pause();
+    if (manualRetry) {
+      session.recovery.prefetchBlocked = false;
+      if (!mode.daily && !hasAvailableTrack()) catalogState.unavailable.clear();
+    }
+
+    let prepared = roundPreparation.prepare({ manualRetry: manualRetry || recovery });
+    while (
+      prepared.status === "audio-failed" &&
+      mode.timed &&
+      session.recovery.automaticRetriesRemaining > 0
+    ) {
+      session.recovery.automaticRetriesRemaining--;
+      session.recovery.prefetchBlocked = false;
+      prepared = roundPreparation.prepare({ manualRetry: true });
+    }
+    if (!isPreparedOutcome(prepared)) return prepared;
+
+    const round = prepared.round;
+    round.hasPlayed = false;
+    session.pending = round;
+    session.current = null;
+    session.status = "preparing";
+    session.playbackRequested = true;
+    state.previewText = null;
+    state.notice = null;
+    renderUi({ force: true });
+    if (!audioDeck.playActive()) {
+      roundPreparation.quarantine(round);
+      audioDeck.releaseActive();
+      session.pending = null;
+      session.status = "audio-retry";
+      session.playbackRequested = false;
+      renderUi({ force: true });
+      return { status: "audio-failed", round };
+    }
+    return { status: prepared.status, round };
+  }
+
+  function togglePlay() {
+    if (!canUsePlayback()) return;
+    const mode = currentMode();
+    if (mode.daily && dailyNeedsCatalogRefresh()) {
+      renderUi();
+      reconcileApp();
+      return;
+    }
+    if (mode.daily && isDailyDone(dailyState.roundDate) && !currentRound()) {
+      renderUi();
+      return;
+    }
+    if (pendingRound() && !audioDeck.isPlayRequested()) {
+      renderPlaybackIntent(true);
+      if (!audioDeck.playActive()) {
+        if (mode.daily) handleDailyTrackError(pendingRound());
+        else showTrackRetry();
+      }
+    } else if (!currentRound()) {
+      const retrying = session.status === "audio-retry";
+      const outcome = startRound({ manualRetry: retrying });
+      if (!isPreparedOutcome(outcome)) {
+        if (outcome.status === "catalog-pending") renderUi({ force: true });
+        else if (mode.daily) handleDailyTrackError(outcome.round || dailyState.retryRound);
+        else showTrackRetry();
+        return;
+      }
+    } else if (audioDeck.isPlayRequested()) {
+      pausePlayback();
+      if (!mode.timed) rewindClassic();
+    } else if (!mode.timed) {
+      startClassic();
+    } else {
+      requestPlayback();
+    }
+    focusGuess();
+  }
+
+  function usePlaybackShortcut() {
+    if (!canUsePlayback()) return;
+
+    if (!currentRound()) {
+      togglePlay();
+      return;
+    }
+
+    if (currentMode().timed) {
+      togglePlay();
+      return;
+    }
+
+    startClassic();
+  }
+
+  function recordDiscovery() {
+    const track = currentTrack();
+    if (!track || state.discovered.has(track.dailyNumber)) return;
+    state.discovered.add(track.dailyNumber);
+    saveDiscoveries();
+    renderDiscovery();
+  }
+
+  function renderAttempt(type, title) {
+    const replaceId = session.promptEntryId;
+    if (type === "skip") {
+      if (currentMode().timed) {
+        addHistoryEntry("SKIPPED", "skip", { replaceId });
+      } else {
+        const last = state.step === snippetDurations.length - 1;
+        const added = last
+          ? 0
+          : snippetDurations[state.step + 1] - snippetDurations[state.step];
+        addHistoryEntry(
+          last
+            ? "FINAL GUESS SKIPPED"
+            : `GUESS ${state.step + 1} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`,
+          "skip",
+          { replaceId },
+        );
+      }
+    } else {
+      addHistoryEntry(title, type === "correct" ? "correct" : "wrong", { replaceId });
+    }
+    session.promptEntryId = null;
+    clearGuess();
+  }
+
+  function resolveTimedAttempt(type) {
+    const mode = currentMode();
+    if (type !== "skip") state.guesses++;
+    if (type === "correct") state.correct++;
+    let clock = gameClock.snapshot();
+    if (mode.survival) {
+      flashSurvivalChange(mode.timeChange[type] / 1000);
+      clock = gameClock.adjustRemaining(mode.timeChange[type]);
+    }
+    announce(type === "correct" ? "CORRECT." : type === "wrong" ? "INCORRECT." : "SKIPPED.");
+    if (session.status === "result" || clock.expired || !clock.remainingMs) {
+      endGame();
+      return;
+    }
+    session.current = null;
+    session.status = "idle";
+    session.playbackRequested = false;
+    session.recovery.automaticRetriesRemaining = 1;
+    const outcome = startRound();
+    if (!isPreparedOutcome(outcome)) showTrackRetry();
+  }
+
+  function resolveClassicAttempt(type) {
+    if (type === "correct") {
+      endGame(true);
+      return;
+    }
+
+    if (state.step === snippetDurations.length - 1) {
+      endGame(false);
+      return;
+    }
+
+    state.step++;
+    saveDailyStep();
+    renderPrompt();
+    announce(type === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
+    if (audioDeck.isPlayRequested()) {
+      gameClock.setClassicLimit(snippetDurations[state.step] * 1000);
+    } else {
+      if (type === "skip") startClassic();
+      else togglePlay();
+    }
+  }
+
+  function getClassicAverage(record = state.personalBests.classic) {
+    return record.current ? record.snippetTotal / record.current : 0;
+  }
+
+  function getClassicBestAverage(record = state.personalBests.classic) {
+    return record.best ? record.bestSnippetTotal / record.best : 0;
+  }
+
+  function formatSnippetAverage(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "--";
+    const rounded = Math.round(seconds * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}S`;
+  }
+
+  function getAccuracy() {
+    return state.guesses
+      ? Math.round(state.correct * 100 / state.guesses)
+      : 0;
+  }
+
+  function formatAccuracy(accuracy) {
+    return Number.isSafeInteger(accuracy) ? `${accuracy}%` : "--";
+  }
+
+  function formatAttempts(attempts) {
+    return attempts ? `ATTEMPTS: ${attempts}` : "ATTEMPTS: --";
+  }
+
+  function markNewPersonalBest() {
+    state.newPersonalBest = true;
+  }
+
+  function isClassicPersonalBest(record) {
+    return record.current > record.best ||
+      (
+        record.current === record.best &&
+        record.current > 0 &&
+        (!record.bestSnippetTotal || record.snippetTotal < record.bestSnippetTotal)
+      );
+  }
+
+  function updateClassicRecord(won) {
+    if (state.mode !== "classic") return;
+
+    const record = state.personalBests.classic;
+    if (won) {
+      record.current++;
+      record.snippetTotal += snippetDurations[state.step] || snippetDurations[0];
+      state.classicResult = {
+        won: true,
+        streak: record.current,
+        average: getClassicAverage(record),
+      };
+      if (isClassicPersonalBest(record)) {
+        record.best = record.current;
+        record.bestSnippetTotal = record.snippetTotal;
+        markNewPersonalBest();
+      }
+      savePersonalBests();
+      return;
+    }
+
+    state.classicResult = {
+      won: false,
+      streak: record.current,
+      average: getClassicAverage(record),
+    };
+    if (record.current || record.snippetTotal) {
+      record.current = 0;
+      record.snippetTotal = 0;
+      savePersonalBests();
+    }
+  }
+
+  function updateDailyPersonalBest(won) {
+    if (state.mode !== "daily" || !won) return;
+    const attempts = state.step + 1;
+    if (!state.personalBests.daily || attempts < state.personalBests.daily) {
+      state.personalBests.daily = attempts;
+      markNewPersonalBest();
+      savePersonalBests();
+    }
+  }
+
+  function attempt(type, title = "") {
+    if (
+      !currentRound() ||
+      isModalOpen() ||
+      (session.status !== "active" && session.status !== "paused")
+    ) return;
+    if (currentMode().timed) {
+      const clock = pausePlayback();
+      if (clock.expired || session.status === "result") return;
+    }
+    renderAttempt(type, title);
+    if (type === "correct") recordDiscovery();
+    if (currentMode().timed) resolveTimedAttempt(type);
+    else resolveClassicAttempt(type);
+  }
+
+  function makeGuess(title = ui.guess.value.trim()) {
+    if (
+      !title ||
+      !currentRound() ||
+      (session.status !== "active" && session.status !== "paused") ||
+      (currentMode().timed && !currentRound().hasPlayed)
+    ) return;
+    state.used.add(title);
+    attempt(title === currentTrack().title ? "correct" : "wrong", title);
+  }
+
+  function handleTrackEnded() {
+    if (!currentRound() || !currentRound().hasPlayed || session.status === "result") return;
+    const clock = gameClock.pause();
+    if (clock.expired || session.status === "result") return;
+    currentRound().hasPlayed = false;
+    session.status = "paused";
+    if (!currentMode().timed) renderPlaybackIntent(false);
+    else attempt("skip");
+  }
+
+  function updateTimedPersonalBest() {
+    const accuracy = getAccuracy();
+    const score = state.mode === "survival"
+      ? Math.floor(gameClock.snapshot().elapsedMs)
+      : state.correct;
+    const record = state.personalBests[state.mode];
+    if (score <= record.score) return;
+
+    state.personalBests[state.mode] = { score, accuracy };
+    markNewPersonalBest();
+    savePersonalBests();
+  }
+
+  function updatePersonalBest(won) {
+    if (state.mode === "classic") {
+      updateClassicRecord(won);
+    } else if (state.mode === "daily") {
+      updateDailyPersonalBest(won);
+    } else {
+      updateTimedPersonalBest();
+    }
+  }
+
+  function createResultModule(lines) {
+    const module = document.createElement("div");
+    module.className = "result-module";
+    module.replaceChildren(...lines.map((line, index) => {
+      const item = document.createElement("span");
+      item.className = index ? "result-value" : "result-label";
+      if (!index && state.newPersonalBest && line === "NEW PERSONAL BEST:") {
+        item.classList.add("blink");
+      }
+      item.textContent = line;
+      return item;
+    }));
+    return module;
+  }
+
+  function setResultMeta(...modules) {
+    ui.resultMeta.replaceChildren(
+      ...modules.map((lines) => createResultModule(lines)),
+    );
+    ui.resultMeta.dataset.announcement = modules
+      .map((lines) => lines.join(". "))
+      .join(". ");
+  }
+
+  function getPersonalBestLabel() {
+    return state.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:";
+  }
+
+  function formatClassicRun() {
+    const result = state.classicResult || {
+      won: Boolean(state.personalBests.classic.current),
+      streak: state.personalBests.classic.current,
+      average: getClassicAverage(),
+    };
+    const streakLabel = result.won ? "STREAK" : "STREAK ENDED";
+    return `${streakLabel}: ${result.streak} · AVERAGE SNIPPET: ${formatSnippetAverage(result.average)}`;
+  }
+
+  function formatClassicPersonalBest() {
+    const { best } = state.personalBests.classic;
+    return `STREAK: ${best} · AVERAGE SNIPPET: ${formatSnippetAverage(getClassicBestAverage())}`;
+  }
+
+  function formatBlitzRun() {
+    return `CORRECT GUESSES: ${state.correct} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
+  }
+
+  function formatBlitzPersonalBest() {
+    const { score, accuracy } = state.personalBests.blitz;
+    return `CORRECT GUESSES: ${score} · ACCURACY: ${formatAccuracy(accuracy)}`;
+  }
+
+  function formatSurvivalRun() {
+    const time = formatTime(gameClock.snapshot().elapsedMs / 1000);
+    return `TIME SURVIVED: ${time} · ACCURACY: ${formatAccuracy(getAccuracy())}`;
+  }
+
+  function formatSurvivalPersonalBest() {
+    const { score, accuracy } = state.personalBests.survival;
+    return `TIME SURVIVED: ${formatTime(score / 1000)} · ACCURACY: ${formatAccuracy(accuracy)}`;
+  }
+
+  const resultFormatters = {
+    daily: {
+      run: () => formatAttempts(state.step + 1),
+      personalBest: () => formatAttempts(state.personalBests.daily),
+    },
+    classic: {
+      run: formatClassicRun,
+      personalBest: formatClassicPersonalBest,
+    },
+    blitz: {
+      run: formatBlitzRun,
+      personalBest: formatBlitzPersonalBest,
+    },
+    survival: {
+      run: formatSurvivalRun,
+      personalBest: formatSurvivalPersonalBest,
+    },
+  };
+
+  function getResultModules() {
+    const formatter = resultFormatters[state.mode];
+    const modules = [];
+    if (!currentMode().timed) modules.push(["TRACK:", currentTrack().title]);
+    modules.push(
+      ["RUN:", formatter.run()],
+      [getPersonalBestLabel(), formatter.personalBest()],
+    );
+    return modules;
+  }
+
+  function openSpotify() {
+    const trackId = currentTrack()?.spotify;
+    if (!trackId) return;
+    window.open(
+      `https://open.spotify.com/track/${trackId}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
+  function endGame(won) {
+    if (!currentRound() || session.status === "result") return;
+    const mode = currentMode();
+    gameClock.stop();
+    audioDeck.pauseActive();
+    session.status = "result";
+    session.playbackRequested = false;
+    currentRound().hasPlayed = false;
+    renderUi({ force: true });
+    completeDaily(won);
+    updatePersonalBest(won);
+
+    const mark = won ? "🎉" : "❌";
+    ui.resultTitle.innerHTML = mode.timed
+      ? '⏱️ <span class="end">TIME IS UP</span> ⏱️'
+      : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
+    setResultMeta(...getResultModules());
+
+    const hasSpotify = !mode.timed && Boolean(currentTrack().spotify);
+    ui.spotify.hidden = !hasSpotify;
+
+    openResult();
+    announce(ui.resultMeta.dataset.announcement);
+  }
+
+  function openResult() {
+    overlayController.open("result");
+  }
+
+  function closeResult() {
+    overlayController.close("result");
+  }
+
+  function cancelProgressTransition() {
+    clearTimer("progress");
+    ui.fill.style.transition = "";
+  }
+
+  function finalizeSessionReset() {
+    state.appStatus = "ready";
+    renderUi({ force: true });
+    roundPreparation.prefetch();
+    if (isRoundReadyToStart()) focusPlay();
+  }
+
+  function resetSession({ render = true } = {}) {
+    const mode = currentMode();
+    gameClock.stop({ flush: false });
+    audioDeck.reset();
+    session.current = null;
+    session.pending = null;
+    session.status = "idle";
+    session.promptEntryId = null;
+    session.retryEntryId = null;
+    session.playbackRequested = false;
+    roundPreparation.reset();
+    dailyState.retryRound = null;
+
+    Object.assign(state, {
+      step: mode.daily && isDailyInProgress(dailyState.roundDate)
+        ? dailyState.progress.step
+        : 0,
+      rounds: 0,
+      guesses: 0,
+      correct: 0,
+      activeSuggestion: -1,
+      newPersonalBest: false,
+      classicResult: null,
+      notice: null,
+      previewText: null,
+    });
+    state.used.clear();
+    clearFrame("announcement");
+    clearFrame("guess-focus");
+    ui.status.textContent = "";
+    clearTimer("feedback");
+    ui.feedback.classList.remove("survival-penalty", "survival-reward");
+    ui.timeChange.classList.remove("survival-change");
+    ui.timeChangeText.textContent = "";
+    clearHistory();
+    clearGuess();
+
+    ui.endtime.textContent = mode.endTime;
+    ui.skip.textContent = mode.skip;
+    ui.snippet.style.width = `${100 / maxSnippetDuration}%`;
+    setProgress(mode.initialText, mode.initialProgress);
+    if (mode.timed) {
+      gameClock.resetTimed(mode.survival ? "survival" : "blitz", mode.initialTime);
+    } else {
+      gameClock.resetClassic(snippetDurations[0] * 1000);
+    }
+    if (mode.daily && (
+      isDailyInProgress(dailyState.roundDate) || isDailyDone(dailyState.roundDate)
+    )) renderSavedDailyProgress();
+    if (render) renderUi({ force: true });
+  }
+
+  function renderSavedDailyProgress() {
+    const seconds = snippetDurations[dailyState.progress.step] || snippetDurations[0];
+    ui.endtime.textContent = formatTime(seconds);
+    ui.snippet.style.width = `${seconds / maxSnippetDuration * 100}%`;
+    setProgress(
+      formatTime(seconds),
+      seconds / maxSnippetDuration + 0.0025,
+    );
+  }
+
+  function reset(options) {
+    clearTimer("result");
+    cancelProgressTransition();
+    resetSession(options);
+    if (state.appStatus === "ready") {
+      roundPreparation.prefetch();
+      if (isRoundReadyToStart()) focusPlay();
+    }
+  }
+
+  function setMode(modeName) {
+    if (
+      !modes[modeName] ||
+      modeName === state.mode ||
+      isModalOpen()
+    ) return;
+    state.mode = modeName;
+    state.previewText = null;
+    const message = getModeRulesText(modeName);
+    announce(message);
+    if (!catalogState.applied.tracks.length) {
+      renderUi({ force: true });
+      return;
+    }
+    applyModeChange();
+  }
+
+  // Initial mode selection --------------------------------------------------
+
+  function applyModeChange() {
+    cancelProgressTransition();
+    ui.fill.style.transition = "transform var(--duration-slot) ease-out";
+    resetSession({ render: false });
+    finalizeSessionReset();
+    setTimer("progress", () => {
+      ui.fill.style.transition = "";
+    }, transitionDelay(durations.progress));
+  }
+
+  function activateMode() {
+    if (
+      isDiscoveryOpen() ||
+      !state.mode ||
+      !catalogState.applied.tracks.length
+    ) return;
+    applyModeChange();
+  }
+
+  // Discovery modal ---------------------------------------------------------
+
+  function setDiscoveryHeight() {
+    if (!isDiscoveryVisible()) return;
+    ui.discoveryShell.style.height = `${ui.discoveryPanel.offsetHeight}px`;
+  }
+
+  function lockPageScroll() {
+    if (overlayState.pageScrollStyles) return;
+    const html = document.documentElement;
+    const body = document.body;
+    overlayState.pageScrollStyles = {
+      htmlOverflow: html.style.overflow,
+      htmlScrollbarGutter: html.style.scrollbarGutter,
+      bodyOverflow: body.style.overflow,
+    };
+    html.style.scrollbarGutter = "stable";
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+  }
+
+  function unlockPageScroll() {
+    if (!overlayState.pageScrollStyles) return;
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = overlayState.pageScrollStyles.htmlOverflow;
+    html.style.scrollbarGutter = overlayState.pageScrollStyles.htmlScrollbarGutter;
+    body.style.overflow = overlayState.pageScrollStyles.bodyOverflow;
+    overlayState.pageScrollStyles = null;
+  }
+
+  function createOverlayController() {
+    const durationFor = (kind) => kind === "result" ? durations.result : durations.discovery;
+
+    function open(kind) {
+      if (overlayState.phase !== "closed" || (kind === "discovery" && session.status === "result")) {
+        return false;
+      }
+      clearTimer(kind);
+      clearFrame("overlay-open");
+      clearFrame("guess-focus");
+      clearFrame("discovery-layout");
+      overlayState.returnFocus = document.activeElement;
+
+      if (kind === "discovery") {
+        state.previewText = null;
+        gameClock.pause();
+        renderDiscovery();
+        overlayState.discoverySuspension = audioDeck.suspendActive();
+        if (overlayState.discoverySuspension) renderPlaybackIntent(false);
+      }
+
+      const generation = beginOverlayTransition(kind, "opening");
+      lockPageScroll();
+      if (kind === "result") {
+        ui.card.classList.remove("modal-closing");
+        ui.card.classList.add("modal-open");
+        ui.result.setAttribute("aria-hidden", "false");
+        ui.next.focus({ preventScroll: true });
+      } else {
+        root.classList.add("discovery-open");
+        ui.discoveryButton.setAttribute("aria-expanded", "true");
+        ui.discoveryModal.setAttribute("aria-hidden", "false");
+        ui.discoveryShell.style.height = "0px";
+      }
+      renderUi({ force: true });
+
+      setFrame("overlay-open", () => {
+        if (!overlayTransitionMatches(kind, "opening", generation)) return;
+        if (kind === "result") {
+          ui.card.classList.add("modal-visible");
+        } else {
+          root.classList.add("discovery-visible");
+          setDiscoveryHeight();
+          ui.discoveryModal.focus({ preventScroll: true });
+        }
+        overlayState.phase = "open";
+        renderUi();
+      });
+      return true;
+    }
+
+    function close(kind) {
+      if (overlayState.kind !== kind || overlayState.phase === "closing") return false;
+      clearTimer(kind);
+      clearFrame("overlay-open");
+      clearFrame("discovery-layout");
+      const generation = beginOverlayTransition(kind, "closing");
+      if (kind === "result") {
+        ui.card.classList.add("modal-closing");
+        ui.card.classList.remove("modal-visible");
+        reset();
+      } else {
+        root.classList.remove("discovery-visible");
+        ui.discoveryButton.setAttribute("aria-expanded", "false");
+        ui.discoveryShell.style.height = `${ui.discoveryShell.offsetHeight}px`;
+        void ui.discoveryShell.offsetHeight;
+        ui.discoveryShell.style.height = "0px";
+      }
+      renderUi({ force: true });
+
+      setTimer(kind, () => {
+        if (!overlayTransitionMatches(kind, "closing", generation)) return;
+        const returnFocus = overlayState.returnFocus;
+        overlayState.returnFocus = null;
+        overlayState.kind = null;
+        overlayState.phase = "closed";
+        if (kind === "result") {
+          ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
+          ui.result.setAttribute("aria-hidden", "true");
+        } else {
+          root.classList.remove("discovery-open", "discovery-visible");
+          ui.discoveryShell.style.height = "";
+          ui.discoveryModal.setAttribute("aria-hidden", "true");
+          const suspension = overlayState.discoverySuspension;
+          overlayState.discoverySuspension = null;
+          const restored = audioDeck.restoreActive(suspension);
+          if (restored.status === "ended") handleTrackEnded();
+          else if (restored.status === "error") handleAudioError(restored.payload);
+          else if (restored.status === "resumed") renderPlaybackIntent(true);
+          if (
+            isAwaitingMode() &&
+            state.mode &&
+            catalogState.applied.tracks.length
+          ) activateMode();
+        }
+        unlockPageScroll();
+        renderUi({ force: true });
+        restoreOverlayFocus(returnFocus);
+      }, transitionDelay(durationFor(kind)));
+      return true;
+    }
+
+    return { open, close };
+  }
+
+  const overlayController = createOverlayController();
+
+  function openDiscovery() {
+    overlayController.open("discovery");
+  }
+
+  function closeDiscovery() {
+    overlayController.close("discovery");
+  }
+
+  function toggleDiscovery() {
+    if (overlayState.phase === "closed") openDiscovery();
+    else if (isDiscoveryOpen()) closeDiscovery();
+  }
+
+  function resetDiscovery() {
+    if (!window.confirm(
+      "RESET DISCOVERY? THIS HIDES ALL DISCOVERED TRACKS.",
+    )) return;
+    try {
+      localStorage.removeItem(discoveryStorageKey);
+      localStorage.removeItem(legacyDiscoveryStorageKey);
+    } catch {
+      announce("DISCOVERY COULD NOT BE RESET IN THIS BROWSER.");
+      return;
+    }
+    pendingDiscoveryMigration = null;
+    state.discovered = new Set();
+    renderDiscovery();
+    announce("DISCOVERY RESET.");
+  }
+
+  function trapFocus(event, container) {
+    if (event.key !== "Tab") return;
+    const focusable = [...container.querySelectorAll("button:not([disabled]), input:not([disabled])")]
+      .filter((element) => !element.hidden && element.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!container.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+      return;
+    }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function bindRulesPreview(element, preview) {
+    element.addEventListener("pointerenter", preview);
+    element.addEventListener("pointerleave", resetRulesPreview);
+    element.addEventListener("focus", preview);
+    element.addEventListener("blur", resetRulesPreview);
+  }
+
+  // Events and initialization ----------------------------------------------
+
+  ui.guess.addEventListener("input", renderSuggestions);
+  ui.guess.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      clearGuess();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (!state.suggestions.length) return;
+      event.preventDefault();
+      setActiveSuggestion(state.activeSuggestion + (event.key === "ArrowDown" ? 1 : -1));
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (!currentRound()) {
+      usePlaybackShortcut();
+      return;
+    }
+    const suggestion = state.suggestions[state.activeSuggestion];
+    if (suggestion) makeGuess(suggestion);
+    else if (!ui.guess.value.trim()) usePlaybackShortcut();
+  });
+
+  ui.suggest.addEventListener("pointermove", (event) => {
+    const option = event.target.closest("[role=option]");
+    if (!option) return;
+    const options = [...ui.suggest.children];
+    setActiveSuggestion(options.indexOf(option));
+  });
+  ui.suggest.addEventListener("click", (event) => {
+    const option = event.target.closest("[role=option]");
+    if (!option) return;
+    const options = [...ui.suggest.children];
+    const suggestion = state.suggestions[options.indexOf(option)];
+    if (suggestion) makeGuess(suggestion);
+  });
+  ui.play.addEventListener("click", togglePlay);
+  ui.skip.addEventListener("click", () => attempt("skip"));
+  ui.next.addEventListener("click", closeResult);
+  ui.spotify.addEventListener("click", openSpotify);
+  Object.entries(modeButtons).forEach(([name, button]) => {
+    bindRulesPreview(button, () => previewMode(name));
+    button.addEventListener("click", () => setMode(name));
+  });
+  bindRulesPreview(ui.discoveryButton, previewDiscovery);
+  ui.discoveryButton.addEventListener("click", toggleDiscovery);
+  ui.discoveryClose.addEventListener("click", closeDiscovery);
+  ui.discoveryReset.addEventListener("click", resetDiscovery);
+  ui.discoveryModal.addEventListener("click", (event) => {
+    if (!event.target.closest(".discovery-panel")) closeDiscovery();
+  });
+
+  new ResizeObserver(() => {
+    if (isDiscoveryVisible()) setDiscoveryHeight();
+  }).observe(ui.discoveryPanel);
+
+  root.addEventListener("keydown", (event) => {
+    state.inputModality = "keyboard";
+    if (isDiscoveryOpen()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeDiscovery();
+      } else {
+        trapFocus(event, ui.discoveryPanel);
+      }
+      return;
+    }
+    if (isResultOpen()) {
+      trapFocus(event, ui.result);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeResult();
+      } else if (event.key === "Enter" && document.activeElement !== ui.spotify) {
+        event.preventDefault();
+        closeResult();
+      }
+      return;
+    }
+    if (
+      event.key === "Enter" &&
+      !isAwaitingMode() &&
+      !event.target.closest?.(interactiveSelector)
+    ) {
+      event.preventDefault();
+      usePlaybackShortcut();
+    }
+  }, true);
+
+  root.addEventListener("pointerdown", (event) => {
+    state.inputModality = event.pointerType === "mouse" && finePointer.matches
+      ? "pointer-fine"
+      : "pointer-coarse";
+    if (
+      isRoundReadyToStart() &&
+      !event.target.closest(interactiveSelector)
+    ) {
+      event.preventDefault();
+      focusPlay();
+      return;
+    }
+    if (
+      !getUiModel().guessEnabled ||
+      isModalOpen() ||
+      event.target.closest(interactiveSelector)
+    ) return;
+    focusGuess();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && audioDeck.isPlayRequested()) pausePlayback();
+  });
+  setInterval(reconcileApp, 1000);
+
+  function validateTracks(value) {
+    if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
+    if (!value.length) throw new Error("Track catalog is empty.");
+    const titles = new Set();
+    const dailyNumbers = new Set();
+    const valid = [];
+    const fail = (index, message) => {
+      throw new Error(`Track catalog entry ${index + 1} ${message}`);
+    };
+    for (const [index, item] of value.entries()) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        fail(index, "is not an object.");
+      }
+      const title = typeof item?.title === "string" ? item.title.trim() : "";
+      const duration = item?.duration;
+      const spotify = typeof item?.spotify === "string" ? item.spotify.trim() : "";
+      const dailyNumber = item?.dailyNumber;
+      const dailyFrom = typeof item?.dailyFrom === "string" ? item.dailyFrom.trim() : "";
+      const isNew = item?.isNew === true;
+      if (!title) fail(index, "has no title.");
+      if (titles.has(title)) fail(index, `duplicates title \"${title}\".`);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        fail(index, "has an invalid duration.");
+      }
+      if (!Number.isSafeInteger(dailyNumber) || dailyNumber <= 0) {
+        fail(index, "has an invalid dailyNumber.");
+      }
+      if (dailyNumbers.has(dailyNumber)) {
+        fail(index, `duplicates dailyNumber ${dailyNumber}.`);
+      }
+      if (spotify && !/^[A-Za-z0-9]{22}$/.test(spotify)) {
+        fail(index, "has an invalid Spotify track ID.");
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dailyFrom)) {
+        fail(index, "has an invalid dailyFrom date.");
+      }
+      const parsedDate = new Date(`${dailyFrom}T00:00:00Z`);
+      if (
+        Number.isNaN(parsedDate.getTime()) ||
+        parsedDate.toISOString().slice(0, 10) !== dailyFrom
+      ) fail(index, "has a non-calendar dailyFrom date.");
+      titles.add(title);
+      dailyNumbers.add(dailyNumber);
+      valid.push({ title, duration, spotify, dailyNumber, dailyFrom, isNew });
+    }
+    return valid;
+  }
+
+  async function fetchTrackCatalog(date) {
+    const url = new URL(tracksUrl);
+    url.searchParams.set("date", date);
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`Track catalog returned ${response.status}.`);
+    return validateTracks(await response.json());
+  }
+
+  function invalidateUnstartedOldDaily(today) {
+    if (state.mode !== "daily" || catalogState.applied.date === today) return false;
+    if (isDailyRoundProtected()) return false;
+    const current = ownedRound();
+    const standby = audioDeck.getStandby();
+    const retry = dailyState.retryRound;
+    if (
+      current?.modeName === "daily" ||
+      standby?.round.modeName === "daily" ||
+      (retry?.modeName === "daily" && retry.roundDate !== today)
+    ) {
+      invalidateAudioSession();
+      dailyState.retryRound = null;
+      state.notice = null;
+      clearHistory(false);
+      renderUi({ force: true });
+      return true;
+    }
+    return false;
+  }
+
+  function applyStagedCatalog(today) {
+    const request = catalogState.request;
+    if (request.kind !== "staged") return false;
+    if (request.date !== today) {
+      catalogState.request = { kind: "idle" };
+      return false;
+    }
+    if (isDailyRoundProtected()) return false;
+    applyCatalog(request.date, request.tracks);
+    return true;
+  }
+
+  function applyCatalog(date, tracks) {
+    const initial = !catalogState.applied.tracks.length;
+    audioDeck.discardStandby();
+    catalogState.applied = {
+      date,
+      version: catalogState.applied.version + 1,
+      tracks,
+    };
+    catalogState.request = { kind: "idle" };
+    catalogState.unavailable.clear();
+    session.recovery.prefetchBlocked = false;
+    dailyState.roundDate = date;
+    dailyState.retryRound = null;
+    state.notice = null;
+    state.catalogError = null;
+    migrateLegacyPersistence();
+    persistDailySelectionForDate(date);
+    if (state.mode === "daily" && !ownedRound()) {
+      state.step = isDailyInProgress(date) ? dailyState.progress.step : 0;
+      gameClock.resetClassic(snippetDurations[state.step] * 1000);
+    }
+    renderDiscovery();
+
+    if (initial || state.appStatus === "loading" || state.appStatus === "error") {
+      state.appStatus = "awaiting-mode";
+      renderUi({ force: true });
+      if (state.mode && !isDiscoveryOpen()) activateMode();
+      return;
+    }
+    renderUi({ force: true });
+    if (state.mode && session.status === "idle" && !isModalOpen()) {
+      roundPreparation.prefetch();
+    }
+  }
+
+  function ensureCatalogRequest(date) {
+    if (!date || date === catalogState.applied.date) return false;
+    const request = catalogState.request;
+    if (
+      (request.kind === "loading" || request.kind === "staged") &&
+      request.date === date
+    ) return false;
+    if (
+      request.kind === "retry" &&
+      request.date === date &&
+      Date.now() < request.retryAt
+    ) return false;
+
+    const id = ++catalogState.nextRequestId;
+    catalogState.request = { kind: "loading", date, id };
+    if (!catalogState.applied.tracks.length) {
+      state.appStatus = "loading";
+      renderUi({ force: true });
+    }
+    void fetchTrackCatalog(date).then((tracks) => {
+      if (
+        catalogState.request.kind !== "loading" ||
+        catalogState.request.id !== id
+      ) return;
+      if (date !== getBudapestDate()) {
+        catalogState.request = { kind: "idle" };
+        reconcileApp();
+        return;
+      }
+      if (catalogState.applied.tracks.length && isDailyRoundProtected()) {
+        catalogState.request = { kind: "staged", date, tracks };
+      } else {
+        applyCatalog(date, tracks);
+      }
+    }).catch((error) => {
+      if (
+        catalogState.request.kind !== "loading" ||
+        catalogState.request.id !== id
+      ) return;
+      console.error("Corzaguessr rejected its track catalog.", error);
+      catalogState.request = {
+        kind: "retry",
+        date,
+        retryAt: Date.now() + 5000,
+        error,
+      };
+      state.catalogError = error;
+      if (!catalogState.applied.tracks.length) state.appStatus = "error";
+      renderUi({ force: true });
+      if (state.mode === "daily" && dailyNeedsCatalogRefresh(date)) {
+        announce(dailyCatalogErrorText);
+      } else if (!catalogState.applied.tracks.length) {
+        announce("COULD NOT LOAD THE TRACKLIST. RETRYING.");
+      }
+    });
+    return true;
+  }
+
+  function reconcileApp() {
+    const today = getBudapestDate();
+    invalidateUnstartedOldDaily(today);
+    applyStagedCatalog(today);
+    ensureCatalogRequest(today);
+  }
+
+  function loadTracks() {
+    reconcileApp();
+  }
+
+  loadTracks();
+})();
