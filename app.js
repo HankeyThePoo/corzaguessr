@@ -37,6 +37,7 @@
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
   const hiddenTitle = "???????????????????";
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const finePointer = matchMedia("(pointer: fine)");
   const interactiveSelector = "button, input, a, .suggest";
   const budapestDateFormatter = new Intl.DateTimeFormat("en", {
     timeZone: dailyTimeZone,
@@ -57,6 +58,7 @@
     initialProgress: 0,
     endTime: "0:01",
     skip: "ADD 1S",
+    clockLabels: ["PLAYHEAD", "CLIP"],
   };
   const modes = {
     classic: {
@@ -76,6 +78,7 @@
       initialProgress: 1,
       endTime: "1:00",
       skip: "SKIP",
+      clockLabels: ["REMAINING", "LIMIT"],
       description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
     },
     survival: {
@@ -86,6 +89,7 @@
       initialProgress: 1,
       endTime: "0:30",
       skip: "SKIP",
+      clockLabels: ["SURVIVED", "TIME BANK"],
       description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT",
       timeChange: { correct: 3000, wrong: -1000, skip: -2000 },
     },
@@ -93,82 +97,139 @@
 
   root.innerHTML = `
     <div class="wrap">
-      <h1>CORZAGUESSR&#10022;</h1>
-      <div class="row header-action">
+      <header class="game-header">
+        <div class="brand-lockup">
+          <p class="eyebrow"><span></span> THE JUSTIN CORZA AUDIO GAME</p>
+          <h1><span>CORZA</span>GUESSR<em aria-hidden="true">&#10022;</em></h1>
+          <p class="tagline">HOW FAST CAN YOU NAME THAT TRACK?</p>
+        </div>
+        <div class="header-action">
         <button
           type="button"
           class="button discovery-button"
           aria-controls="corzaguessr-discovery"
           aria-expanded="false"
-        >DISCOVERY</button>
+        >
+          <span class="discovery-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 5.5h16v13H4zM8 3v5M16 3v5M8 12h8M8 15.5h5"></path>
+            </svg>
+          </span>
+          <span class="discovery-copy">
+            <strong>DISCOVERY</strong>
+            <small class="discovery-progress">LOADING</small>
+          </span>
+          <span class="button-arrow" aria-hidden="true">&#8599;</span>
+        </button>
+        </div>
+      </header>
+      <div class="mode-heading" aria-hidden="true">
+        <span>CHOOSE YOUR MODE</span>
+        <small>4 WAYS TO PLAY</small>
       </div>
-      <div class="modes" aria-label="GAME MODE">
+      <div class="modes" role="group" aria-label="GAME MODE">
         <button type="button" class="mode" data-mode="daily" aria-pressed="false">
-          DAILY
+          <span class="mode-index">01</span>
+          <span class="mode-copy"><strong>DAILY</strong><small>ONE TRACK. ONE SHOT.</small></span>
+          <span class="mode-arrow" aria-hidden="true">&#8599;</span>
         </button>
         <button type="button" class="mode" data-mode="blitz" aria-pressed="false">
-          BLITZ
+          <span class="mode-index">02</span>
+          <span class="mode-copy"><strong>BLITZ</strong><small>RACE THE CLOCK.</small></span>
+          <span class="mode-arrow" aria-hidden="true">&#8599;</span>
         </button>
         <button type="button" class="mode" data-mode="classic" aria-pressed="false">
-          CLASSIC
+          <span class="mode-index">03</span>
+          <span class="mode-copy"><strong>CLASSIC</strong><small>SIX REVEALS TO WIN.</small></span>
+          <span class="mode-arrow" aria-hidden="true">&#8599;</span>
         </button>
         <button type="button" class="mode" data-mode="survival" aria-pressed="false">
-          SURVIVAL
+          <span class="mode-index">04</span>
+          <span class="mode-copy"><strong>SURVIVAL</strong><small>EVERY SECOND COUNTS.</small></span>
+          <span class="mode-arrow" aria-hidden="true">&#8599;</span>
         </button>
       </div>
       <div class="card glass">
+        <span class="card-orb card-orb-one" aria-hidden="true"></span>
+        <span class="card-orb card-orb-two" aria-hidden="true"></span>
         <div class="stack">
+          <div class="stage-heading">
+            <div class="active-mode-copy">
+              <span class="section-kicker"><i></i> ACTIVE MODE</span>
+              <strong class="active-mode">CHOOSE A MODE</strong>
+              <span id="corzaguessr-mode-description" class="stage-description">SELECT ONE OF THE FOUR MODES ABOVE TO START.</span>
+            </div>
+            <span class="keyboard-hint" aria-hidden="true"><kbd>ENTER</kbd> PLAY / PAUSE</span>
+          </div>
           <div class="board">
-            <div class="controls">
-              <div class="time"><span class="now">0:00</span></div>
-              <button type="button" class="play" aria-label="PLAY" disabled>
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="${icons.play}"></path>
-                </svg>
-              </button>
-              <div class="time"><span class="endtime">0:01</span></div>
-            </div>
-            <div class="timeline" aria-hidden="true">
-              <div class="snippet"></div>
-              <div class="fill"></div>
-              <div class="feedback"></div>
-              <div class="time-change"><span></span></div>
-              <i class="tick" style="left:3.125%"></i>
-              <i class="tick" style="left:6.25%"></i>
-              <i class="tick" style="left:12.5%"></i>
-              <i class="tick" style="left:25%"></i>
-              <i class="tick" style="left:50%"></i>
-            </div>
-            <div class="auto">
-              <label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label>
-              <input
-                id="corzaguessr-guess"
-                class="guess"
-                placeholder="HAVE A GUESS? SEARCH FOR IT HERE!"
-                autocomplete="off"
-                role="combobox"
-                aria-autocomplete="list"
-                aria-controls="corzaguessr-suggestions"
-                aria-expanded="false"
-                disabled
-              >
-              <div class="ruleset" aria-hidden="true">
-                <div class="ruleset-track">
-                  <span class="ruleset-text">${modePromptText}</span>
-                  <span class="ruleset-copy">${modePromptText}</span>
+            <div class="player-shell">
+              <div class="controls">
+                <div class="time time-now"><small class="now-label">PLAYHEAD</small><span class="now">0:00</span></div>
+                <button type="button" class="play" aria-label="PLAY" disabled>
+                  <span class="play-halo" aria-hidden="true"></span>
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="${icons.play}"></path>
+                  </svg>
+                </button>
+                <div class="time time-end"><small class="end-label">CLIP</small><span class="endtime">0:01</span></div>
+              </div>
+              <div class="timeline-wrap">
+                <div class="timeline" aria-hidden="true">
+                  <div class="snippet"></div>
+                  <div class="fill"></div>
+                  <div class="feedback"></div>
+                  <div class="time-change"><span></span></div>
+                  <i class="tick" style="left:3.125%"></i>
+                  <i class="tick" style="left:6.25%"></i>
+                  <i class="tick" style="left:12.5%"></i>
+                  <i class="tick" style="left:25%"></i>
+                  <i class="tick" style="left:50%"></i>
+                </div>
+                <div class="timeline-legend" aria-hidden="true">
+                  <span>1S</span><span>2S</span><span>4S</span><span>8S</span><span>16S</span><span>32S</span>
                 </div>
               </div>
-              <div
-                id="corzaguessr-suggestions"
-                class="suggest"
-                role="listbox"
-              ></div>
             </div>
-            <div class="row">
-              <button type="button" class="button skip" disabled>ADD 1S</button>
+            <div class="answer-panel">
+              <label class="answer-heading" for="corzaguessr-guess">
+                <span>YOUR ANSWER</span>
+                <small>TYPE A TITLE TO SEARCH</small>
+              </label>
+              <div class="answer-row">
+                <div class="auto">
+                  <label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label>
+                  <input
+                    id="corzaguessr-guess"
+                    class="guess"
+                    placeholder="SEARCH THE TRACKLIST..."
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="corzaguessr-suggestions"
+                    aria-describedby="corzaguessr-mode-description"
+                    aria-expanded="false"
+                    disabled
+                  >
+                  <div class="ruleset" aria-hidden="true">
+                    <div class="ruleset-track">
+                      <span class="ruleset-text">${modePromptText}</span>
+                      <span class="ruleset-copy">${modePromptText}</span>
+                    </div>
+                  </div>
+                  <div
+                    id="corzaguessr-suggestions"
+                    class="suggest"
+                    role="listbox"
+                  ></div>
+                </div>
+                <button type="button" class="button skip" disabled>ADD 1S</button>
+              </div>
             </div>
           </div>
-          <div class="slots" aria-live="polite" aria-relevant="additions text"></div>
+          <div class="attempt-log">
+            <div class="attempt-heading" aria-hidden="true"><span>ROUND LOG</span><small>NEWEST FIRST</small></div>
+            <div class="slots" aria-live="polite" aria-relevant="additions text"></div>
+          </div>
         </div>
         <div class="result-modal">
           <div class="result-shell">
@@ -180,6 +241,8 @@
               aria-describedby="corzaguessr-result-meta"
               aria-hidden="true"
             >
+              <div class="result-mark" aria-hidden="true"><span>&#10022;</span></div>
+              <p class="modal-eyebrow">ROUND COMPLETE</p>
               <h3 id="corzaguessr-result-title" class="modal-title"></h3>
               <div id="corzaguessr-result-meta" class="result-meta"></div>
               <div class="actions">
@@ -203,14 +266,20 @@
         >
           <div class="discovery-shell">
             <div class="discovery-panel glass">
-              <h3 id="corzaguessr-discovery-title" class="discovery-title">
-                <span>DISCOVERY</span>
-                <small>0 / 0 (0%)</small>
-              </h3>
+              <div class="discovery-header">
+                <div>
+                  <p class="modal-eyebrow">YOUR COLLECTION</p>
+                  <h3 id="corzaguessr-discovery-title" class="discovery-title">
+                    <span>DISCOVERY</span>
+                    <small>0 / 0 (0%)</small>
+                  </h3>
+                </div>
+                <button type="button" class="button discovery-close" aria-label="CLOSE DISCOVERY">&#10005;</button>
+              </div>
+              <p class="discovery-intro">CORRECTLY IDENTIFY TRACKS TO REVEAL THEM HERE.</p>
               <div class="discovery-items"></div>
               <div class="actions">
-                <button type="button" class="button discovery-close">CLOSE</button>
-                <button type="button" class="button discovery-reset">RESET</button>
+                <button type="button" class="button discovery-reset">RESET COLLECTION</button>
               </div>
             </div>
           </div>
@@ -236,6 +305,8 @@
     ruleset: $(".ruleset"),
     rulesetText: $(".ruleset-text"),
     rulesetCopy: $(".ruleset-copy"),
+    activeMode: $(".active-mode"),
+    stageDescription: $(".stage-description"),
     feedback: $(".feedback"),
     timeChange: $(".time-change"),
     timeChangeText: $(".time-change span"),
@@ -243,6 +314,8 @@
     snippet: $(".snippet"),
     now: $(".now"),
     endtime: $(".endtime"),
+    nowLabel: $(".now-label"),
+    endLabel: $(".end-label"),
     spotify: $(".spotify"),
     next: $(".next"),
     result: $(".corzaguessr-modal"),
@@ -254,6 +327,7 @@
     discoveryShell: $(".discovery-shell"),
     discoveryPanel: $(".discovery-panel"),
     discoveryCount: $("#corzaguessr-discovery-title small"),
+    discoveryProgress: $(".discovery-progress"),
     discoveryItems: $(".discovery-items"),
     discoveryClose: $(".discovery-close"),
     discoveryReset: $(".discovery-reset"),
@@ -379,7 +453,7 @@
   }
 
   function focusGuess() {
-    if (ui.guess.disabled || isModalOpen()) return;
+    if (!finePointer.matches || ui.guess.disabled || isModalOpen()) return;
     setFrame("guess-focus", () => {
       if (!ui.guess.disabled && !isModalOpen()) ui.guess.focus();
     });
@@ -1544,9 +1618,14 @@
     return `${found} / ${total} (${percent}%)`;
   }
 
+  function renderDiscoveryCount(found, total) {
+    ui.discoveryCount.textContent = formatDiscoveryCount(found, total);
+    ui.discoveryProgress.textContent = total ? `${found} / ${total} FOUND` : "LOADING";
+  }
+
   function renderDiscoveryItems() {
     if (state.appPhase === "loading" && !catalogState.applied.tracks.length) {
-      ui.discoveryCount.textContent = formatDiscoveryCount(0, 0);
+      renderDiscoveryCount(0, 0);
       ui.discoveryItems.textContent = "LOADING...";
       return;
     }
@@ -1554,13 +1633,16 @@
       .sort((a, b) => b.dailyNumber - a.dailyNumber);
     const validTitles = new Set(discoveryTracks.map((track) => track.title));
     const found = [...state.discovered].filter((title) => validTitles.has(title)).length;
-    ui.discoveryCount.textContent = formatDiscoveryCount(found, discoveryTracks.length);
+    renderDiscoveryCount(found, discoveryTracks.length);
     ui.discoveryItems.replaceChildren(...discoveryTracks.map((track) => {
       const item = document.createElement("div");
       item.className = "discovery-item";
       const discovered = state.discovered.has(track.title);
       item.textContent = discovered ? track.title : hiddenTitle;
-      if (!discovered) item.setAttribute("aria-hidden", "true");
+      if (!discovered) {
+        item.dataset.locked = "true";
+        item.setAttribute("aria-label", `LOCKED TRACK ${track.dailyNumber}`);
+      }
       return item;
     }));
   }
@@ -2043,10 +2125,9 @@
     completeDaily(won);
     updatePersonalBest(won);
 
-    const mark = won ? "🎉" : "❌";
     ui.resultTitle.innerHTML = mode.timed
-      ? '⏱️ <span class="end">TIME IS UP</span> ⏱️'
-      : `${mark} <span class="end">${won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${mark}`;
+      ? '<span class="end">TIME IS UP</span>'
+      : `<span class="end">${won ? "TRACK FOUND" : "NOT THIS TIME"}</span>`;
     setResultMeta(...getResultModules());
 
     const hasSpotify = !mode.timed && Boolean(currentTrack().spotify);
@@ -2246,6 +2327,10 @@
 
   function renderModeSelection() {
     const mode = currentMode();
+    root.dataset.gameMode = state.mode;
+    ui.activeMode.textContent = state.mode.toUpperCase();
+    ui.stageDescription.textContent = mode.description;
+    [ui.nowLabel.textContent, ui.endLabel.textContent] = mode.clockLabels;
     root.classList.toggle("timed", mode.timed);
     Object.entries(modeButtons).forEach(([name, button]) => {
       const selected = name === state.mode;
