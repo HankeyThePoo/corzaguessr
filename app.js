@@ -2078,9 +2078,7 @@
     clearFrame("guess-focus");
     const generation = beginOverlayTransition("result", "opening");
     ui.card.classList.remove("modal-closing");
-    const card = ui.card.getBoundingClientRect();
-    const board = ui.board.getBoundingClientRect();
-    ui.card.style.setProperty("--modal-y", `${board.top - card.top + board.height / 2}px`);
+    lockPageScroll();
     ui.card.classList.add("modal-open");
     ui.result.setAttribute("aria-hidden", "false");
     syncBackgroundInert();
@@ -2105,6 +2103,7 @@
       overlayState.phase = "closed";
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       syncBackgroundInert();
+      unlockPageScroll();
       reconcileApp();
       restoreOverlayFocus();
       ui.result.setAttribute("aria-hidden", "true");
@@ -2150,6 +2149,7 @@
     ui.timeChange.classList.remove("survival-change");
     ui.timeChangeText.textContent = "";
     if (!keepResultOpen) {
+      const wasResultOpen = overlayState.kind === "result" || ui.card.classList.contains("modal-open");
       clearTimer("result");
       clearFrame("overlay-open");
       if (overlayState.kind === "result") {
@@ -2159,6 +2159,7 @@
       }
       ui.card.classList.remove("modal-open", "modal-visible", "modal-closing");
       ui.result.setAttribute("aria-hidden", "true");
+      if (wasResultOpen) unlockPageScroll();
     }
     syncBackgroundInert();
     ui.skip.disabled = true;
