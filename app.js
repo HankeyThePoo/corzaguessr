@@ -208,7 +208,7 @@
                 <span>DISCOVERY</span>
                 <small>0 / 0 (0%)</small>
               </h3>
-              <div class="discovery-items"></div>
+              <div class="discovery-items" role="list"></div>
               <div class="actions">
                 <button type="button" class="button discovery-close">CLOSE</button>
                 <button type="button" class="button discovery-reset">RESET</button>
@@ -1559,9 +1559,24 @@
     ui.discoveryItems.replaceChildren(...discoveryTracks.map((track) => {
       const item = document.createElement("div");
       item.className = "discovery-item";
+      item.setAttribute("role", "listitem");
       const discovered = state.discovered.has(track.title);
-      item.textContent = discovered ? track.title : hiddenTitle;
-      if (!discovered) item.setAttribute("aria-hidden", "true");
+      const title = discovered ? track.title : hiddenTitle;
+      if (track.isNew && !discovered) {
+        item.classList.add("discovery-item-new");
+        const marker = document.createElement("span");
+        marker.className = "discovery-new";
+        marker.textContent = "NEW";
+        marker.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.className = "discovery-track";
+        label.textContent = title;
+        item.append(marker, label, marker.cloneNode(true));
+        item.setAttribute("aria-label", "NEW UNDISCOVERED TRACK");
+      } else {
+        item.textContent = title;
+        if (!discovered) item.setAttribute("aria-hidden", "true");
+      }
       return item;
     }));
   }
@@ -2568,6 +2583,7 @@
       const duration = Number(item?.duration);
       const spotify = typeof item?.spotify === "string" ? item.spotify.trim() : "";
       const dailyNumber = Number(item?.dailyNumber);
+      const isNew = item?.isNew === true;
       if (
         !title ||
         titles.has(title) ||
@@ -2580,7 +2596,7 @@
       ) continue;
       titles.add(title);
       dailyNumbers.add(dailyNumber);
-      valid.push({ title, duration, spotify, dailyNumber });
+      valid.push({ title, duration, spotify, dailyNumber, isNew });
     }
     if (!valid.length) throw new Error("Track catalog has no valid tracks.");
     return valid;
