@@ -586,7 +586,7 @@
     ui.guess.disabled = !view.guessEnabled;
     Object.entries(modeButtons).forEach(([name, button]) => {
       const selected = name === state.mode;
-      button.disabled = !view.modesEnabled;
+      button.disabled = !view.modesEnabled || selected;
       button.setAttribute("aria-pressed", String(selected));
     });
 
@@ -2654,7 +2654,12 @@
   }
 
   function setMode(modeName) {
-    if (!modes[modeName] || isModalOpen() || state.appStatus === "transitioning") return;
+    if (
+      !modes[modeName] ||
+      modeName === state.mode ||
+      isModalOpen() ||
+      state.appStatus === "transitioning"
+    ) return;
     state.mode = modeName;
     state.previewText = null;
     const message = getModeRulesText(modeName);
