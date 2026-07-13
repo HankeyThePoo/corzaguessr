@@ -2831,7 +2831,9 @@
   function bindRulesPreview(element, preview) {
     element.addEventListener("pointerenter", preview);
     element.addEventListener("pointerleave", resetRulesPreview);
-    element.addEventListener("focus", preview);
+    element.addEventListener("focus", () => {
+      if (state.inputModality === "keyboard") preview();
+    });
     element.addEventListener("blur", resetRulesPreview);
   }
 
