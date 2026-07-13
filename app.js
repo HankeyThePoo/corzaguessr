@@ -16,7 +16,6 @@
   const SNIPPET_DURATIONS = Object.freeze([1, 2, 4, 8, 16, 32]);
   const MAX_TIMED_HISTORY = 50;
   const MINIMUM_TIMED_REMAINING_SECONDS = 60;
-  const HIDDEN_TITLE = "????????????????????";
   const STORAGE_KEYS = Object.freeze({
     discoveries: "corzaguessrDiscovered",
     daily: "corzaguessrDaily",
@@ -45,7 +44,6 @@
   /** @typedef {"loading"|"awaiting-mode"|"ready"|"error"} AppStatus */
   /** @typedef {"idle"|"preparing"|"active"|"paused"|"audio-retry"|"result"} SessionStatus */
   /** @typedef {"keyboard"|"pointer-fine"|"pointer-coarse"} InputModality */
-  /** @typedef {"pointer"|"focus"} PreviewSource */
   /** @typedef {"correct"|"wrong"|"skip"} AttemptKind */
   /** @typedef {Record<string, any>} GameState */
 
@@ -81,6 +79,14 @@
    * @property {Track & {at:number}} track
    */
 
+  /**
+   * @typedef {Object} AudioRound
+   * @property {number} id
+   * @property {number} sessionId
+   * @property {number} audioGeneration
+   * @property {{dailyNumber:number, at:number}} track
+   */
+
   /* Named action records keep the discriminants parseable by TypeScript's
    * checkJs JSDoc parser and make adapter ownership explicit. */
   /** @typedef {{type:"APP/BOOTSTRAP", date:string}} AppBootstrapAction */
@@ -99,11 +105,7 @@
   /** @typedef {{type:"PLAYER/PLAYBACK_SHORTCUT", atMs?:number}} PlayerPlaybackShortcutAction */
   /** @typedef {{type:"PLAYER/SKIP", atMs?:number}} PlayerSkipAction */
   /** @typedef {{type:"PLAYER/GUESS", title:string, atMs?:number}} PlayerGuessAction */
-  /** @typedef {{type:"PLAYER/QUERY_CHANGED", query:string}} PlayerQueryChangedAction */
-  /** @typedef {{type:"PLAYER/SUGGESTION_CHANGED", index:number}} PlayerSuggestionChangedAction */
   /** @typedef {{type:"INPUT/MODALITY_CHANGED", modality:InputModality}} InputModalityChangedAction */
-  /** @typedef {{type:"PREVIEW/SET", source:PreviewSource, kind:"mode"|"discovery", mode?:ModeName}} PreviewSetAction */
-  /** @typedef {{type:"PREVIEW/CLEAR", source:PreviewSource}} PreviewClearAction */
   /** @typedef {{type:"AUDIO/PREPARED", sessionId:number, roundId:number, audioGeneration:number, role?:"active"|"standby"}} AudioPreparedAction */
   /** @typedef {{type:"AUDIO/PLAYING", sessionId:number, roundId:number, audioGeneration:number, atMs?:number}} AudioPlayingAction */
   /** @typedef {{type:"AUDIO/WAITING", sessionId:number, roundId:number, audioGeneration:number, atMs?:number}} AudioWaitingAction */
@@ -116,7 +118,7 @@
   /** @typedef {{type:"OVERLAY/CLOSE_REQUESTED", kind?:"result"|"discovery"}} OverlayCloseRequestedAction */
   /** @typedef {{type:"OVERLAY/TRANSITION_COMPLETED", kind:"result"|"discovery", phase:"opening"|"closing", generation:number}} OverlayTransitionCompletedAction */
   /** @typedef {{type:"DISCOVERY/RESET"}} DiscoveryResetAction */
-  /** @typedef {AppBootstrapAction|EnvironmentDateChangedAction|EnvironmentVisibilityHiddenAction|CatalogRequestAction|CatalogSucceededAction|CatalogFailedAction|CatalogRetryDueAction|PersistenceLoadedAction|PersistenceWriteSucceededAction|PersistenceWriteFailedAction|PlayerSelectModeAction|PlayerNewGameAction|PlayerPlayAction|PlayerPlaybackShortcutAction|PlayerSkipAction|PlayerGuessAction|PlayerQueryChangedAction|PlayerSuggestionChangedAction|InputModalityChangedAction|PreviewSetAction|PreviewClearAction|AudioPreparedAction|AudioPlayingAction|AudioWaitingAction|AudioEndedAction|AudioBlockedAction|AudioFailedAction|ClockExpiredAction|ClockResynchronizedAction|OverlayOpenRequestedAction|OverlayCloseRequestedAction|OverlayTransitionCompletedAction|DiscoveryResetAction} Action */
+  /** @typedef {AppBootstrapAction|EnvironmentDateChangedAction|EnvironmentVisibilityHiddenAction|CatalogRequestAction|CatalogSucceededAction|CatalogFailedAction|CatalogRetryDueAction|PersistenceLoadedAction|PersistenceWriteSucceededAction|PersistenceWriteFailedAction|PlayerSelectModeAction|PlayerNewGameAction|PlayerPlayAction|PlayerPlaybackShortcutAction|PlayerSkipAction|PlayerGuessAction|InputModalityChangedAction|AudioPreparedAction|AudioPlayingAction|AudioWaitingAction|AudioEndedAction|AudioBlockedAction|AudioFailedAction|ClockExpiredAction|ClockResynchronizedAction|OverlayOpenRequestedAction|OverlayCloseRequestedAction|OverlayTransitionCompletedAction|DiscoveryResetAction} Action */
 
   /** @typedef {{discoveries:string, daily:string, personalBests:string}} StorageKeys */
   /** @typedef {{type:"CATALOG_FETCH", requestId:number, date:string}} CatalogFetchEffect */
@@ -124,46 +126,185 @@
   /** @typedef {{type:"STORAGE_LOAD", keys:StorageKeys}} StorageLoadEffect */
   /** @typedef {{type:"STORAGE_WRITE", requestId:number, key:string, value:unknown}} StorageWriteEffect */
   /** @typedef {{type:"AUDIO_RESET", sessionId:number}} AudioResetEffect */
-  /** @typedef {{type:"AUDIO_PREPARE", role:"active"|"standby", round:Round}} AudioPrepareEffect */
-  /** @typedef {{type:"AUDIO_PROMOTE_AND_PLAY", round:Round}} AudioPromoteAndPlayEffect */
-  /** @typedef {{type:"AUDIO_PLAY", round:Round, rewind:boolean}} AudioPlayEffect */
+  /** @typedef {{type:"AUDIO_PREPARE", role:"active"|"standby", round:AudioRound}} AudioPrepareEffect */
+  /** @typedef {{type:"AUDIO_PROMOTE_AND_PLAY", round:AudioRound}} AudioPromoteAndPlayEffect */
+  /** @typedef {{type:"AUDIO_PLAY", round:AudioRound, rewind:boolean}} AudioPlayEffect */
   /** @typedef {{type:"AUDIO_PAUSE", sessionId:number, roundId:number|null}} AudioPauseEffect */
   /** @typedef {{type:"AUDIO_RELEASE", sessionId:number, roundId:number|null}} AudioReleaseEffect */
   /** @typedef {{type:"AUDIO_DISCARD_STANDBY", sessionId:number, roundId:number, audioGeneration:number}} AudioDiscardStandbyEffect */
-  /** @typedef {{type:"AUDIO_SUSPEND", round:Round}} AudioSuspendEffect */
-  /** @typedef {{type:"AUDIO_RESTORE", round:Round}} AudioRestoreEffect */
+  /** @typedef {{type:"AUDIO_SUSPEND", round:AudioRound}} AudioSuspendEffect */
+  /** @typedef {{type:"AUDIO_RESTORE", round:AudioRound}} AudioRestoreEffect */
   /** @typedef {{type:"CLOCK_CANCEL", sessionId:number, generation:number}} ClockCancelEffect */
   /** @typedef {{type:"CLOCK_SCHEDULE", sessionId:number, generation:number, anchorMs:number, remainingMs:number}} ClockScheduleEffect */
   /** @typedef {{type:"ANNOUNCE", message:string}} AnnounceEffect */
   /** @typedef {{type:"FEEDBACK_FLASH", sessionId:number, amountSeconds:number}} FeedbackFlashEffect */
   /** @typedef {{type:"FOCUS", target:"play"|"guess", modality:InputModality, sessionId:number, roundId:number|null}} FocusEffect */
   /** @typedef {{type:"OVERLAY_SYNC", kind:"result"|"discovery", phase:"opening"|"closing", generation:number, returnFocus:string|null}} OverlaySyncEffect */
-  /** @typedef {CatalogFetchEffect|CatalogRetryScheduleEffect|StorageLoadEffect|StorageWriteEffect|AudioResetEffect|AudioPrepareEffect|AudioPromoteAndPlayEffect|AudioPlayEffect|AudioPauseEffect|AudioReleaseEffect|AudioDiscardStandbyEffect|AudioSuspendEffect|AudioRestoreEffect|ClockCancelEffect|ClockScheduleEffect|AnnounceEffect|FeedbackFlashEffect|FocusEffect|OverlaySyncEffect} Effect */
+  /** @typedef {{type:"AUTOCOMPLETE_RESET"}} AutocompleteResetEffect */
+  /** @typedef {{type:"PREVIEW_RESET"}} PreviewResetEffect */
+  /** @typedef {CatalogFetchEffect|CatalogRetryScheduleEffect|StorageLoadEffect|StorageWriteEffect|AudioResetEffect|AudioPrepareEffect|AudioPromoteAndPlayEffect|AudioPlayEffect|AudioPauseEffect|AudioReleaseEffect|AudioDiscardStandbyEffect|AudioSuspendEffect|AudioRestoreEffect|ClockCancelEffect|ClockScheduleEffect|AnnounceEffect|FeedbackFlashEffect|FocusEffect|OverlaySyncEffect|AutocompleteResetEffect|PreviewResetEffect} Effect */
 
-  /** @type {Record<string, {timed:boolean, daily:boolean, survival:boolean, initialTimeMs:number, endTime:string, skip:string, description:string}>} */
+  /** @type {Record<string, {timed:boolean, daily:boolean, survival:boolean, initialTimeMs:number, endTime:string, description:string}>} */
   const MODE_DEFINITIONS = Object.freeze({
-    classic: Object.freeze({ timed: false, daily: false, survival: false, initialTimeMs: 60000, endTime: "0:01", skip: "ADD 1S", description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED" }),
-    daily: Object.freeze({ timed: false, daily: true, survival: false, initialTimeMs: 60000, endTime: "0:01", skip: "ADD 1S", description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES" }),
-    blitz: Object.freeze({ timed: true, daily: false, survival: false, initialTimeMs: 60000, endTime: "1:00", skip: "SKIP", description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT" }),
-    survival: Object.freeze({ timed: true, daily: false, survival: true, initialTimeMs: 30000, endTime: "0:30", skip: "SKIP", description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT" }),
+    classic: Object.freeze({ timed: false, daily: false, survival: false, initialTimeMs: 60000, endTime: "0:01", description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED" }),
+    daily: Object.freeze({ timed: false, daily: true, survival: false, initialTimeMs: 60000, endTime: "0:01", description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES" }),
+    blitz: Object.freeze({ timed: true, daily: false, survival: false, initialTimeMs: 60000, endTime: "1:00", description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT" }),
+    survival: Object.freeze({ timed: true, daily: false, survival: true, initialTimeMs: 30000, endTime: "0:30", description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT" }),
   });
 
-  /** @type {Record<string, {clockDelta:(kind:AttemptKind)=>number, countsGuess:(kind:AttemptKind)=>boolean, prompt:(value:number)=>{text:string,tone:string}}>} */
-  const MODE_STRATEGIES = Object.freeze({
-    classic: Object.freeze({ clockDelta: () => 0, countsGuess: (/** @type {AttemptKind} */ kind) => kind !== "skip", prompt: classicPrompt }),
-    daily: Object.freeze({ clockDelta: () => 0, countsGuess: (/** @type {AttemptKind} */ kind) => kind !== "skip", prompt: classicPrompt }),
-    blitz: Object.freeze({ clockDelta: () => 0, countsGuess: (/** @type {AttemptKind} */ kind) => kind !== "skip", prompt: timedPrompt }),
-    survival: Object.freeze({ clockDelta: (/** @type {AttemptKind} */ kind) => ({ correct: 3000, wrong: -1000, skip: -2000 })[kind] || 0, countsGuess: (/** @type {AttemptKind} */ kind) => kind !== "skip", prompt: timedPrompt }),
-  });
+  /** @param {Track} track @param {number} at @returns {Track & {at:number}} */
+  function createRoundTrack(track, at) {
+    return /** @type {Track & {at:number}} */ (Object.freeze({
+      title: track.title,
+      duration: track.duration,
+      spotify: track.spotify,
+      dailyNumber: track.dailyNumber,
+      dailyFrom: track.dailyFrom,
+      isNew: track.isNew,
+      at,
+    }));
+  }
 
-  /** @param {any} value @returns {any} */
-  function clone(value) {
-    if (Array.isArray(value)) return value.map(clone);
-    if (!value || typeof value !== "object") return value;
-    /** @type {Record<string, any>} */
-    const result = {};
-    for (const key of Object.keys(value)) result[key] = clone(value[key]);
-    return result;
+  /** @param {Round|null|undefined} round @returns {Round|null} */
+  function snapshotRound(round) {
+    if (!round) return null;
+    return {
+      id: round.id,
+      sessionId: round.sessionId,
+      audioGeneration: round.audioGeneration,
+      modeName: round.modeName,
+      catalogVersion: round.catalogVersion,
+      roundDate: round.roundDate,
+      prepared: round.prepared,
+      hasPlayed: round.hasPlayed,
+      ordinal: round.ordinal,
+      track: round.track,
+    };
+  }
+
+  /** @param {Round} round @returns {AudioRound} */
+  function snapshotAudioRound(round) {
+    return Object.freeze({
+      id: round.id,
+      sessionId: round.sessionId,
+      audioGeneration: round.audioGeneration,
+      track: Object.freeze({ dailyNumber: round.track.dailyNumber, at: round.track.at }),
+    });
+  }
+
+  /** @param {any} value */
+  function snapshotDaily(value) {
+    return {
+      date: value.date,
+      dailyNumber: value.dailyNumber,
+      started: value.started,
+      completed: value.completed,
+      won: value.won,
+      step: value.step,
+    };
+  }
+
+  /** @param {any} value */
+  function snapshotPersonalBests(value) {
+    return {
+      classic: {
+        current: value.classic.current,
+        best: value.classic.best,
+        snippetTotal: value.classic.snippetTotal,
+        bestSnippetTotal: value.classic.bestSnippetTotal,
+      },
+      daily: value.daily,
+      blitz: { score: value.blitz.score, accuracy: value.blitz.accuracy },
+      survival: { score: value.survival.score, accuracy: value.survival.accuracy },
+    };
+  }
+
+  /** @param {GameState} state @returns {GameState} */
+  function createDraft(state) {
+    const session = state.session;
+    return {
+      app: {
+        status: state.app.status,
+        budapestDate: state.app.budapestDate,
+        catalogError: state.app.catalogError,
+      },
+      catalog: {
+        status: state.catalog.status,
+        requestId: state.catalog.requestId,
+        appliedDate: state.catalog.appliedDate,
+        version: state.catalog.version,
+        tracks: state.catalog.tracks,
+        indexes: state.catalog.indexes,
+        discoveryOrder: state.catalog.discoveryOrder,
+        retry: state.catalog.retry ? { ...state.catalog.retry } : null,
+        staged: state.catalog.staged ? { date: state.catalog.staged.date, tracks: state.catalog.staged.tracks } : null,
+      },
+      session: {
+        id: session.id,
+        status: session.status,
+        mode: session.mode,
+        rounds: session.rounds,
+        guesses: session.guesses,
+        correct: session.correct,
+        step: session.step,
+        current: snapshotRound(session.current),
+        pending: snapshotRound(session.pending),
+        standby: snapshotRound(session.standby),
+        previousDailyNumber: session.previousDailyNumber,
+        nextRoundId: session.nextRoundId,
+        nextAudioGeneration: session.nextAudioGeneration,
+        history: session.history,
+        nextHistoryId: session.nextHistoryId,
+        promptEntryId: session.promptEntryId,
+        retryEntryId: session.retryEntryId,
+        playbackRequested: session.playbackRequested,
+        randomSeed: session.randomSeed,
+        // The shell keys autocomplete derivation to this reference. Guess
+        // acceptance replaces it; unrelated actions retain it.
+        usedTitles: session.usedTitles,
+        quarantine: [...session.quarantine],
+        notice: session.notice,
+        result: session.result,
+        recovery: { ...session.recovery },
+        clock: { ...session.clock },
+      },
+      daily: {
+        roundDate: state.daily.roundDate,
+        progress: snapshotDaily(state.daily.progress),
+        retryRound: snapshotRound(state.daily.retryRound),
+      },
+      // Discovery is copy-on-write at its three mutation sites. Keeping this
+      // identity stable lets the shell skip unrelated Discovery derivation.
+      discovery: state.discovery,
+      personalBests: snapshotPersonalBests(state.personalBests),
+      input: { modality: state.input.modality },
+      overlay: {
+        kind: state.overlay.kind,
+        phase: state.overlay.phase,
+        generation: state.overlay.generation,
+        returnFocus: state.overlay.returnFocus,
+        suspension: state.overlay.suspension ? { ...state.overlay.suspension } : null,
+      },
+      persistence: {
+        status: state.persistence.status,
+        nextRequestId: state.persistence.nextRequestId,
+        pendingWrites: state.persistence.pendingWrites.map((/** @type {any} */ write) => ({ requestId: write.requestId, key: write.key })),
+        lastError: state.persistence.lastError,
+      },
+    };
+  }
+
+  /** @param {Effect[]} effects @param {"AUTOCOMPLETE_RESET"|"PREVIEW_RESET"} type */
+  function requestUiReset(effects, type) {
+    if (effects.some((effect) => effect.type === type)) return;
+    if (type === "AUTOCOMPLETE_RESET") effects.push({ type: "AUTOCOMPLETE_RESET" });
+    else effects.push({ type: "PREVIEW_RESET" });
+  }
+
+  /** @param {Effect[]} effects */
+  function requestTransientUiReset(effects) {
+    requestUiReset(effects, "AUTOCOMPLETE_RESET");
+    requestUiReset(effects, "PREVIEW_RESET");
   }
 
   /** @param {number|undefined} value @returns {number} */
@@ -207,13 +348,13 @@
     return day <= days[month - 1];
   }
 
-  /** @param {unknown} value @returns {Track[]} */
+  /** @param {unknown} value @returns {ReadonlyArray<Track>} */
   function validateTracks(value) {
     if (!Array.isArray(value)) throw new Error("Track catalog is not an array.");
     if (!value.length) throw new Error("Track catalog is empty.");
     const titles = new Set();
     const numbers = new Set();
-    return value.map((source, index) => {
+    const tracks = value.map((source, index) => {
       /** @param {string} message @returns {never} */
       const fail = (message) => { throw new Error(`Track catalog entry ${index + 1} ${message}`); };
       if (!source || typeof source !== "object" || Array.isArray(source)) fail("is not an object.");
@@ -232,25 +373,36 @@
       if (!isCalendarDate(dailyFrom)) fail("has an invalid dailyFrom date.");
       titles.add(title);
       numbers.add(dailyNumber);
-      return { title, duration: Number(duration), spotify, dailyNumber: Number(dailyNumber), dailyFrom, isNew: item.isNew === true };
+      return Object.freeze({ title, duration: Number(duration), spotify, dailyNumber: Number(dailyNumber), dailyFrom, isNew: item.isNew === true });
     });
+    return Object.freeze(tracks);
   }
 
-  /** @param {Track[]} tracks */
+  /** @param {ReadonlyArray<Track>} tracks */
   function createIndexes(tracks) {
-    /** @type {Record<string, number>} */
-    const byDailyNumber = {};
     /** @type {Record<string, number>} */
     const byTitle = {};
     /** @type {{index:number, normalized:string}[]} */
     const search = [];
     tracks.forEach((track, index) => {
-      byDailyNumber[String(track.dailyNumber)] = index;
       byTitle[track.title] = index;
-      search.push({ index, normalized: track.title.toLocaleLowerCase() });
+      search.push(Object.freeze({ index, normalized: track.title.toLocaleLowerCase() }));
     });
-    return { byDailyNumber, byTitle, search };
+    return Object.freeze({
+      byTitle: Object.freeze(byTitle),
+      search: Object.freeze(search),
+    });
   }
+
+  /** @param {ReadonlyArray<Track>} tracks @returns {ReadonlyArray<Track>} */
+  function createDiscoveryOrder(tracks) {
+    return Object.freeze([...tracks].sort((left, right) => right.dailyNumber - left.dailyNumber));
+  }
+
+  /** @type {ReadonlyArray<Track>} */
+  const EMPTY_TRACKS = Object.freeze([]);
+  const EMPTY_INDEXES = createIndexes(EMPTY_TRACKS);
+  const EMPTY_DISCOVERY_ORDER = createDiscoveryOrder(EMPTY_TRACKS);
 
   /** @param {unknown} saved */
   function normalizeDaily(saved) {
@@ -357,13 +509,13 @@
       ? persistence.discoveries.filter((/** @type {unknown} */ number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number)
       : [];
     return {
-      app: { status: /** @type {AppStatus} */ ("loading"), budapestDate: date, notice: null, catalogError: null, preview: { pointer: null, focus: null } },
-      catalog: { status: "idle", requestId: 0, appliedDate: null, version: 0, tracks: [], indexes: { byDailyNumber: {}, byTitle: {}, search: [] }, retry: null, staged: null },
+      app: { status: /** @type {AppStatus} */ ("loading"), budapestDate: date, catalogError: null },
+      catalog: { status: "idle", requestId: 0, appliedDate: null, version: 0, tracks: EMPTY_TRACKS, indexes: EMPTY_INDEXES, discoveryOrder: EMPTY_DISCOVERY_ORDER, retry: null, staged: null },
       session: createSession(0, null, options.seed, 0),
       daily: { roundDate: date, progress: normalizeDaily(persistence.daily), retryRound: null },
       discovery: { dailyNumbers: [...new Set(discoveries)].sort((a, b) => a - b) },
       personalBests: normalizePersonalBests(persistence.personalBests),
-      input: { query: "", selectedSuggestion: -1, modality: options.modality === "keyboard" || options.modality === "pointer-coarse" ? options.modality : "pointer-fine" },
+      input: { modality: options.modality === "keyboard" || options.modality === "pointer-coarse" ? options.modality : "pointer-fine" },
       overlay: { kind: null, phase: "closed", generation: 0, returnFocus: null, suspension: null },
       persistence: {
         status: "idle",
@@ -429,7 +581,17 @@
   function queueStorageWrite(state, effects, key, value) {
     const requestId = ++state.persistence.nextRequestId;
     state.persistence.pendingWrites.push({ requestId, key });
-    effects.push({ type: "STORAGE_WRITE", requestId, key, value: clone(value) });
+    let snapshot;
+    if (key === STORAGE_KEYS.discoveries) {
+      snapshot = Array.isArray(value) ? value.map(Number) : [];
+    } else if (key === STORAGE_KEYS.daily) {
+      snapshot = snapshotDaily(value);
+    } else if (key === STORAGE_KEYS.personalBests) {
+      snapshot = snapshotPersonalBests(value);
+    } else {
+      throw new Error(`Unknown persistence key: ${key}`);
+    }
+    effects.push({ type: "STORAGE_WRITE", requestId, key, value: snapshot });
   }
 
   /** @param {GameState} state @param {Effect[]} effects @param {string} date @returns {Track|null} */
@@ -500,7 +662,7 @@
       ordinal: Number.isSafeInteger(options.ordinal) && Number(options.ordinal) > 0
         ? Number(options.ordinal)
         : state.session.rounds + 1,
-      track: { ...clone(selected), at },
+      track: createRoundTrack(selected, at),
     };
   }
 
@@ -525,7 +687,7 @@
     const round = selectRoundCandidate(state);
     if (!round) return;
     state.session.standby = round;
-    effects.push({ type: "AUDIO_PREPARE", role: "standby", round: clone(round) });
+    effects.push({ type: "AUDIO_PREPARE", role: "standby", round: snapshotAudioRound(round) });
   }
 
   /** @param {GameState} state @param {Effect[]} effects @param {boolean} [manualRetry] @param {number|null} [retryOrdinal] @returns {boolean} */
@@ -546,7 +708,7 @@
       state.session.status = "preparing";
       state.session.playbackRequested = true;
       state.session.notice = null;
-      effects.push({ type: "AUDIO_PROMOTE_AND_PLAY", round: clone(round) });
+      effects.push({ type: "AUDIO_PROMOTE_AND_PLAY", round: snapshotAudioRound(round) });
       return true;
     }
     round = selectRoundCandidate(state, Number.isSafeInteger(retryOrdinal) && Number(retryOrdinal) > 0 ? Number(retryOrdinal) : state.session.rounds + 1);
@@ -560,7 +722,7 @@
     state.session.status = "preparing";
     state.session.playbackRequested = true;
     state.session.notice = null;
-    effects.push({ type: "AUDIO_PREPARE", role: "active", round: clone(round) });
+    effects.push({ type: "AUDIO_PREPARE", role: "active", round: snapshotAudioRound(round) });
     return true;
   }
 
@@ -579,11 +741,8 @@
     state.session = createSession(id, modeName, seed, nextRoundId);
     if (modeName === "daily" && dailyInProgress(state)) state.session.step = state.daily.progress.step;
     state.daily.retryRound = null;
-    state.input.query = "";
-    state.input.selectedSuggestion = -1;
-    state.app.preview = { pointer: null, focus: null };
-    state.app.notice = null;
     if (state.catalog.tracks.length) state.app.status = "ready";
+    requestTransientUiReset(effects);
     effects.push({ type: "AUDIO_RESET", sessionId: id });
     effects.push({ type: "CLOCK_CANCEL", sessionId: old.id, generation: old.clock.generation });
     if (state.overlay.phase !== "closed") state.overlay.suspension = null;
@@ -660,9 +819,18 @@
     return { text: `GUESS #${rounds}`, tone: "prompt" };
   }
 
+  /** @param {AttemptKind} kind @returns {number} */
+  function survivalClockDelta(kind) {
+    if (kind === "correct") return 3000;
+    if (kind === "wrong") return -1000;
+    if (kind === "skip") return -2000;
+    return 0;
+  }
+
   /** @param {GameState} state @param {string} text @param {string} tone @param {string} status @param {number|null} roundId @param {number|null} [replaceId] */
   function addHistory(state, text, tone, status, roundId, replaceId = null) {
-    const history = state.session.history;
+    const history = [...state.session.history];
+    state.session.history = history;
     const index = replaceId === null ? -1 : history.findIndex((/** @type {any} */ entry) => entry.id === replaceId);
     if (index >= 0) {
       history[index] = { id: replaceId, text, tone, status, roundId };
@@ -681,7 +849,7 @@
     if (!modeName || !round) return;
     const mode = modeOf(state);
     if (!mode) return;
-    const prompt = MODE_STRATEGIES[modeName].prompt(mode.timed ? state.session.rounds : state.session.step);
+    const prompt = mode.timed ? timedPrompt(state.session.rounds) : classicPrompt(state.session.step);
     const entry = addHistory(state, prompt.text, prompt.tone, "prompt", round.id, replaceRetry ? state.session.retryEntryId : null);
     state.session.promptEntryId = entry.id;
     state.session.retryEntryId = null;
@@ -713,9 +881,9 @@
   function recordDiscovery(state, effects) {
     const number = state.session.current?.track.dailyNumber;
     if (!number || state.discovery.dailyNumbers.includes(number)) return;
-    state.discovery.dailyNumbers.push(number);
-    state.discovery.dailyNumbers.sort((/** @type {number} */ a, /** @type {number} */ b) => a - b);
-    queueStorageWrite(state, effects, STORAGE_KEYS.discoveries, state.discovery.dailyNumbers);
+    const dailyNumbers = [...state.discovery.dailyNumbers, number].sort((/** @type {number} */ a, /** @type {number} */ b) => a - b);
+    state.discovery = { dailyNumbers };
+    queueStorageWrite(state, effects, STORAGE_KEYS.discoveries, dailyNumbers);
   }
 
   /** @param {GameState} state @returns {number} */
@@ -726,6 +894,7 @@
   /** @param {GameState} state @param {Effect[]} effects @param {boolean} won @param {number|null|undefined} atMs */
   function finishGame(state, effects, won, atMs) {
     if (!state.session.current || state.session.status === "result") return;
+    requestTransientUiReset(effects);
     pauseClock(state, atMs, effects);
     const modeName = state.session.mode;
     const track = state.session.current.track;
@@ -782,8 +951,8 @@
     effects.push({ type: "OVERLAY_SYNC", kind: "result", phase: "opening", generation, returnFocus: "play" });
   }
 
-  /** @param {GameState} state @param {AttemptKind} kind @param {string} title */
-  function renderAttemptHistory(state, kind, title) {
+  /** @param {GameState} state @param {Effect[]} effects @param {AttemptKind} kind @param {string} title */
+  function renderAttemptHistory(state, effects, kind, title) {
     const mode = modeOf(state);
     if (!mode || !state.session.current) return;
     const replaceId = state.session.promptEntryId;
@@ -803,18 +972,17 @@
     }
     addHistory(state, text, tone, "attempt", state.session.current.id, replaceId);
     state.session.promptEntryId = null;
-    state.input.query = "";
-    state.input.selectedSuggestion = -1;
+    requestTransientUiReset(effects);
   }
 
-  /** @param {GameState} state @param {Effect[]} effects @param {AttemptKind} kind @param {string} title @param {number|null|undefined} atMs */
+  /** @param {GameState} state @param {Effect[]} effects @param {AttemptKind} kind @param {string} title @param {number|null|undefined} atMs @returns {boolean} */
   function resolveAttempt(state, effects, kind, title, atMs) {
-    if (!state.session.current || !["active", "paused"].includes(state.session.status) || isOverlayOpen(state)) return;
+    if (!state.session.current || !["active", "paused"].includes(state.session.status) || isOverlayOpen(state)) return false;
     const mode = modeOf(state);
-    if (!mode) return;
+    if (!mode) return false;
     if (mode.timed) pauseClock(state, atMs, effects);
-    if (mode.timed && state.session.clock.expired) { finishGame(state, effects, false, atMs); return; }
-    renderAttemptHistory(state, kind, title);
+    if (mode.timed && state.session.clock.expired) { finishGame(state, effects, false, atMs); return true; }
+    renderAttemptHistory(state, effects, kind, title);
     if (kind === "correct") recordDiscovery(state, effects);
     effects.push({
       type: "ANNOUNCE",
@@ -824,8 +992,8 @@
     });
 
     if (!mode.timed) {
-      if (kind === "correct") { finishGame(state, effects, true, atMs); return; }
-      if (state.session.step === SNIPPET_DURATIONS.length - 1) { finishGame(state, effects, false, atMs); return; }
+      if (kind === "correct") { finishGame(state, effects, true, atMs); return true; }
+      if (state.session.step === SNIPPET_DURATIONS.length - 1) { finishGame(state, effects, false, atMs); return true; }
       const wasPlaying = state.session.playbackRequested && state.session.clock.running;
       state.session.step++;
       const limitMs = SNIPPET_DURATIONS[state.session.step] * 1000;
@@ -843,28 +1011,28 @@
         state.session.current.hasPlayed = false;
         state.session.status = "paused";
         state.session.playbackRequested = true;
-        effects.push({ type: "AUDIO_PLAY", round: clone(state.session.current), rewind: true });
+        effects.push({ type: "AUDIO_PLAY", round: snapshotAudioRound(state.session.current), rewind: true });
       }
-      return;
+      return true;
     }
 
     effects.push({ type: "AUDIO_PAUSE", sessionId: state.session.id, roundId: state.session.current.id });
-    const strategy = MODE_STRATEGIES[state.session.mode];
-    if (strategy.countsGuess(kind)) state.session.guesses++;
+    if (kind !== "skip") state.session.guesses++;
     if (kind === "correct") state.session.correct++;
-    const delta = strategy.clockDelta(kind);
+    const delta = state.session.mode === "survival" ? survivalClockDelta(kind) : 0;
     if (delta) {
       effects.push({ type: "FEEDBACK_FLASH", sessionId: state.session.id, amountSeconds: delta / 1000 });
       state.session.clock.remainingMs = Math.max(0, state.session.clock.remainingMs + delta);
       state.session.clock.maxRemainingMs = Math.max(state.session.clock.maxRemainingMs, state.session.clock.remainingMs);
       if (!state.session.clock.remainingMs) state.session.clock.expired = true;
     }
-    if (state.session.clock.expired || !state.session.clock.remainingMs) { finishGame(state, effects, false, atMs); return; }
+    if (state.session.clock.expired || !state.session.clock.remainingMs) { finishGame(state, effects, false, atMs); return true; }
     state.session.current = null;
     state.session.status = "idle";
     state.session.playbackRequested = false;
     state.session.recovery.automaticRetriesRemaining = 1;
     beginRound(state, effects, false, null);
+    return true;
   }
 
   /** @param {GameState} state @param {AudioFailedAction} action @param {Effect[]} effects @returns {boolean} */
@@ -877,7 +1045,7 @@
       if (!state.session.quarantine.includes(failed.track.dailyNumber)) state.session.quarantine.push(failed.track.dailyNumber);
       state.session.recovery.prefetchBlocked = true;
       if (failed.modeName === "daily" && !state.session.current) {
-        state.daily.retryRound = clone(failed);
+        state.daily.retryRound = snapshotRound(failed);
         state.session.status = "audio-retry";
         state.session.notice = "daily-audio-error";
         const message = addTechnicalError(state);
@@ -891,7 +1059,7 @@
     const wasCommitted = Boolean(state.session.current && failed.id === state.session.current.id);
     const message = addTechnicalError(state);
     if (!state.session.quarantine.includes(failed.track.dailyNumber)) state.session.quarantine.push(failed.track.dailyNumber);
-    if (failed.modeName === "daily") state.daily.retryRound = clone(failed);
+    if (failed.modeName === "daily") state.daily.retryRound = snapshotRound(failed);
     state.session.current = null;
     state.session.pending = null;
     state.session.playbackRequested = false;
@@ -913,7 +1081,7 @@
     return true;
   }
 
-  /** @param {GameState} state @param {Track[]} tracks @param {string} date @param {Effect[]} effects */
+  /** @param {GameState} state @param {ReadonlyArray<Track>} tracks @param {string} date @param {Effect[]} effects */
   function applyCatalog(state, tracks, date, effects) {
     const staleStandby = state.session.standby;
     if (staleStandby) {
@@ -929,7 +1097,17 @@
     state.session.recovery.prefetchBlocked = false;
     state.session.recovery.automaticRetriesRemaining = 1;
     state.daily.retryRound = null;
-    state.catalog = { status: "ready", requestId: state.catalog.requestId, appliedDate: date, version: state.catalog.version + 1, tracks, indexes: createIndexes(tracks), retry: null, staged: null };
+    state.catalog = {
+      status: "ready",
+      requestId: state.catalog.requestId,
+      appliedDate: date,
+      version: state.catalog.version + 1,
+      tracks,
+      indexes: createIndexes(tracks),
+      discoveryOrder: createDiscoveryOrder(tracks),
+      retry: null,
+      staged: null,
+    };
     state.app.catalogError = null;
     state.daily.roundDate = date;
     persistDailyIdentity(state, effects, date);
@@ -945,7 +1123,7 @@
   /** @param {GameState} state @param {Action} action @returns {{state:GameState,effects:Effect[]}} */
   function reduce(state, action) {
     if (!state || !action || typeof action.type !== "string") return noChange(state);
-    const next = clone(state);
+    const next = createDraft(state);
     /** @type {Effect[]} */
     const effects = [];
     switch (action.type) {
@@ -978,9 +1156,12 @@
         break;
       }
 
-      case "CATALOG/REQUEST":
-        requestCatalog(next, effects, action.date || next.app.budapestDate);
+      case "CATALOG/REQUEST": {
+        const date = action.date || next.app.budapestDate;
+        if (!isCalendarDate(date)) return noChange(state);
+        requestCatalog(next, effects, date);
         break;
+      }
 
       case "CATALOG/SUCCEEDED": {
         if (action.requestId !== next.catalog.requestId || action.date !== next.app.budapestDate) return noChange(state);
@@ -1021,7 +1202,9 @@
       case "PERSISTENCE/LOADED": {
         next.persistence.status = "ready";
         if (Array.isArray(action.discoveries)) {
-          next.discovery.dailyNumbers = [...new Set(action.discoveries.filter((number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number))].sort((a, b) => a - b);
+          next.discovery = {
+            dailyNumbers: [...new Set(action.discoveries.filter((/** @type {unknown} */ number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number))].sort((a, b) => a - b),
+          };
         }
         if (action.daily && typeof action.daily === "object") {
           const normalized = normalizeDaily(action.daily);
@@ -1064,12 +1247,13 @@
       case "PLAYER/PLAYBACK_SHORTCUT":
       case "PLAYER/PLAY": {
         if (next.app.status !== "ready" || !next.session.mode || isOverlayOpen(next)) return noChange(state);
+        if (dailyCatalogPending(next) || (modeOf(next)?.daily && dailyDone(next) && !next.session.current)) return noChange(state);
         const shortcut = action.type === "PLAYER/PLAYBACK_SHORTCUT";
         if (next.session.status === "idle" || next.session.status === "audio-retry") {
           beginRound(next, effects, next.session.status === "audio-retry", next.session.recovery.retryOrdinal);
         } else if (next.session.status === "preparing" && next.session.pending && !next.session.playbackRequested) {
           next.session.playbackRequested = true;
-          effects.push({ type: "AUDIO_PLAY", round: clone(next.session.pending), rewind: false });
+          effects.push({ type: "AUDIO_PLAY", round: snapshotAudioRound(next.session.pending), rewind: false });
         } else if ((next.session.status === "active" || next.session.status === "paused") && next.session.current) {
           if (shortcut && !modeOf(next)?.timed) {
             pauseClock(next, action.atMs, effects);
@@ -1079,7 +1263,7 @@
             next.session.current.hasPlayed = false;
             next.session.status = "paused";
             next.session.playbackRequested = true;
-            effects.push({ type: "AUDIO_PLAY", round: clone(next.session.current), rewind: true });
+            effects.push({ type: "AUDIO_PLAY", round: snapshotAudioRound(next.session.current), rewind: true });
           } else if (next.session.playbackRequested) {
             pauseClock(next, action.atMs, effects);
             next.session.status = "paused";
@@ -1094,14 +1278,14 @@
               next.session.status = "paused";
             }
             next.session.playbackRequested = true;
-            effects.push({ type: "AUDIO_PLAY", round: clone(next.session.current), rewind: !modeOf(next)?.timed });
+            effects.push({ type: "AUDIO_PLAY", round: snapshotAudioRound(next.session.current), rewind: !modeOf(next)?.timed });
           }
         } else return noChange(state);
         break;
       }
 
       case "PLAYER/SKIP":
-        resolveAttempt(next, effects, "skip", "", action.atMs);
+        if (!resolveAttempt(next, effects, "skip", "", action.atMs)) return noChange(state);
         break;
 
       case "PLAYER/GUESS": {
@@ -1110,54 +1294,22 @@
         if (!["active", "paused"].includes(next.session.status) || isOverlayOpen(next)) return noChange(state);
         if (!Number.isSafeInteger(next.catalog.indexes.byTitle[title]) || next.session.usedTitles.includes(title)) return noChange(state);
         if (modeOf(next)?.timed && !next.session.current.hasPlayed) return noChange(state);
-        next.session.usedTitles.push(title);
+        next.session.usedTitles = [...next.session.usedTitles, title];
         resolveAttempt(next, effects, title === next.session.current.track.title ? "correct" : "wrong", title, action.atMs);
-        break;
-      }
-
-      case "PLAYER/QUERY_CHANGED":
-        next.input.query = String(action.query || "");
-        next.input.selectedSuggestion = selectSuggestions(next).length ? 0 : -1;
-        break;
-
-      case "PLAYER/SUGGESTION_CHANGED": {
-        const count = selectSuggestions(next).length;
-        if (!count) return noChange(state);
-        const selectedSuggestion = (action.index % count + count) % count;
-        if (selectedSuggestion === next.input.selectedSuggestion) return noChange(state);
-        next.input.selectedSuggestion = selectedSuggestion;
         break;
       }
 
       case "INPUT/MODALITY_CHANGED":
         if (!["keyboard", "pointer-fine", "pointer-coarse"].includes(action.modality)) return noChange(state);
+        if (action.modality === next.input.modality) return noChange(state);
         next.input.modality = action.modality;
-        if (action.modality !== "keyboard") next.app.preview.focus = null;
-        break;
-
-      case "PREVIEW/SET": {
-        if (isOverlayOpen(next) || !["idle", "preparing", "audio-retry", "result"].includes(next.session.status)) return noChange(state);
-        if (!["pointer", "focus"].includes(action.source) || (action.source === "focus" && next.input.modality !== "keyboard")) return noChange(state);
-        const preview = action.kind === "discovery"
-          ? { kind: "discovery" }
-          : action.mode && isMode(action.mode) ? { kind: "mode", mode: action.mode } : null;
-        if (!preview) return noChange(state);
-        const current = next.app.preview[action.source];
-        if (current?.kind === preview.kind && current?.mode === preview.mode) return noChange(state);
-        next.app.preview[action.source] = preview;
-        break;
-      }
-
-      case "PREVIEW/CLEAR":
-        if (!["pointer", "focus"].includes(action.source) || next.app.preview[action.source] === null) return noChange(state);
-        next.app.preview[action.source] = null;
         break;
 
       case "AUDIO/PREPARED": {
         const target = action.role === "standby" ? next.session.standby : next.session.pending;
         if (!matchesRound(target, action)) return noChange(state);
         target.prepared = true;
-        if (action.role !== "standby") effects.push({ type: "AUDIO_PLAY", round: clone(target), rewind: false });
+        if (action.role !== "standby") effects.push({ type: "AUDIO_PLAY", round: snapshotAudioRound(target), rewind: false });
         break;
       }
 
@@ -1248,7 +1400,7 @@
         if (!OVERLAY_KINDS.includes(action.kind) || isOverlayOpen(next)) return noChange(state);
         if (action.kind === "result" && next.session.status !== "result") return noChange(state);
         if (action.kind === "discovery" && next.session.status === "result") return noChange(state);
-        next.app.preview = { pointer: null, focus: null };
+        requestUiReset(effects, "PREVIEW_RESET");
         let suspension = null;
         if (action.kind === "discovery" && (next.session.current || next.session.pending)) {
           const round = next.session.current || next.session.pending;
@@ -1262,7 +1414,7 @@
           };
           next.session.playbackRequested = false;
           if (next.session.status === "active") next.session.status = "paused";
-          effects.push({ type: "AUDIO_SUSPEND", round: clone(round) });
+          effects.push({ type: "AUDIO_SUSPEND", round: snapshotAudioRound(round) });
         }
         const generation = next.overlay.generation + 1;
         next.overlay = { kind: action.kind, phase: "opening", generation, returnFocus: action.returnFocus || null, suspension };
@@ -1310,7 +1462,7 @@
             suspension.audioGeneration === (next.session.current || next.session.pending).audioGeneration
           ) {
             next.session.playbackRequested = suspension.shouldResume;
-            effects.push({ type: "AUDIO_RESTORE", round: clone(next.session.current || next.session.pending) });
+            effects.push({ type: "AUDIO_RESTORE", round: snapshotAudioRound(next.session.current || next.session.pending) });
           }
         }
         break;
@@ -1318,7 +1470,7 @@
 
       case "DISCOVERY/RESET":
         if (next.overlay.kind !== "discovery" || !isOverlayOpen(next)) return noChange(state);
-        next.discovery.dailyNumbers = [];
+        next.discovery = { dailyNumbers: [] };
         queueStorageWrite(next, effects, STORAGE_KEYS.discoveries, []);
         break;
 
@@ -1352,13 +1504,18 @@
     return modeRulesText(state, state.session.mode);
   }
 
-  /** @param {GameState} state @returns {string[]} */
-  function selectSuggestions(state) {
-    const query = state.input.query.trim().toLocaleLowerCase();
-    if (!query) return [];
+  /** @param {GameState} state @param {ModeName|null|undefined} [modeName] @returns {string} */
+  function selectRulesText(state, modeName = null) {
+    return modeName && isMode(modeName) ? modeRulesText(state, modeName) : persistentRulesText(state);
+  }
+
+  /** @param {GameState} state @param {string} query @returns {string[]} */
+  function findSuggestions(state, query) {
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase();
+    if (!normalizedQuery) return [];
     const used = new Set(state.session.usedTitles);
     return state.catalog.indexes.search
-      .filter((/** @type {{index:number, normalized:string}} */ entry) => entry.normalized.includes(query) && !used.has(state.catalog.tracks[entry.index].title))
+      .filter((/** @type {{index:number, normalized:string}} */ entry) => entry.normalized.includes(normalizedQuery) && !used.has(state.catalog.tracks[entry.index].title))
       .slice(0, 8)
       .map((/** @type {{index:number, normalized:string}} */ entry) => state.catalog.tracks[entry.index].title);
   }
@@ -1372,68 +1529,17 @@
     const playStatus = ["idle", "active", "paused", "audio-retry"].includes(state.session.status) || (state.session.status === "preparing" && state.session.pending && !state.session.playbackRequested);
     const playEnabled = Boolean(state.app.status === "ready" && mode && !overlayOpen && !dailyBlocked && playStatus);
     const roundControls = Boolean(state.app.status === "ready" && state.session.current && !overlayOpen && (state.session.status === "active" || state.session.status === "paused"));
-    const modesEnabled = state.app.status !== "error";
-    const discovered = new Set(state.discovery.dailyNumbers);
-    const discoveryItems = [...state.catalog.tracks].sort((a, b) => b.dailyNumber - a.dailyNumber).map((track) => ({
-      dailyNumber: track.dailyNumber,
-      title: discovered.has(track.dailyNumber) ? track.title : HIDDEN_TITLE,
-      discovered: discovered.has(track.dailyNumber),
-      isNew: track.isNew && !discovered.has(track.dailyNumber),
-    }));
     return {
-      appStatus: state.app.status,
-      sessionStatus: state.session.status,
-      mode: state.session.mode,
-      selectedMode: state.session.mode,
-      selectedModeDisabled: Boolean(state.session.mode),
-      modesEnabled,
-      modeButtons: MODE_NAMES.map((name) => ({
-        name,
-        selected: name === state.session.mode,
-        disabled: !modesEnabled || name === state.session.mode,
-        ariaPressed: name === state.session.mode,
-      })),
+      modesEnabled: state.app.status !== "error",
       awaitingMode: state.app.status === "awaiting-mode",
-      rulesText: (() => {
-        const preview = state.app.preview.pointer || state.app.preview.focus;
-        if (!preview) return persistentRulesText(state);
-        if (preview.kind === "discovery") return TEXT.discovery;
-        return preview.mode && isMode(preview.mode) ? modeRulesText(state, preview.mode) : persistentRulesText(state);
-      })(),
+      rulesText: selectRulesText(state),
       inputVisible,
       playEnabled,
       skipEnabled: roundControls,
       guessEnabled: roundControls,
       playbackIcon: state.session.playbackRequested ? mode?.timed ? "pause" : "stop" : "play",
-      history: clone(state.session.history),
-      suggestions: selectSuggestions(state),
-      selectedSuggestion: state.input.selectedSuggestion,
-      clock: clone(state.session.clock),
       snippetSeconds: SNIPPET_DURATIONS[state.session.step],
-      endTime: mode?.timed ? mode.endTime : `0:${String(SNIPPET_DURATIONS[state.session.step]).padStart(2, "0")}`,
       skipText: mode?.timed ? "SKIP" : state.session.step === SNIPPET_DURATIONS.length - 1 ? "GIVE UP" : `ADD ${SNIPPET_DURATIONS[state.session.step + 1] - SNIPPET_DURATIONS[state.session.step]}S`,
-      overlay: clone(state.overlay),
-      result: clone(state.session.result),
-      discovery: {
-        found: discoveryItems.filter((item) => item.discovered).length,
-        total: discoveryItems.length,
-        items: discoveryItems,
-      },
-      backgroundInert: overlayOpen,
-      inert: {
-        headerAction: overlayOpen,
-        modes: overlayOpen,
-        board: overlayOpen || state.app.status === "awaiting-mode",
-        slots: overlayOpen || state.app.status === "awaiting-mode",
-      },
-      rootClasses: [
-        `app-${state.app.status}`,
-        `session-${state.session.status}`,
-        state.app.status === "awaiting-mode" ? "awaiting-mode" : "",
-        !inputVisible ? "rules-visible" : "",
-        mode?.timed ? "timed" : "",
-        state.app.status === "error" ? "mode-error" : "",
-      ].filter(Boolean),
     };
   }
 
@@ -1514,6 +1620,22 @@
     if (state?.session?.clock?.remainingMs < 0 || state?.session?.clock?.elapsedMs < 0) errors.push("Clock values cannot be negative.");
     const numbers = state?.catalog?.tracks?.map((/** @type {Track} */ track) => track.dailyNumber) || [];
     if (new Set(numbers).size !== numbers.length) errors.push("Catalog daily numbers are not unique.");
+    if (
+      !Object.isFrozen(state?.catalog?.tracks) ||
+      !state?.catalog?.tracks?.every((/** @type {Track} */ track) => Object.isFrozen(track)) ||
+      !Object.isFrozen(state?.catalog?.indexes) ||
+      !Object.isFrozen(state?.catalog?.indexes?.byTitle) ||
+      !Object.isFrozen(state?.catalog?.indexes?.search) ||
+      !state?.catalog?.indexes?.search?.every((/** @type {object} */ entry) => Object.isFrozen(entry)) ||
+      !Object.isFrozen(state?.catalog?.discoveryOrder)
+    ) errors.push("Catalog data must remain immutable.");
+    const discoveryOrder = state?.catalog?.discoveryOrder || [];
+    if (
+      discoveryOrder.length !== numbers.length ||
+      discoveryOrder.some((/** @type {Track} */ track, /** @type {number} */ index) =>
+        index > 0 && discoveryOrder[index - 1].dailyNumber < track.dailyNumber
+      )
+    ) errors.push("Catalog Discovery order is invalid.");
     return errors;
   }
 
@@ -1528,14 +1650,14 @@
     createInitialState,
     reduce,
     selectView,
-    selectSuggestions,
+    findSuggestions,
+    selectRulesText,
     validateTracks,
     checkInvariants,
     assertInvariants,
     nextRandom,
     hashDaily,
     MODE_DEFINITIONS,
-    MODE_STRATEGIES,
     SNIPPET_DURATIONS,
     STORAGE_KEYS,
     TEXT,
@@ -2174,19 +2296,19 @@
   /** @typedef {"play"|"pause"|"stop"} PlaybackIcon */
   /** @typedef {"play"|"guess"|"discovery"} FocusTarget */
   /** @typedef {"active"|"standby"} AssignedAudioRole */
+  /** @typedef {{kind:"mode", mode:ModeName}|{kind:"discovery"}} PreviewDescriptor */
 
   /** @typedef {{title:string, duration:number, spotify:string, dailyNumber:number, dailyFrom:string, isNew:boolean}} Track */
-  /** @typedef {{id:number, sessionId:number, audioGeneration:number, modeName:ModeName, catalogVersion:number, roundDate:string|null, prepared:boolean, hasPlayed:boolean, ordinal:number, track:Track & {at:number}}} Round */
+  /** @typedef {{id:number, sessionId:number, audioGeneration:number, track:{dailyNumber:number, at:number}}} AudioRound */
   /** @typedef {{kind:"classic"|"blitz"|"survival", generation:number, running:boolean, anchorMs:number|null, elapsedMs:number, remainingMs:number, limitMs:number, maxRemainingMs:number, expired:boolean}} ClockState */
   /** @typedef {{id:number, text:string, tone:string, status?:string}} HistoryEntry */
   /** @typedef {{won:boolean, trackTitle:string, spotify:string, newPersonalBest:boolean, classicRun?:{won:boolean, streak:number, average:number}|null}} GameResult */
   /** @typedef {{classic:{current:number, best:number, snippetTotal:number, bestSnippetTotal:number}, daily:number, blitz:{score:number, accuracy:number|null}, survival:{score:number, accuracy:number|null}}} PersonalBests */
   /** @typedef {{kind:OverlayKind|null, phase:OverlayPhase, generation:number, returnFocus:FocusTarget|null}} OverlayState */
   /** @typedef {{date:string, dailyNumber:number|null, started:boolean, completed:boolean, won:boolean, step:number}} DailyProgress */
-  /** @typedef {{id:number, mode:ModeName|null, status:SessionStatus, current:Round|null, pending:Round|null, playbackRequested:boolean, step:number, guesses:number, correct:number, history:HistoryEntry[], result:GameResult|null, clock:ClockState}} SessionState */
-  /** @typedef {{app:{status:AppStatus}, session:SessionState, daily:{roundDate:string, progress:DailyProgress}, personalBests:PersonalBests, input:{query:string, selectedSuggestion:number, modality:InputModality}, overlay:OverlayState}} GameState */
-  /** @typedef {{dailyNumber:number, title:string, discovered:boolean, isNew:boolean}} DiscoveryItem */
-  /** @typedef {{appStatus:AppStatus, sessionStatus:SessionStatus, mode:ModeName|null, selectedMode:ModeName|null, modesEnabled:boolean, awaitingMode:boolean, rulesText:string, inputVisible:boolean, playEnabled:boolean, skipEnabled:boolean, guessEnabled:boolean, playbackIcon:PlaybackIcon, history:HistoryEntry[], suggestions:string[], snippetSeconds:number, skipText:string, overlay:OverlayState, discovery:{found:number, total:number, items:DiscoveryItem[]}}} ViewModel */
+  /** @typedef {{id:number, mode:ModeName|null, status:SessionStatus, current:Record<string,any>|null, pending:Record<string,any>|null, playbackRequested:boolean, step:number, guesses:number, correct:number, history:HistoryEntry[], usedTitles:string[], result:GameResult|null, clock:ClockState}} SessionState */
+  /** @typedef {{app:{status:AppStatus}, catalog:{version:number, tracks:ReadonlyArray<Track>, discoveryOrder:ReadonlyArray<Track>}, session:SessionState, daily:{roundDate:string, progress:DailyProgress}, discovery:{dailyNumbers:number[]}, personalBests:PersonalBests, input:{modality:InputModality}, overlay:OverlayState}} GameState */
+  /** @typedef {{modesEnabled:boolean, awaitingMode:boolean, rulesText:string, inputVisible:boolean, playEnabled:boolean, skipEnabled:boolean, guessEnabled:boolean, playbackIcon:PlaybackIcon, snippetSeconds:number, skipText:string}} ViewModel */
   /** @typedef {{timed:boolean, daily:boolean, survival:boolean, initialTimeMs:number, endTime:string}} ModeDefinition */
   /** @typedef {{discoveries:string, daily:string, personalBests:string}} StorageKeys */
   /** @typedef {{type:string, [key:string]:unknown}} ShellAction */
@@ -2196,28 +2318,30 @@
   /** @typedef {{type:"STORAGE_LOAD", keys:StorageKeys}} StorageLoadEffect */
   /** @typedef {{type:"STORAGE_WRITE", requestId:number, key:string, value:unknown}} StorageWriteEffect */
   /** @typedef {{type:"AUDIO_RESET", sessionId:number}} AudioResetEffect */
-  /** @typedef {{type:"AUDIO_PREPARE", role:AssignedAudioRole, round:Round}} AudioPrepareEffect */
-  /** @typedef {{type:"AUDIO_PROMOTE_AND_PLAY", round:Round}} AudioPromoteEffect */
-  /** @typedef {{type:"AUDIO_PLAY", round:Round, rewind:boolean}} AudioPlayEffect */
+  /** @typedef {{type:"AUDIO_PREPARE", role:AssignedAudioRole, round:AudioRound}} AudioPrepareEffect */
+  /** @typedef {{type:"AUDIO_PROMOTE_AND_PLAY", round:AudioRound}} AudioPromoteEffect */
+  /** @typedef {{type:"AUDIO_PLAY", round:AudioRound, rewind:boolean}} AudioPlayEffect */
   /** @typedef {{type:"AUDIO_PAUSE", sessionId:number, roundId:number|null}} AudioPauseEffect */
   /** @typedef {{type:"AUDIO_RELEASE", sessionId:number, roundId:number|null}} AudioReleaseEffect */
   /** @typedef {{type:"AUDIO_DISCARD_STANDBY", sessionId:number, roundId:number, audioGeneration:number}} AudioDiscardEffect */
-  /** @typedef {{type:"AUDIO_SUSPEND", round:Round}} AudioSuspendEffect */
-  /** @typedef {{type:"AUDIO_RESTORE", round:Round}} AudioRestoreEffect */
+  /** @typedef {{type:"AUDIO_SUSPEND", round:AudioRound}} AudioSuspendEffect */
+  /** @typedef {{type:"AUDIO_RESTORE", round:AudioRound}} AudioRestoreEffect */
   /** @typedef {{type:"CLOCK_CANCEL", sessionId:number, generation:number}} ClockCancelEffect */
   /** @typedef {{type:"CLOCK_SCHEDULE", sessionId:number, generation:number, anchorMs:number, remainingMs:number}} ClockScheduleEffect */
   /** @typedef {{type:"ANNOUNCE", message:string}} AnnounceEffect */
   /** @typedef {{type:"FEEDBACK_FLASH", sessionId:number, amountSeconds:number}} FeedbackEffect */
   /** @typedef {{type:"FOCUS", target:"play"|"guess", modality:InputModality, sessionId:number, roundId:number|null}} FocusEffect */
   /** @typedef {{type:"OVERLAY_SYNC", kind:OverlayKind, phase:"opening"|"closing", generation:number, returnFocus:FocusTarget|null}} OverlayEffect */
-  /** @typedef {CatalogFetchEffect|CatalogRetryEffect|StorageLoadEffect|StorageWriteEffect|AudioResetEffect|AudioPrepareEffect|AudioPromoteEffect|AudioPlayEffect|AudioPauseEffect|AudioReleaseEffect|AudioDiscardEffect|AudioSuspendEffect|AudioRestoreEffect|ClockCancelEffect|ClockScheduleEffect|AnnounceEffect|FeedbackEffect|FocusEffect|OverlayEffect} Effect */
+  /** @typedef {{type:"AUTOCOMPLETE_RESET"}} AutocompleteResetEffect */
+  /** @typedef {{type:"PREVIEW_RESET"}} PreviewResetEffect */
+  /** @typedef {CatalogFetchEffect|CatalogRetryEffect|StorageLoadEffect|StorageWriteEffect|AudioResetEffect|AudioPrepareEffect|AudioPromoteEffect|AudioPlayEffect|AudioPauseEffect|AudioReleaseEffect|AudioDiscardEffect|AudioSuspendEffect|AudioRestoreEffect|ClockCancelEffect|ClockScheduleEffect|AnnounceEffect|FeedbackEffect|FocusEffect|OverlayEffect|AutocompleteResetEffect|PreviewResetEffect} Effect */
 
-  /** @typedef {{type:"prepared"|"playing"|"waiting"|"ended"|"blocked"|"failed", round:Round, role:"empty"|AssignedAudioRole, error?:unknown}} AudioDeckEvent */
-  /** @typedef {{assign:(round:Round, role:AssignedAudioRole)=>void, promoteAndPlay:(round:Round)=>boolean, play:(round:Round, rewind:boolean)=>boolean, pause:(identity:{sessionId:number, roundId:number|null})=>boolean, release:(identity:{sessionId:number, roundId:number|null})=>void, reset:()=>void, discardStandby:(identity:{sessionId:number, roundId:number, audioGeneration:number})=>boolean, suspend:(round:Round)=>boolean, restore:(round:Round)=>boolean}} AudioDeck */
+  /** @typedef {{type:"prepared"|"playing"|"waiting"|"ended"|"blocked"|"failed", round:AudioRound, role:"empty"|AssignedAudioRole, error?:unknown}} AudioDeckEvent */
+  /** @typedef {{assign:(round:AudioRound, role:AssignedAudioRole)=>void, promoteAndPlay:(round:AudioRound)=>boolean, play:(round:AudioRound, rewind:boolean)=>boolean, pause:(identity:{sessionId:number, roundId:number|null})=>boolean, release:(identity:{sessionId:number, roundId:number|null})=>void, reset:()=>void, discardStandby:(identity:{sessionId:number, roundId:number, audioGeneration:number})=>boolean, suspend:(round:AudioRound)=>boolean, restore:(round:AudioRound)=>boolean}} AudioDeck */
   /** @typedef {{schedule:(schedule:ClockScheduleEffect)=>void, cancel:(owner:ClockCancelEffect)=>void}} ClockPresenter */
   /** @typedef {{start:()=>string, reconcile:()=>void}} BudapestDateAdapter */
-  /** @typedef {{createAudioDeck:(options:{elements:HTMLMediaElement[], sourceForRound:(round:Round)=>string, onEvent:(event:AudioDeckEvent)=>void})=>AudioDeck, createClockPresenter:(options:{getClock:()=>ClockState|null, onSample:(sample:ClockState)=>void, onExpired:(expiry:{sessionId:number, generation:number, atMs:number})=>void})=>ClockPresenter, createBudapestDateAdapter:(options:{onDate:(date:string)=>void})=>BudapestDateAdapter}} AdapterApiShape */
-  /** @typedef {{TEXT:{modePrompt:string}, STORAGE_KEYS:StorageKeys, MODE_DEFINITIONS:Record<ModeName,ModeDefinition>, SNIPPET_DURATIONS:readonly number[], createInitialState:(options:{date:string, seed:number, modality:InputModality})=>GameState, selectView:(state:GameState)=>ViewModel, reduce:(state:GameState, action:ShellAction)=>{state:GameState, effects:Effect[]}, selectSuggestions:(state:GameState)=>string[], checkInvariants:(state:GameState)=>string[], assertInvariants:(state:GameState)=>void}} EngineApiShape */
+  /** @typedef {{createAudioDeck:(options:{elements:HTMLMediaElement[], sourceForRound:(round:AudioRound)=>string, onEvent:(event:AudioDeckEvent)=>void})=>AudioDeck, createClockPresenter:(options:{getClock:()=>ClockState|null, onSample:(sample:ClockState)=>void, onExpired:(expiry:{sessionId:number, generation:number, atMs:number})=>void})=>ClockPresenter, createBudapestDateAdapter:(options:{onDate:(date:string)=>void})=>BudapestDateAdapter}} AdapterApiShape */
+  /** @typedef {{TEXT:{modePrompt:string, discovery:string}, STORAGE_KEYS:StorageKeys, MODE_DEFINITIONS:Record<ModeName,ModeDefinition>, SNIPPET_DURATIONS:readonly number[], createInitialState:(options:{date:string, seed:number, modality:InputModality})=>GameState, selectView:(state:GameState)=>ViewModel, reduce:(state:GameState, action:ShellAction)=>{state:GameState, effects:Effect[]}, findSuggestions:(state:GameState, query:string)=>string[], selectRulesText:(state:GameState, mode?:ModeName|null)=>string, checkInvariants:(state:GameState)=>string[], assertInvariants:(state:GameState)=>void}} EngineApiShape */
   /** @typedef {{CorzaguessrEngine?:unknown, CorzaguessrAdapters?:unknown, __CORZAGUESSR_TEST__?:unknown}} CorzaguessrGlobals */
 
   /** @type {typeof globalThis & CorzaguessrGlobals} */
@@ -2393,15 +2517,31 @@
     modality: finePointer.matches ? "pointer-fine" : "pointer-coarse",
   });
   let view = Engine.selectView(state);
-  let renderRevision = 0;
-  let historySignature = "";
-  let discoverySignature = "";
+  const diagnosticsEnabled = Boolean(runtimeGlobal.__CORZAGUESSR_TEST__);
+  let reducerDispatches = 0;
+  let discoveryDerivations = 0;
+  /** @type {{query:string, selectedIndex:number, suggestions:string[], catalogVersion:number, usedTitles:string[]}} */
+  const autocomplete = {
+    query: "",
+    selectedIndex: -1,
+    suggestions: [],
+    catalogVersion: state.catalog.version,
+    usedTitles: state.session.usedTitles,
+  };
+  /** @type {{pointer:PreviewDescriptor|null, focus:PreviewDescriptor|null}} */
+  const preview = { pointer: null, focus: null };
+  /** @type {HistoryEntry[]|null} */
+  let renderedHistory = null;
+  let renderedDiscoveryCatalogVersion = -1;
+  /** @type {number[]|null} */
+  let renderedDiscoveries = null;
   let suggestionsSignature = "";
   let resultSignature = "";
   /** @type {string|null} */
   let rulesText = null;
   let renderedSessionId = state.session.id;
-  let renderedMode = view.mode;
+  let renderedMode = state.session.mode;
+  let renderedOverlay = { kind: state.overlay.kind, phase: state.overlay.phase, generation: state.overlay.generation };
   /** @type {Map<string,number>} */
   const timers = new Map();
 
@@ -2481,17 +2621,16 @@
     ui.slots.style.height = "";
   }
 
-  /** @param {HistoryEntry[]} entries @param {boolean} [immediateClear] */
-  function renderHistory(entries, immediateClear = false) {
-    const signature = entries.map(({ id, text, tone }) => `${id}:${tone}:${text}`).join("\u001f");
-    if (signature === historySignature && renderedSessionId === state.session.id) return;
+  /** @param {HistoryEntry[]} entries @param {number} [exitDuration] */
+  function renderHistory(entries, exitDuration = durations.slot) {
     const sessionChanged = renderedSessionId !== state.session.id;
+    if (entries === renderedHistory && !sessionChanged) return;
     renderedSessionId = state.session.id;
-    historySignature = signature;
+    renderedHistory = entries;
 
     if (!entries.length) {
       if (!ui.slots.children.length) return;
-      if (immediateClear || reducedMotion.matches || !sessionChanged) {
+      if (reducedMotion.matches || !sessionChanged) {
         finishHistoryClear();
         return;
       }
@@ -2499,7 +2638,7 @@
       ui.slots.style.height = `${ui.slots.offsetHeight}px`;
       void ui.slots.offsetHeight;
       ui.slots.style.height = "0px";
-      setTimer("slots", finishHistoryClear, durations.slot);
+      setTimer("slots", finishHistoryClear, transitionDelay(exitDuration));
       return;
     }
 
@@ -2541,16 +2680,16 @@
   }
 
   function renderSuggestions() {
-    const signature = `${state.input.selectedSuggestion}|${view.suggestions.join("\u001f")}`;
+    const signature = `${autocomplete.selectedIndex}|${autocomplete.suggestions.join("\u001f")}`;
     if (signature === suggestionsSignature) return;
     suggestionsSignature = signature;
-    const nodes = view.suggestions.map((title, index) => {
+    const nodes = autocomplete.suggestions.map((title, index) => {
       const button = document.createElement("button");
       button.type = "button";
       button.id = `corzaguessr-option-${index}`;
       button.textContent = title;
       button.setAttribute("role", "option");
-      const active = index === state.input.selectedSuggestion;
+      const active = index === autocomplete.selectedIndex;
       button.setAttribute("aria-selected", String(active));
       if (active) button.className = "active";
       return button;
@@ -2559,17 +2698,79 @@
     const open = Boolean(nodes.length);
     ui.suggest.style.display = open ? "block" : "none";
     ui.guess.setAttribute("aria-expanded", String(open));
-    if (open && state.input.selectedSuggestion >= 0) ui.guess.setAttribute("aria-activedescendant", `corzaguessr-option-${state.input.selectedSuggestion}`);
+    if (open && autocomplete.selectedIndex >= 0) ui.guess.setAttribute("aria-activedescendant", `corzaguessr-option-${autocomplete.selectedIndex}`);
     else ui.guess.removeAttribute("aria-activedescendant");
   }
 
+  function resetAutocomplete() {
+    autocomplete.query = "";
+    autocomplete.selectedIndex = -1;
+    autocomplete.suggestions = [];
+    autocomplete.catalogVersion = state.catalog.version;
+    autocomplete.usedTitles = state.session.usedTitles;
+    if (ui.guess.value) ui.guess.value = "";
+    renderSuggestions();
+  }
+
+  /** @param {string} query */
+  function updateAutocomplete(query) {
+    if (
+      query === autocomplete.query &&
+      autocomplete.catalogVersion === state.catalog.version &&
+      autocomplete.usedTitles === state.session.usedTitles
+    ) return;
+    autocomplete.query = query;
+    autocomplete.catalogVersion = state.catalog.version;
+    autocomplete.usedTitles = state.session.usedTitles;
+    autocomplete.suggestions = Engine.findSuggestions(state, query);
+    autocomplete.selectedIndex = autocomplete.suggestions.length ? 0 : -1;
+    renderSuggestions();
+  }
+
+  /** @param {number} index */
+  function selectAutocompleteIndex(index) {
+    const count = autocomplete.suggestions.length;
+    if (!count) return;
+    const selectedIndex = (index % count + count) % count;
+    if (selectedIndex === autocomplete.selectedIndex) return;
+    autocomplete.selectedIndex = selectedIndex;
+    renderSuggestions();
+  }
+
+  function syncAutocompleteDependencies() {
+    if (
+      autocomplete.catalogVersion === state.catalog.version &&
+      autocomplete.usedTitles === state.session.usedTitles
+    ) return;
+    if (autocomplete.query) updateAutocomplete(autocomplete.query);
+    else {
+      autocomplete.catalogVersion = state.catalog.version;
+      autocomplete.usedTitles = state.session.usedTitles;
+    }
+  }
+
   function renderDiscovery() {
-    const signature = `${view.discovery.found}/${view.discovery.total}|${view.discovery.items.map((item) => `${item.dailyNumber}:${item.discovered}:${item.isNew}:${item.title}`).join("\u001f")}`;
-    if (signature === discoverySignature) return;
-    discoverySignature = signature;
-    const percent = view.discovery.total ? Math.round(view.discovery.found * 100 / view.discovery.total) : 0;
-    ui.discoveryCount.textContent = `${view.discovery.found} / ${view.discovery.total} (${percent}%)`;
-    ui.discoveryItems.replaceChildren(...view.discovery.items.map((track) => {
+    if (
+      renderedDiscoveryCatalogVersion === state.catalog.version &&
+      renderedDiscoveries === state.discovery.dailyNumbers
+    ) return;
+    renderedDiscoveryCatalogVersion = state.catalog.version;
+    renderedDiscoveries = state.discovery.dailyNumbers;
+    if (diagnosticsEnabled) discoveryDerivations++;
+
+    const discovered = new Set(state.discovery.dailyNumbers);
+    const tracks = state.catalog.discoveryOrder.map((track) => {
+      const revealed = discovered.has(track.dailyNumber);
+      return {
+        title: revealed ? track.title : "?".repeat(20),
+        discovered: revealed,
+        isNew: track.isNew && !revealed,
+      };
+    });
+    const found = tracks.reduce((total, track) => total + Number(track.discovered), 0);
+    const percent = tracks.length ? Math.round(found * 100 / tracks.length) : 0;
+    ui.discoveryCount.textContent = `${found} / ${tracks.length} (${percent}%)`;
+    ui.discoveryItems.replaceChildren(...tracks.map((track) => {
       const item = document.createElement("div");
       item.className = "discovery-item";
       item.setAttribute("role", "listitem");
@@ -2677,47 +2878,22 @@
     return projected;
   }
 
-  function render() {
-    view = Engine.selectView(state);
-    renderRevision++;
-    root.dataset.appStatus = view.appStatus;
-    root.dataset.sessionStatus = view.sessionStatus;
-    for (const status of ["loading", "awaiting-mode", "ready", "error"]) root.classList.toggle(`app-${status}`, view.appStatus === status);
-    for (const status of ["idle", "preparing", "active", "paused", "audio-retry", "result"]) root.classList.toggle(`session-${status}`, view.sessionStatus === status);
-    root.classList.toggle("awaiting-mode", view.awaitingMode);
-    root.classList.toggle("rules-visible", !view.inputVisible);
-    root.classList.toggle("timed", Boolean(view.mode && Engine.MODE_DEFINITIONS[view.mode].timed));
-    root.classList.toggle("mode-error", view.appStatus === "error");
+  function previewAllowed() {
+    return state.overlay.phase === "closed" && ["idle", "preparing", "audio-retry", "result"].includes(state.session.status);
+  }
 
-    const overlayOpen = view.overlay.phase !== "closed";
-    const resultOpen = view.overlay.kind === "result" && overlayOpen;
-    const discoveryOpen = view.overlay.kind === "discovery" && overlayOpen;
-    root.classList.toggle("discovery-open", discoveryOpen);
-    root.classList.toggle("discovery-visible", discoveryOpen && view.overlay.phase === "open");
-    ui.card.classList.toggle("modal-open", resultOpen);
-    ui.card.classList.toggle("modal-visible", resultOpen && view.overlay.phase === "open");
-    ui.card.classList.toggle("modal-closing", resultOpen && view.overlay.phase === "closing");
-    ui.result.setAttribute("aria-hidden", String(!resultOpen));
-    ui.discoveryModal.setAttribute("aria-hidden", String(!discoveryOpen));
-    ui.discoveryButton.setAttribute("aria-expanded", String(discoveryOpen && view.overlay.phase !== "closing"));
-    ui.modePrompt.setAttribute("aria-hidden", String(!view.awaitingMode));
+  /** @returns {string} */
+  function selectedRulesText() {
+    const selectedPreview = previewAllowed() ? preview.pointer || preview.focus : null;
+    if (!selectedPreview) return view.rulesText;
+    if (selectedPreview.kind === "discovery") return Engine.TEXT.discovery;
+    return Engine.selectRulesText(state, selectedPreview.mode);
+  }
 
-    ui.play.disabled = !view.playEnabled;
-    ui.skip.disabled = !view.skipEnabled;
-    ui.guess.disabled = !view.guessEnabled;
-    for (const [name, button] of Object.entries(modeButtons)) {
-      const selected = name === view.selectedMode;
-      button.disabled = !view.modesEnabled || selected;
-      button.setAttribute("aria-pressed", String(selected));
-    }
-    ui.icon.setAttribute("d", icons[view.playbackIcon]);
-    ui.play.setAttribute("aria-label", view.playbackIcon === "play" ? "PLAY" : view.playbackIcon === "pause" ? "PAUSE" : "STOP");
-    ui.skip.textContent = view.skipText;
-    ui.snippet.style.width = `${view.snippetSeconds / maxSnippetSeconds * 100}%`;
-    if (ui.guess.value !== state.input.query) ui.guess.value = state.input.query;
-
-    if (rulesText !== view.rulesText) {
-      rulesText = view.rulesText;
+  function renderRulesText() {
+    const nextRulesText = selectedRulesText();
+    if (rulesText !== nextRulesText) {
+      rulesText = nextRulesText;
       ui.modePrompt.textContent = rulesText;
       ui.rulesetText.textContent = rulesText;
       ui.rulesetCopy.textContent = rulesText;
@@ -2728,74 +2904,117 @@
       }
     }
     if (view.inputVisible) ui.ruleset.classList.remove("scroll");
+  }
+
+  function resetPreview() {
+    if (!preview.pointer && !preview.focus) return;
+    preview.pointer = null;
+    preview.focus = null;
+    renderRulesText();
+  }
+
+  /** @param {"pointer"|"focus"} source @param {PreviewDescriptor} descriptor */
+  function setPreview(source, descriptor) {
+    if (!previewAllowed() || (source === "focus" && state.input.modality !== "keyboard")) return;
+    const current = preview[source];
+    if (current?.kind === descriptor.kind && (current.kind !== "mode" || descriptor.kind !== "mode" || current.mode === descriptor.mode)) return;
+    preview[source] = descriptor;
+    renderRulesText();
+  }
+
+  /** @param {"pointer"|"focus"} source */
+  function clearPreview(source) {
+    if (!preview[source]) return;
+    preview[source] = null;
+    renderRulesText();
+  }
+
+  function render() {
+    view = Engine.selectView(state);
+    root.dataset.appStatus = state.app.status;
+    root.dataset.sessionStatus = state.session.status;
+    for (const status of ["loading", "awaiting-mode", "ready", "error"]) root.classList.toggle(`app-${status}`, state.app.status === status);
+    for (const status of ["idle", "preparing", "active", "paused", "audio-retry", "result"]) root.classList.toggle(`session-${status}`, state.session.status === status);
+    root.classList.toggle("awaiting-mode", view.awaitingMode);
+    root.classList.toggle("rules-visible", !view.inputVisible);
+    root.classList.toggle("timed", Boolean(state.session.mode && Engine.MODE_DEFINITIONS[state.session.mode].timed));
+    root.classList.toggle("mode-error", state.app.status === "error");
+
+    const overlayOpen = state.overlay.phase !== "closed";
+    const resultOpen = state.overlay.kind === "result" && overlayOpen;
+    const discoveryOpen = state.overlay.kind === "discovery" && overlayOpen;
+    const resultClosing = resultOpen && state.overlay.phase === "closing";
+    const resultCloseStarted = resultClosing && (
+      renderedOverlay.phase !== "closing" || renderedOverlay.generation !== state.overlay.generation
+    );
+    root.classList.toggle("discovery-open", discoveryOpen);
+    root.classList.toggle("discovery-visible", discoveryOpen && state.overlay.phase === "open");
+    ui.card.classList.toggle("modal-open", resultOpen);
+    ui.card.classList.toggle("modal-visible", resultOpen && state.overlay.phase === "open");
+    ui.card.classList.toggle("modal-closing", resultClosing);
+    ui.result.setAttribute("aria-hidden", String(!resultOpen));
+    ui.discoveryModal.setAttribute("aria-hidden", String(!discoveryOpen));
+    ui.discoveryButton.setAttribute("aria-expanded", String(discoveryOpen && state.overlay.phase !== "closing"));
+    ui.modePrompt.setAttribute("aria-hidden", String(!view.awaitingMode));
+
+    ui.play.disabled = !view.playEnabled;
+    ui.skip.disabled = !view.skipEnabled;
+    ui.guess.disabled = !view.guessEnabled;
+    for (const [name, button] of Object.entries(modeButtons)) {
+      const selected = name === state.session.mode;
+      button.disabled = !view.modesEnabled || selected;
+      button.setAttribute("aria-pressed", String(selected));
+    }
+    ui.icon.setAttribute("d", icons[view.playbackIcon]);
+    ui.play.setAttribute("aria-label", view.playbackIcon === "play" ? "PLAY" : view.playbackIcon === "pause" ? "PAUSE" : "STOP");
+    ui.skip.textContent = view.skipText;
+    ui.snippet.style.width = `${view.snippetSeconds / maxSnippetSeconds * 100}%`;
+    renderRulesText();
 
     ui.headerAction.inert = overlayOpen;
     ui.modes.inert = overlayOpen;
     ui.board.inert = overlayOpen || view.awaitingMode;
     ui.slots.inert = overlayOpen || view.awaitingMode;
 
-    renderHistory(view.history, resultOpen && view.overlay.phase === "closing");
+    renderHistory(state.session.history, resultClosing ? durations.result : durations.slot);
+    syncAutocompleteDependencies();
     renderSuggestions();
     renderDiscovery();
     renderResult();
-    const modeChanged = view.mode !== renderedMode;
-    if (modeChanged) {
-      renderedMode = view.mode;
+    const modeChanged = state.session.mode !== renderedMode;
+    const progressDuration = resultCloseStarted ? durations.result : modeChanged ? durations.progress : 0;
+    if (resultCloseStarted || modeChanged) {
+      renderedMode = state.session.mode;
       clearTimer("progress");
-      ui.fill.style.transition = "transform var(--duration-progress) ease-out";
+      ui.fill.style.transition = resultCloseStarted
+        ? "transform var(--duration-result) ease-out"
+        : "transform var(--duration-progress) ease-out";
     }
     renderClock(projectClock(state.session.clock));
-    if (modeChanged) {
-      setTimer("progress", () => { ui.fill.style.transition = ""; }, transitionDelay(durations.progress));
+    if (progressDuration) {
+      setTimer("progress", () => { ui.fill.style.transition = ""; }, transitionDelay(progressDuration));
     }
+    renderedOverlay = { kind: state.overlay.kind, phase: state.overlay.phase, generation: state.overlay.generation };
   }
-
-  /** @type {ShellAction[]} */
-  const actionQueue = [];
-  /** @type {Effect[]} */
-  const effectQueue = [];
-  let reducing = false;
-  let effectDrainScheduled = false;
 
   /** @param {ShellAction} action */
   function dispatch(action) {
-    actionQueue.push(action);
-    if (reducing) return;
-    reducing = true;
-    let changed = false;
-    /** @type {Effect[]} */
-    const batchEffects = [];
-    while (actionQueue.length) {
-      const nextAction = actionQueue.shift();
-      if (!nextAction) continue;
-      const result = Engine.reduce(state, nextAction);
-      if (result.state !== state) changed = true;
-      state = result.state;
-      if (result.effects?.length) batchEffects.push(...result.effects);
-    }
-    reducing = false;
+    if (diagnosticsEnabled) reducerDispatches++;
+    const result = Engine.reduce(state, action);
+    const changed = result.state !== state;
+    state = result.state;
     if (changed) render();
-    if (batchEffects.length) scheduleEffects(batchEffects);
-  }
-
-  /** @param {Effect[]} effects */
-  function scheduleEffects(effects) {
-    effectQueue.push(...effects);
-    if (effectDrainScheduled) return;
-    effectDrainScheduled = true;
-    queueMicrotask(() => {
-      effectDrainScheduled = false;
-      while (effectQueue.length) {
-        const effect = effectQueue.shift();
-        if (effect) runEffect(effect);
-      }
-    });
+    // Rendering intentionally precedes effects. Every adapter completion,
+    // including synchronous media and storage callbacks, re-enters through
+    // complete() on a later microtask, so no reducer reentrancy queue is needed.
+    for (const effect of result.effects) runEffect(effect);
+    return changed;
   }
 
   /** @param {ShellAction} action */
   const complete = (action) => queueMicrotask(() => dispatch(action));
 
-  /** @param {Round} round */
+  /** @param {AudioRound} round */
   function audioSource(round) {
     const url = new URL(`${String(round.track.dailyNumber).padStart(2, "0")}.mp3`, audioFolderUrl);
     url.hash = `t=${round.track.at}`;
@@ -3041,6 +3260,12 @@
           }, 0);
         }
         break;
+      case "AUTOCOMPLETE_RESET":
+        resetAutocomplete();
+        break;
+      case "PREVIEW_RESET":
+        resetPreview();
+        break;
       case "OVERLAY_SYNC":
         runOverlayEffect(effect);
         break;
@@ -3077,33 +3302,39 @@
     }
   }
 
-  /** @param {HTMLElement} element @param {ShellAction} action */
-  function bindPreview(element, action) {
-    element.addEventListener("pointerenter", () => dispatch({ ...action, source: "pointer" }));
-    element.addEventListener("pointerleave", () => dispatch({ type: "PREVIEW/CLEAR", source: "pointer" }));
-    element.addEventListener("focus", () => dispatch({ ...action, source: "focus" }));
-    element.addEventListener("blur", () => dispatch({ type: "PREVIEW/CLEAR", source: "focus" }));
+  /** @param {InputModality} modality */
+  function updateInputModality(modality) {
+    if (modality !== "keyboard") clearPreview("focus");
+    if (state.input.modality !== modality) dispatch({ type: "INPUT/MODALITY_CHANGED", modality });
   }
 
-  ui.guess.addEventListener("input", () => dispatch({ type: "PLAYER/QUERY_CHANGED", query: ui.guess.value }));
+  /** @param {HTMLElement} element @param {PreviewDescriptor} descriptor */
+  function bindPreview(element, descriptor) {
+    element.addEventListener("pointerenter", () => setPreview("pointer", descriptor));
+    element.addEventListener("pointerleave", () => clearPreview("pointer"));
+    element.addEventListener("focus", () => setPreview("focus", descriptor));
+    element.addEventListener("blur", () => clearPreview("focus"));
+  }
+
+  ui.guess.addEventListener("input", () => updateAutocomplete(ui.guess.value));
   ui.guess.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      dispatch({ type: "PLAYER/QUERY_CHANGED", query: "" });
+      resetAutocomplete();
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      if (!view.suggestions.length) return;
+      if (!autocomplete.suggestions.length) return;
       event.preventDefault();
-      dispatch({ type: "PLAYER/SUGGESTION_CHANGED", index: state.input.selectedSuggestion + (event.key === "ArrowDown" ? 1 : -1) });
+      selectAutocompleteIndex(autocomplete.selectedIndex + (event.key === "ArrowDown" ? 1 : -1));
       return;
     }
     if (event.key !== "Enter") return;
     event.preventDefault();
-    if (!state.session.current || !state.input.query.trim()) {
+    if (!state.session.current || !autocomplete.query.trim()) {
       playbackShortcut();
       return;
     }
-    const suggestion = view.suggestions[state.input.selectedSuggestion];
+    const suggestion = autocomplete.suggestions[autocomplete.selectedIndex];
     if (suggestion) dispatch({ type: "PLAYER/GUESS", title: suggestion, atMs: performance.now() });
   });
 
@@ -3112,14 +3343,14 @@
     const option = target?.closest("[role=option]");
     if (!option) return;
     const index = [...ui.suggest.children].indexOf(option);
-    if (index >= 0) dispatch({ type: "PLAYER/SUGGESTION_CHANGED", index });
+    if (index >= 0) selectAutocompleteIndex(index);
   });
   ui.suggest.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target : null;
     const option = target?.closest("[role=option]");
     if (!option) return;
     const index = [...ui.suggest.children].indexOf(option);
-    const title = view.suggestions[index];
+    const title = autocomplete.suggestions[index];
     if (title) dispatch({ type: "PLAYER/GUESS", title, atMs: performance.now() });
   });
 
@@ -3132,10 +3363,10 @@
   });
 
   for (const [name, button] of Object.entries(modeButtons)) {
-    bindPreview(button, { type: "PREVIEW/SET", kind: "mode", mode: name });
+    bindPreview(button, { kind: "mode", mode: /** @type {ModeName} */ (name) });
     button.addEventListener("click", () => dispatch({ type: "PLAYER/SELECT_MODE", mode: name }));
   }
-  bindPreview(ui.discoveryButton, { type: "PREVIEW/SET", kind: "discovery" });
+  bindPreview(ui.discoveryButton, { kind: "discovery" });
   ui.discoveryButton.addEventListener("click", () => {
     if (state.overlay.phase === "closed") dispatch({ type: "OVERLAY/OPEN_REQUESTED", kind: "discovery", returnFocus: "discovery", atMs: performance.now() });
     else if (state.overlay.kind === "discovery") closeOverlay("discovery");
@@ -3152,7 +3383,7 @@
   });
 
   root.addEventListener("keydown", (event) => {
-    dispatch({ type: "INPUT/MODALITY_CHANGED", modality: "keyboard" });
+    updateInputModality("keyboard");
     if (state.overlay.kind === "discovery" && state.overlay.phase !== "closed") {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -3180,7 +3411,7 @@
 
   root.addEventListener("pointerdown", (event) => {
     const modality = event.pointerType === "mouse" && finePointer.matches ? "pointer-fine" : "pointer-coarse";
-    dispatch({ type: "INPUT/MODALITY_CHANGED", modality });
+    updateInputModality(modality);
     const target = event.target instanceof Element ? event.target : null;
     if (view.playEnabled && !state.session.current && !target?.closest(interactiveSelector)) {
       event.preventDefault();
@@ -3214,10 +3445,17 @@
       createInitialState: Engine.createInitialState,
       reduce: Engine.reduce,
       selectView: Engine.selectView,
-      selectSuggestions: Engine.selectSuggestions,
+      findSuggestions: Engine.findSuggestions,
+      selectRulesText: Engine.selectRulesText,
       checkInvariants: Engine.checkInvariants,
       assertInvariants: Engine.assertInvariants,
     });
+    if (typeof runtimeGlobal.__CORZAGUESSR_TEST__ === "object") {
+      /** @type {Record<string,unknown>} */ (runtimeGlobal.__CORZAGUESSR_TEST__).shellDiagnostics = Object.freeze({
+        get reducerDispatches() { return reducerDispatches; },
+        get discoveryDerivations() { return discoveryDerivations; },
+      });
+    }
     try { delete runtimeGlobal.CorzaguessrAdapters; } catch { runtimeGlobal.CorzaguessrAdapters = undefined; }
   } else {
     try { delete runtimeGlobal.CorzaguessrEngine; } catch { runtimeGlobal.CorzaguessrEngine = undefined; }
