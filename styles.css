@@ -125,9 +125,8 @@
 }
 
 #corzaguessr .slots {
-  --slot-motion-duration: var(--duration-slot);
   overflow: hidden;
-  transition: height var(--slot-motion-duration) ease;
+  transition: height var(--duration-slot) ease;
 }
 
 #corzaguessr .slots:empty {
@@ -525,8 +524,8 @@
   overflow-wrap: anywhere;
   white-space: normal;
   transition:
-    opacity var(--slot-motion-duration) ease,
-    transform var(--slot-motion-duration) ease;
+    opacity var(--duration-slot) ease,
+    transform var(--duration-slot) ease;
 }
 
 #corzaguessr .slot.fade {
@@ -542,13 +541,11 @@
 #corzaguessr .slot.wrong {
   border-color: rgba(239, 68, 68, 0.6);
   background: rgba(239, 68, 68, 0.12);
+  animation: wiggle 0.4s;
 }
 
 #corzaguessr .slot.skip {
   background: rgba(0, 0, 0, 0.4);
-}
-
-#corzaguessr .slot.wiggle {
   animation: wiggle 0.4s;
 }
 
@@ -581,14 +578,6 @@
 
 #corzaguessr .modal-closing .result-modal {
   transition: background var(--duration-result) ease;
-}
-
-#corzaguessr .modal-closing .slots {
-  --slot-motion-duration: var(--duration-result);
-}
-
-#corzaguessr .modal-closing .snippet {
-  transition-duration: var(--duration-result);
 }
 
 #corzaguessr .modal-closing .result-shell {
