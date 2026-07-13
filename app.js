@@ -1676,7 +1676,7 @@
       setProgress(mode.initialText, mode.initialProgress);
     }
     renderPlaybackIntent(true);
-    audioDeck.playActive({ rewind: true });
+    audioDeck.playActive();
     renderPrompt();
   }
 
