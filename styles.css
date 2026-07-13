@@ -55,9 +55,9 @@
 #corzaguessr .mode::after {
   content: "";
   position: absolute;
-  inset: -3px;
+  inset: -4px;
   padding: 2px;
-  border-radius: 17px;
+  border-radius: 18px;
   background: var(--gradient);
   opacity: 0;
   pointer-events: none;
@@ -78,7 +78,7 @@
 #corzaguessr .actions {
   display: flex;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 12px;
 }
 
 #corzaguessr .modes {
@@ -109,14 +109,14 @@
 }
 
 #corzaguessr .card {
-  padding: 1rem;
+  padding: 16px;
 }
 
 #corzaguessr .stack,
 #corzaguessr .board,
 #corzaguessr .slots {
   display: grid;
-  gap: 0.75rem;
+  gap: 12px;
 }
 
 #corzaguessr .slots {
@@ -124,16 +124,21 @@
   transition: height 0.25s ease;
 }
 
+#corzaguessr .slots:empty {
+  display: none;
+}
+
 #corzaguessr .controls {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 1rem;
+  gap: 16px;
 }
 
 #corzaguessr .time {
   font-size: 1.35rem;
   font-weight: 800;
+  line-height: 24px;
   white-space: nowrap;
 }
 
@@ -171,7 +176,8 @@
 
 #corzaguessr .button,
 #corzaguessr .mode {
-  padding: 0.7rem 1rem;
+  height: 42px;
+  padding: 0 16px;
 }
 
 #corzaguessr .button {
@@ -186,7 +192,7 @@
   width: calc((720px - 2.25rem) / 4);
   max-width: calc((100% - 2.25rem) / 4);
   margin: -1rem auto 1rem;
-  padding: 0.55rem 0.9rem;
+  padding: 0 14px;
 }
 
 #corzaguessr .play {
@@ -202,6 +208,10 @@
   width: 34px;
   height: 34px;
   fill: #32323a;
+}
+
+#corzaguessr .skip {
+  height: 46px;
 }
 
 #corzaguessr .timeline {
@@ -382,8 +392,8 @@
 
 #corzaguessr input {
   width: 100%;
-  min-height: 46px;
-  padding: 0.8rem 0.9rem;
+  height: 46px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
   outline: 0;
@@ -391,6 +401,7 @@
   color: white;
   font: inherit;
   font-size: 0.9rem;
+  line-height: 18px;
   text-align: center;
   text-transform: uppercase;
   transition:
@@ -408,13 +419,14 @@
   inset: 0;
   align-items: center;
   overflow: hidden;
-  padding: 0.8rem 0.9rem;
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.4);
   color: rgba(255, 255, 255, 0.75);
   font: inherit;
   font-size: 0.9rem;
+  line-height: 18px;
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -496,11 +508,12 @@
   align-items: center;
   justify-content: center;
   min-height: 46px;
-  padding: 0.75rem 0.9rem;
+  padding: 12px 14px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
+  line-height: 20px;
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -719,13 +732,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 41px;
-  padding: 0.65rem 0.75rem;
+  min-height: 42px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.08);
   font-size: 0.88rem;
-  line-height: 1.35;
+  line-height: 20px;
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -804,21 +817,21 @@
   #corzaguessr .mode {
     width: 100%;
     min-width: 0;
-    padding: 0.65rem 0.5rem;
+    padding: 0 8px;
   }
 
   #corzaguessr .discovery-button {
     width: min(136px, 100%);
     max-width: none;
-    margin-bottom: 0.75rem;
+    margin-bottom: 12px;
   }
 
   #corzaguessr .card {
-    padding: 0.75rem;
+    padding: 12px;
   }
 
   #corzaguessr .controls {
-    gap: 0.65rem;
+    gap: 10px;
   }
 
   #corzaguessr .play {
