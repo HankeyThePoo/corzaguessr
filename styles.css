@@ -549,9 +549,13 @@
 }
 
 #corzaguessr .result-modal {
+  display: flex;
   position: absolute;
   inset: 0;
   z-index: 3;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
   border-radius: inherit;
   background: rgba(0, 0, 0, 0);
   pointer-events: none;
@@ -576,11 +580,7 @@
 }
 
 #corzaguessr .result-shell {
-  position: absolute;
-  top: var(--modal-y, 50%);
-  left: 50%;
   width: min(96vw, 840px);
-  transform: translate(-50%, -50%);
 }
 
 #corzaguessr .corzaguessr-modal {
@@ -668,7 +668,7 @@
   z-index: 4;
   align-items: flex-start;
   justify-content: center;
-  padding: 1rem;
+  padding: 16px;
   border-radius: inherit;
   background: rgba(0, 0, 0, 0);
   pointer-events: none;
@@ -789,6 +789,7 @@
 }
 
 @media (max-width: 600px) {
+  #corzaguessr .result-modal,
   #corzaguessr .discovery-modal {
     position: fixed;
     align-items: center;
