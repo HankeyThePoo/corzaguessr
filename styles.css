@@ -6,7 +6,6 @@
   --duration-result: 350ms;
   --duration-discovery: 450ms;
   --duration-progress: 300ms;
-  --duration-mode-change: 120ms;
   color: white;
   padding: 1rem 12px 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
