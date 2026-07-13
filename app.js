@@ -35,7 +35,7 @@
   const discoveryDescription =
     "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS";
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
-  const hiddenTitle = "???????????????????";
+  const hiddenTitle = "????????????????????";
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const finePointer = matchMedia("(pointer: fine)");
   const interactiveSelector = "button, input, a, .suggest";
