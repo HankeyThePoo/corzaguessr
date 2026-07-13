@@ -37,6 +37,7 @@
   const dailyDoneText = "ALREADY DONE FOR TODAY, COME BACK TOMORROW";
   const hiddenTitle = "???????????????????";
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const finePointer = matchMedia("(pointer: fine)");
   const interactiveSelector = "button, input, a, .suggest";
   const budapestDateFormatter = new Intl.DateTimeFormat("en", {
     timeZone: dailyTimeZone,
@@ -379,7 +380,7 @@
   }
 
   function focusGuess() {
-    if (ui.guess.disabled || isModalOpen()) return;
+    if (!finePointer.matches || ui.guess.disabled || isModalOpen()) return;
     setFrame("guess-focus", () => {
       if (!ui.guess.disabled && !isModalOpen()) ui.guess.focus();
     });
