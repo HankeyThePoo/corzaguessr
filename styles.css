@@ -41,14 +41,36 @@
 
 #corzaguessr button:focus-visible,
 #corzaguessr input:focus-visible {
-  outline: 2px solid #49f1fa;
-  outline-offset: 3px;
+  outline: 0;
 }
 
-#corzaguessr button:focus-visible {
-  box-shadow:
-    0 0 0 4px rgba(7, 8, 23, 0.82),
-    0 0 20px rgba(73, 241, 250, 0.32);
+#corzaguessr .button,
+#corzaguessr .play,
+#corzaguessr .mode {
+  position: relative;
+}
+
+#corzaguessr .button::after,
+#corzaguessr .play::after,
+#corzaguessr .mode::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  padding: 2px;
+  border-radius: 17px;
+  background: var(--gradient);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+#corzaguessr .button:focus-visible::after,
+#corzaguessr .play:focus-visible::after,
+#corzaguessr .mode:focus-visible::after {
+  opacity: 1;
 }
 
 #corzaguessr .modes,
@@ -158,14 +180,6 @@
 
 #corzaguessr .mode {
   flex: 1;
-}
-
-#corzaguessr .mode[aria-pressed="true"] {
-  opacity: 1;
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.72),
-    0 8px 22px rgba(97, 103, 229, 0.32);
-  transform: translateY(-1px);
 }
 
 #corzaguessr .discovery-button {
@@ -346,6 +360,26 @@
   position: relative;
 }
 
+#corzaguessr .auto::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 2px;
+  border-radius: 14px;
+  background: var(--gradient);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+#corzaguessr .auto:focus-within::after {
+  opacity: 1;
+}
+
 #corzaguessr input {
   width: 100%;
   min-height: 46px;
@@ -450,6 +484,11 @@
 
 #corzaguessr .suggest .active {
   background: rgba(255, 255, 255, 0.18);
+}
+
+#corzaguessr .suggest button:focus-visible {
+  background: var(--gradient);
+  color: #32323a;
 }
 
 #corzaguessr .slot {
@@ -693,14 +732,15 @@
 
 @media (hover: hover) {
   #corzaguessr .button:not(:disabled):hover,
-  #corzaguessr .play:not(:disabled):hover,
+  #corzaguessr .play:not(:disabled):hover {
+    filter: brightness(1.08) saturate(1.04);
+  }
+
   #corzaguessr .mode:not(:disabled):hover {
     filter: brightness(1.08) saturate(1.04);
     transform: translateY(-1px);
   }
 
-  #corzaguessr .button:not(:disabled):active,
-  #corzaguessr .play:not(:disabled):active,
   #corzaguessr .mode:not(:disabled):active {
     transform: translateY(0);
   }
