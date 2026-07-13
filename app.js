@@ -18,9 +18,9 @@
   const MINIMUM_TIMED_REMAINING_SECONDS = 60;
   const HIDDEN_TITLE = "????????????????????";
   const STORAGE_KEYS = Object.freeze({
-    discoveries: "corzaguessrDiscoveredV2",
-    daily: "corzaguessrDailyV2",
-    personalBests: "corzaguessrPersonalBestsV2",
+    discoveries: "corzaguessrDiscovered",
+    daily: "corzaguessrDaily",
+    personalBests: "corzaguessrPersonalBests",
   });
   const APP_STATUSES = Object.freeze(["loading", "awaiting-mode", "ready", "error"]);
   const SESSION_STATUSES = Object.freeze(["idle", "preparing", "active", "paused", "audio-retry", "result"]);
@@ -52,7 +52,7 @@
    * @typedef {Object} InitialStateOptions
    * @property {string} [date]
    * @property {number} [seed]
-   * @property {{discoveriesV2?:unknown, dailyV2?:unknown, personalBestsV2?:unknown}} [persistence]
+   * @property {{discoveries?:unknown, daily?:unknown, personalBests?:unknown}} [persistence]
    * @property {InputModality} [modality]
    */
 
@@ -89,7 +89,7 @@
   /** @typedef {{type:"CATALOG/SUCCEEDED", requestId:number, date:string, tracks:unknown}} CatalogSucceededAction */
   /** @typedef {{type:"CATALOG/FAILED", requestId:number, date:string, error?:string}} CatalogFailedAction */
   /** @typedef {{type:"CATALOG/RETRY_DUE", requestId:number, date:string}} CatalogRetryDueAction */
-  /** @typedef {{type:"PERSISTENCE/LOADED", discoveriesV2?:unknown, dailyV2?:unknown, personalBestsV2?:unknown}} PersistenceLoadedAction */
+  /** @typedef {{type:"PERSISTENCE/LOADED", discoveries?:unknown, daily?:unknown, personalBests?:unknown}} PersistenceLoadedAction */
   /** @typedef {{type:"PERSISTENCE/WRITE_SUCCEEDED", requestId:number}} PersistenceWriteSucceededAction */
   /** @typedef {{type:"PERSISTENCE/WRITE_FAILED", requestId:number, error?:string}} PersistenceWriteFailedAction */
   /** @typedef {{type:"PLAYER/SELECT_MODE", mode:ModeName}} PlayerSelectModeAction */
@@ -352,17 +352,16 @@
   function createInitialState(options = {}) {
     const date = typeof options.date === "string" && isCalendarDate(options.date) ? options.date : "1970-01-01";
     const persistence = options.persistence && typeof options.persistence === "object" ? options.persistence : {};
-    const discoveries = Array.isArray(persistence.discoveriesV2)
-      ? persistence.discoveriesV2.filter((/** @type {unknown} */ number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number)
+    const discoveries = Array.isArray(persistence.discoveries)
+      ? persistence.discoveries.filter((/** @type {unknown} */ number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number)
       : [];
     return {
-      schemaVersion: 1,
       app: { status: /** @type {AppStatus} */ ("loading"), budapestDate: date, notice: null, catalogError: null, previewText: null },
       catalog: { status: "idle", requestId: 0, appliedDate: null, version: 0, tracks: [], indexes: { byDailyNumber: {}, byTitle: {}, search: [] }, retry: null, staged: null },
       session: createSession(0, null, options.seed, 0),
-      daily: { roundDate: date, progress: normalizeDaily(persistence.dailyV2), retryRound: null },
+      daily: { roundDate: date, progress: normalizeDaily(persistence.daily), retryRound: null },
       discovery: { dailyNumbers: [...new Set(discoveries)].sort((a, b) => a - b) },
-      personalBests: normalizePersonalBests(persistence.personalBestsV2),
+      personalBests: normalizePersonalBests(persistence.personalBests),
       input: { query: "", selectedSuggestion: -1, modality: options.modality === "keyboard" || options.modality === "pointer-coarse" ? options.modality : "pointer-fine" },
       overlay: { kind: null, phase: "closed", generation: 0, returnFocus: null, suspension: null },
       persistence: {
@@ -419,7 +418,7 @@
     let winner = null;
     let winnerScore = -1;
     for (const track of eligible) {
-      const score = hashDaily(`corzaguessr-daily-v1:${date}:${track.dailyNumber}`);
+      const score = hashDaily(`corzaguessr-daily:${date}:${track.dailyNumber}`);
       if (!winner || score > winnerScore) { winner = track; winnerScore = score; }
     }
     return winner;
@@ -482,7 +481,7 @@
     const minimumRemaining = Math.min(mode.timed ? MINIMUM_TIMED_REMAINING_SECONDS : Number(SNIPPET_DURATIONS.at(-1)), selected.duration);
     const available = Math.max(0, Math.floor(selected.duration - minimumRemaining));
     let at;
-    if (mode.daily) at = hashDaily(`corzaguessr-daily-clip-v1:${state.daily.roundDate}:${selected.dailyNumber}`) % (available + 1);
+    if (mode.daily) at = hashDaily(`corzaguessr-daily-clip:${state.daily.roundDate}:${selected.dailyNumber}`) % (available + 1);
     else {
       const draw = nextRandom(state.session.randomSeed);
       state.session.randomSeed = draw.seed;
@@ -1020,16 +1019,16 @@
 
       case "PERSISTENCE/LOADED": {
         next.persistence.status = "ready";
-        if (Array.isArray(action.discoveriesV2)) {
-          next.discovery.dailyNumbers = [...new Set(action.discoveriesV2.filter((number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number))].sort((a, b) => a - b);
+        if (Array.isArray(action.discoveries)) {
+          next.discovery.dailyNumbers = [...new Set(action.discoveries.filter((number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number))].sort((a, b) => a - b);
         }
-        if (action.dailyV2 && typeof action.dailyV2 === "object") {
-          const normalized = normalizeDaily(action.dailyV2);
+        if (action.daily && typeof action.daily === "object") {
+          const normalized = normalizeDaily(action.daily);
           if (!normalized.started || (normalized.date && normalized.dailyNumber)) {
             next.daily.progress = normalized;
           }
         }
-        next.personalBests = normalizePersonalBests(action.personalBestsV2);
+        next.personalBests = normalizePersonalBests(action.personalBests);
         if (next.catalog.tracks.length) {
           persistDailyIdentity(next, effects, next.daily.roundDate);
         }
@@ -2919,9 +2918,9 @@
       case "STORAGE_LOAD":
         complete({
           type: "PERSISTENCE/LOADED",
-          discoveriesV2: readJson(effect.keys.discoveries),
-          dailyV2: readJson(effect.keys.daily),
-          personalBestsV2: readJson(effect.keys.personalBests),
+          discoveries: readJson(effect.keys.discoveries),
+          daily: readJson(effect.keys.daily),
+          personalBests: readJson(effect.keys.personalBests),
         });
         break;
       case "STORAGE_WRITE":
