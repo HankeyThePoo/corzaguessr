@@ -1550,10 +1550,12 @@
       ui.discoveryItems.textContent = "LOADING...";
       return;
     }
-    const validTitles = new Set(catalogState.applied.tracks.map((track) => track.title));
+    const discoveryTracks = [...catalogState.applied.tracks]
+      .sort((a, b) => b.dailyNumber - a.dailyNumber);
+    const validTitles = new Set(discoveryTracks.map((track) => track.title));
     const found = [...state.discovered].filter((title) => validTitles.has(title)).length;
-    ui.discoveryCount.textContent = formatDiscoveryCount(found, catalogState.applied.tracks.length);
-    ui.discoveryItems.replaceChildren(...catalogState.applied.tracks.map((track) => {
+    ui.discoveryCount.textContent = formatDiscoveryCount(found, discoveryTracks.length);
+    ui.discoveryItems.replaceChildren(...discoveryTracks.map((track) => {
       const item = document.createElement("div");
       item.className = "discovery-item";
       const discovered = state.discovered.has(track.title);
