@@ -45,6 +45,7 @@
   /** @typedef {"loading"|"awaiting-mode"|"ready"|"error"} AppStatus */
   /** @typedef {"idle"|"preparing"|"active"|"paused"|"audio-retry"|"result"} SessionStatus */
   /** @typedef {"keyboard"|"pointer-fine"|"pointer-coarse"} InputModality */
+  /** @typedef {"pointer"|"focus"} PreviewSource */
   /** @typedef {"correct"|"wrong"|"skip"} AttemptKind */
   /** @typedef {Record<string, any>} GameState */
 
@@ -101,8 +102,8 @@
   /** @typedef {{type:"PLAYER/QUERY_CHANGED", query:string}} PlayerQueryChangedAction */
   /** @typedef {{type:"PLAYER/SUGGESTION_CHANGED", index:number}} PlayerSuggestionChangedAction */
   /** @typedef {{type:"INPUT/MODALITY_CHANGED", modality:InputModality}} InputModalityChangedAction */
-  /** @typedef {{type:"PREVIEW/SET", kind:"mode"|"discovery", mode?:ModeName}} PreviewSetAction */
-  /** @typedef {{type:"PREVIEW/CLEAR"}} PreviewClearAction */
+  /** @typedef {{type:"PREVIEW/SET", source:PreviewSource, kind:"mode"|"discovery", mode?:ModeName}} PreviewSetAction */
+  /** @typedef {{type:"PREVIEW/CLEAR", source:PreviewSource}} PreviewClearAction */
   /** @typedef {{type:"AUDIO/PREPARED", sessionId:number, roundId:number, audioGeneration:number, role?:"active"|"standby"}} AudioPreparedAction */
   /** @typedef {{type:"AUDIO/PLAYING", sessionId:number, roundId:number, audioGeneration:number, atMs?:number}} AudioPlayingAction */
   /** @typedef {{type:"AUDIO/WAITING", sessionId:number, roundId:number, audioGeneration:number, atMs?:number}} AudioWaitingAction */
@@ -356,7 +357,7 @@
       ? persistence.discoveries.filter((/** @type {unknown} */ number) => Number.isSafeInteger(number) && Number(number) > 0).map(Number)
       : [];
     return {
-      app: { status: /** @type {AppStatus} */ ("loading"), budapestDate: date, notice: null, catalogError: null, previewText: null },
+      app: { status: /** @type {AppStatus} */ ("loading"), budapestDate: date, notice: null, catalogError: null, preview: { pointer: null, focus: null } },
       catalog: { status: "idle", requestId: 0, appliedDate: null, version: 0, tracks: [], indexes: { byDailyNumber: {}, byTitle: {}, search: [] }, retry: null, staged: null },
       session: createSession(0, null, options.seed, 0),
       daily: { roundDate: date, progress: normalizeDaily(persistence.daily), retryRound: null },
@@ -580,7 +581,7 @@
     state.daily.retryRound = null;
     state.input.query = "";
     state.input.selectedSuggestion = -1;
-    state.app.previewText = null;
+    state.app.preview = { pointer: null, focus: null };
     state.app.notice = null;
     if (state.catalog.tracks.length) state.app.status = "ready";
     effects.push({ type: "AUDIO_RESET", sessionId: id });
@@ -1131,18 +1132,25 @@
       case "INPUT/MODALITY_CHANGED":
         if (!["keyboard", "pointer-fine", "pointer-coarse"].includes(action.modality)) return noChange(state);
         next.input.modality = action.modality;
+        if (action.modality !== "keyboard") next.app.preview.focus = null;
         break;
 
-      case "PREVIEW/SET":
+      case "PREVIEW/SET": {
         if (isOverlayOpen(next) || !["idle", "preparing", "audio-retry", "result"].includes(next.session.status)) return noChange(state);
-        if (action.kind === "discovery") next.app.previewText = TEXT.discovery;
-        else if (action.mode && isMode(action.mode)) next.app.previewText = modeRulesText(next, action.mode);
-        else return noChange(state);
+        if (!["pointer", "focus"].includes(action.source) || (action.source === "focus" && next.input.modality !== "keyboard")) return noChange(state);
+        const preview = action.kind === "discovery"
+          ? { kind: "discovery" }
+          : action.mode && isMode(action.mode) ? { kind: "mode", mode: action.mode } : null;
+        if (!preview) return noChange(state);
+        const current = next.app.preview[action.source];
+        if (current?.kind === preview.kind && current?.mode === preview.mode) return noChange(state);
+        next.app.preview[action.source] = preview;
         break;
+      }
 
       case "PREVIEW/CLEAR":
-        if (next.app.previewText === null) return noChange(state);
-        next.app.previewText = null;
+        if (!["pointer", "focus"].includes(action.source) || next.app.preview[action.source] === null) return noChange(state);
+        next.app.preview[action.source] = null;
         break;
 
       case "AUDIO/PREPARED": {
@@ -1240,6 +1248,7 @@
         if (!OVERLAY_KINDS.includes(action.kind) || isOverlayOpen(next)) return noChange(state);
         if (action.kind === "result" && next.session.status !== "result") return noChange(state);
         if (action.kind === "discovery" && next.session.status === "result") return noChange(state);
+        next.app.preview = { pointer: null, focus: null };
         let suspension = null;
         if (action.kind === "discovery" && (next.session.current || next.session.pending)) {
           const round = next.session.current || next.session.pending;
@@ -1268,6 +1277,18 @@
         next.overlay.phase = "closing";
         next.overlay.generation = generation;
         effects.push({ type: "OVERLAY_SYNC", kind, phase: "closing", generation, returnFocus: next.overlay.returnFocus });
+        if (kind === "result") {
+          const modeName = next.session.mode;
+          if (modeName) {
+            if (next.catalog.staged) {
+              const staged = next.catalog.staged;
+              applyCatalog(next, staged.tracks, staged.date, effects);
+            } else if (modeName === "daily" && next.daily.roundDate !== next.app.budapestDate) {
+              next.daily.roundDate = next.app.budapestDate;
+            }
+            resetSession(next, effects, modeName);
+          }
+        }
         break;
       }
 
@@ -1278,15 +1299,7 @@
           const suspension = next.overlay.suspension;
           next.overlay = { kind: null, phase: "closed", generation: next.overlay.generation, returnFocus: null, suspension: null };
           if (action.kind === "result") {
-            const modeName = next.session.mode;
-            if (modeName) {
-              if (next.catalog.staged) {
-                const staged = next.catalog.staged;
-                applyCatalog(next, staged.tracks, staged.date, effects);
-              } else if (modeName === "daily" && next.daily.roundDate !== next.app.budapestDate) {
-                next.daily.roundDate = next.app.budapestDate;
-              }
-              resetSession(next, effects, modeName);
+            if (next.session.mode) {
               effects.push({ type: "FOCUS", target: "play", modality: next.input.modality, sessionId: next.session.id, roundId: null });
             }
           } else if (
@@ -1381,7 +1394,12 @@
         ariaPressed: name === state.session.mode,
       })),
       awaitingMode: state.app.status === "awaiting-mode",
-      rulesText: state.app.previewText || persistentRulesText(state),
+      rulesText: (() => {
+        const preview = state.app.preview.pointer || state.app.preview.focus;
+        if (!preview) return persistentRulesText(state);
+        if (preview.kind === "discovery") return TEXT.discovery;
+        return preview.mode && isMode(preview.mode) ? modeRulesText(state, preview.mode) : persistentRulesText(state);
+      })(),
       inputVisible,
       playEnabled,
       skipEnabled: roundControls,
@@ -2383,6 +2401,7 @@
   /** @type {string|null} */
   let rulesText = null;
   let renderedSessionId = state.session.id;
+  let renderedMode = view.mode;
   /** @type {Map<string,number>} */
   const timers = new Map();
 
@@ -2462,8 +2481,8 @@
     ui.slots.style.height = "";
   }
 
-  /** @param {HistoryEntry[]} entries */
-  function renderHistory(entries) {
+  /** @param {HistoryEntry[]} entries @param {boolean} [immediateClear] */
+  function renderHistory(entries, immediateClear = false) {
     const signature = entries.map(({ id, text, tone }) => `${id}:${tone}:${text}`).join("\u001f");
     if (signature === historySignature && renderedSessionId === state.session.id) return;
     const sessionChanged = renderedSessionId !== state.session.id;
@@ -2472,7 +2491,7 @@
 
     if (!entries.length) {
       if (!ui.slots.children.length) return;
-      if (reducedMotion.matches || !sessionChanged) {
+      if (immediateClear || reducedMotion.matches || !sessionChanged) {
         finishHistoryClear();
         return;
       }
@@ -2494,13 +2513,27 @@
       if (!item) {
         item = document.createElement("div");
         item.dataset.historyId = String(entry.id);
+        item.className = "slot fade";
         newItems.push(item);
       }
-      item.className = `slot ${isNew ? "fade " : ""}${entry.tone || ""}`.trim();
+      const previousTone = item.dataset.tone || "";
+      if (previousTone !== entry.tone) {
+        if (previousTone) item.classList.remove(...previousTone.split(/\s+/));
+        if (entry.tone) item.classList.add(...entry.tone.split(/\s+/));
+        item.dataset.tone = entry.tone;
+      }
+      if (/^(wrong|skip)$/.test(entry.tone) && previousTone !== entry.tone) {
+        item.classList.add("wiggle");
+        item.addEventListener("animationend", () => item?.classList.remove("wiggle"), { once: true });
+      }
       item.textContent = entry.text;
       return item;
     });
-    ui.slots.replaceChildren(...nodes);
+    nodes.forEach((item, index) => {
+      const current = ui.slots.children.item(index);
+      if (current !== item) ui.slots.insertBefore(item, current || null);
+    });
+    while (ui.slots.children.length > nodes.length) ui.slots.lastElementChild?.remove();
     if (newItems.length) {
       void ui.slots.offsetWidth;
       newItems.forEach((item) => item.classList.remove("fade"));
@@ -2701,11 +2734,20 @@
     ui.board.inert = overlayOpen || view.awaitingMode;
     ui.slots.inert = overlayOpen || view.awaitingMode;
 
-    renderHistory(view.history);
+    renderHistory(view.history, resultOpen && view.overlay.phase === "closing");
     renderSuggestions();
     renderDiscovery();
     renderResult();
+    const modeChanged = view.mode !== renderedMode;
+    if (modeChanged) {
+      renderedMode = view.mode;
+      clearTimer("progress");
+      ui.fill.style.transition = "transform var(--duration-progress) ease-out";
+    }
     renderClock(projectClock(state.session.clock));
+    if (modeChanged) {
+      setTimer("progress", () => { ui.fill.style.transition = ""; }, transitionDelay(durations.progress));
+    }
   }
 
   /** @type {ShellAction[]} */
@@ -3037,10 +3079,10 @@
 
   /** @param {HTMLElement} element @param {ShellAction} action */
   function bindPreview(element, action) {
-    element.addEventListener("pointerenter", () => dispatch(action));
-    element.addEventListener("pointerleave", () => dispatch({ type: "PREVIEW/CLEAR" }));
-    element.addEventListener("focus", () => dispatch(action));
-    element.addEventListener("blur", () => dispatch({ type: "PREVIEW/CLEAR" }));
+    element.addEventListener("pointerenter", () => dispatch({ ...action, source: "pointer" }));
+    element.addEventListener("pointerleave", () => dispatch({ type: "PREVIEW/CLEAR", source: "pointer" }));
+    element.addEventListener("focus", () => dispatch({ ...action, source: "focus" }));
+    element.addEventListener("blur", () => dispatch({ type: "PREVIEW/CLEAR", source: "focus" }));
   }
 
   ui.guess.addEventListener("input", () => dispatch({ type: "PLAYER/QUERY_CHANGED", query: ui.guess.value }));
