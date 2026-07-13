@@ -35,11 +35,9 @@
       return [name, Number.isFinite(milliseconds) ? milliseconds : 0];
     }),
   );
-  const discoveryStorageKey = "corzaguessrDiscoveredV2";
-  const legacyDiscoveryStorageKey = "corzaguessrDiscoveredV1";
-  const personalBestStorageKey = "corzaguessrPersonalBestsV2";
-  const dailyStorageKey = "corzaguessrDailyV2";
-  const legacyDailyStorageKey = "corzaguessrDailyV1";
+  const discoveryStorageKey = "corzaguessrDiscovered";
+  const personalBestStorageKey = "corzaguessrPersonalBests";
+  const dailyStorageKey = "corzaguessrDaily";
   const dailyTimeZone = "Europe/Budapest";
   const modePromptText = "SELECT A MODE TO BEGIN";
   const dailyAudioErrorText = "COULD NOT LOAD TODAY'S TRACK, PRESS PLAY TO RETRY!";
@@ -283,9 +281,6 @@
 
   // State and small utilities -----------------------------------------------
 
-  let pendingDiscoveryMigration = null;
-  let pendingDailyMigration = null;
-
   const state = {
     appStatus: "loading",
     mode: null,
@@ -330,7 +325,7 @@
   const catalogState = {
     applied: {
       date: null,
-      version: 0,
+      generation: 0,
       tracks: [],
     },
     nextRequestId: 0,
@@ -690,17 +685,14 @@
   }
 
   function loadDiscoveries() {
-    const saved = readStorage(discoveryStorageKey, null);
-    if (Array.isArray(saved)) {
-      return new Set(saved.filter(
-        (dailyNumber) => Number.isSafeInteger(dailyNumber) && dailyNumber > 0,
-      ));
-    }
-    const legacy = readStorage(legacyDiscoveryStorageKey, null);
-    pendingDiscoveryMigration = Array.isArray(legacy)
-      ? legacy.filter((title) => typeof title === "string")
-      : null;
-    return new Set();
+    const saved = readStorage(discoveryStorageKey, []);
+    return new Set(
+      Array.isArray(saved)
+        ? saved.filter(
+          (dailyNumber) => Number.isSafeInteger(dailyNumber) && dailyNumber > 0,
+        )
+        : [],
+    );
   }
 
   function saveDiscoveries() {
@@ -798,15 +790,13 @@
 
   function loadDaily() {
     const saved = readStorage(dailyStorageKey, null);
-    if (saved && typeof saved === "object") {
-      const normalized = normalizeDailyProgress(saved);
-      if (!normalized.started || (normalized.date && normalized.dailyNumber)) {
-        return normalized;
-      }
+    if (!saved || typeof saved !== "object") {
+      return normalizeDailyProgress(null);
     }
-    const legacy = readStorage(legacyDailyStorageKey, null);
-    pendingDailyMigration = legacy && typeof legacy === "object" ? legacy : null;
-    return normalizeDailyProgress(legacy);
+    const normalized = normalizeDailyProgress(saved);
+    return !normalized.started || (normalized.date && normalized.dailyNumber)
+      ? normalized
+      : normalizeDailyProgress(null);
   }
 
   function saveDaily() {
@@ -1366,14 +1356,14 @@
     return {
       id: ++session.nextId,
       modeName: state.mode,
-      catalogVersion: catalogState.applied.version,
+      catalogGeneration: catalogState.applied.generation,
       roundDate: mode.daily ? dailyState.roundDate : null,
       hasPlayed: false,
       track: {
         ...selected,
         at: mode.daily
           ? hashDaily(
-            `corzaguessr-daily-clip-v1:${dailyState.roundDate}:${selected.dailyNumber}`,
+            `corzaguessr-daily-clip:${dailyState.roundDate}:${selected.dailyNumber}`,
           ) % (available + 1)
           : Math.floor(Math.random() * (available + 1)),
       },
@@ -1384,7 +1374,7 @@
     return Boolean(
       standby &&
       standby.round.modeName === state.mode &&
-      standby.round.catalogVersion === catalogState.applied.version &&
+      standby.round.catalogGeneration === catalogState.applied.generation &&
       (!currentMode().daily || standby.round.roundDate === dailyState.roundDate)
     );
   }
@@ -2019,7 +2009,7 @@
       if (persisted) return persisted;
     }
     return eligible.reduce((winner, track) => {
-      const score = hashDaily(`corzaguessr-daily-v1:${date}:${track.dailyNumber}`);
+      const score = hashDaily(`corzaguessr-daily:${date}:${track.dailyNumber}`);
       return !winner || score > winner.score ? { track, score } : winner;
     }, null)?.track || null;
   }
@@ -2043,45 +2033,6 @@
     };
     saveDaily();
     return selected;
-  }
-
-  function removeLegacyStorage(key) {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // A successful V2 write is sufficient; a leftover V1 record is harmless.
-    }
-  }
-
-  function migrateLegacyPersistence() {
-    if (pendingDiscoveryMigration) {
-      const titleToNumber = new Map(
-        catalogState.applied.tracks.map((track) => [track.title, track.dailyNumber]),
-      );
-      const migrated = new Set(
-        pendingDiscoveryMigration
-          .map((title) => titleToNumber.get(title))
-          .filter((dailyNumber) => Number.isSafeInteger(dailyNumber)),
-      );
-      state.discovered = migrated;
-      if (saveDiscoveries()) {
-        removeLegacyStorage(legacyDiscoveryStorageKey);
-        pendingDiscoveryMigration = null;
-      }
-    }
-
-    if (pendingDailyMigration) {
-      const migrated = normalizeDailyProgress(pendingDailyMigration);
-      if (migrated.date) {
-        const selected = selectDailyTrackForDate(migrated.date, { usePersisted: false });
-        migrated.dailyNumber = selected?.dailyNumber || null;
-      }
-      dailyState.progress = migrated;
-      if (saveDaily()) {
-        removeLegacyStorage(legacyDailyStorageKey);
-        pendingDailyMigration = null;
-      }
-    }
   }
 
   function selectTrack() {
@@ -2847,12 +2798,10 @@
     )) return;
     try {
       localStorage.removeItem(discoveryStorageKey);
-      localStorage.removeItem(legacyDiscoveryStorageKey);
     } catch {
       announce("DISCOVERY COULD NOT BE RESET IN THIS BROWSER.");
       return;
     }
-    pendingDiscoveryMigration = null;
     state.discovered = new Set();
     renderDiscovery();
     announce("DISCOVERY RESET.");
@@ -3097,7 +3046,7 @@
     audioDeck.discardStandby();
     catalogState.applied = {
       date,
-      version: catalogState.applied.version + 1,
+      generation: catalogState.applied.generation + 1,
       tracks,
     };
     catalogState.request = { kind: "idle" };
@@ -3107,7 +3056,6 @@
     dailyState.retryRound = null;
     state.notice = null;
     state.catalogError = null;
-    migrateLegacyPersistence();
     persistDailySelectionForDate(date);
     if (state.mode === "daily" && !ownedRound()) {
       state.step = isDailyInProgress(date) ? dailyState.progress.step : 0;
