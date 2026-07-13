@@ -22,7 +22,6 @@
     result: "--duration-result",
     discovery: "--duration-discovery",
     progress: "--duration-progress",
-    modeChange: "--duration-mode-change",
   };
   const rootStyles = getComputedStyle(root);
   const durations = Object.fromEntries(
@@ -546,7 +545,7 @@
       playEnabled,
       skipEnabled: roundControlsAvailable,
       guessEnabled: roundControlsAvailable,
-      modesEnabled: state.appStatus !== "transitioning" && state.appStatus !== "error",
+      modesEnabled: state.appStatus !== "error",
     };
   }
 
@@ -2657,8 +2656,7 @@
     if (
       !modes[modeName] ||
       modeName === state.mode ||
-      isModalOpen() ||
-      state.appStatus === "transitioning"
+      isModalOpen()
     ) return;
     state.mode = modeName;
     state.previewText = null;
@@ -2668,25 +2666,19 @@
       renderUi({ force: true });
       return;
     }
-    animateModeChange();
+    applyModeChange();
   }
 
   // Initial mode selection --------------------------------------------------
 
-  function animateModeChange() {
-    const mode = currentMode();
-    state.appStatus = "transitioning";
+  function applyModeChange() {
     cancelProgressTransition();
-    resetSession({ render: false });
     ui.fill.style.transition = "transform var(--duration-slot) ease-out";
-    setProgress(ui.now.textContent, mode.initialProgress);
-    renderUi({ force: true });
-    setTimer("mode-transition", () => {
-      finalizeSessionReset();
-      setTimer("progress", () => {
-        ui.fill.style.transition = "";
-      }, transitionDelay(durations.progress));
-    }, transitionDelay(durations.modeChange));
+    resetSession({ render: false });
+    finalizeSessionReset();
+    setTimer("progress", () => {
+      ui.fill.style.transition = "";
+    }, transitionDelay(durations.progress));
   }
 
   function activateMode() {
@@ -2695,7 +2687,7 @@
       !state.mode ||
       !catalogState.applied.tracks.length
     ) return;
-    animateModeChange();
+    applyModeChange();
   }
 
   // Discovery modal ---------------------------------------------------------
