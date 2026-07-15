@@ -6,6 +6,7 @@
   --duration-result: 350ms;
   --duration-discovery: 450ms;
   --duration-progress: 300ms;
+  --duration-rewind: 180ms;
   color: white;
   padding: 1rem 12px 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
@@ -119,6 +120,7 @@
 
 #corzaguessr .stack,
 #corzaguessr .board,
+#corzaguessr .history,
 #corzaguessr .slots {
   display: grid;
   gap: 12px;
@@ -128,6 +130,14 @@
   --slot-motion-duration: var(--duration-slot);
   overflow: hidden;
   transition: height var(--slot-motion-duration) ease;
+}
+
+#corzaguessr .history {
+  gap: 0;
+}
+
+#corzaguessr .current-slot:not([hidden]) + .slots:not(:empty) {
+  margin-top: 12px;
 }
 
 #corzaguessr .slots:empty {
@@ -241,6 +251,38 @@
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+}
+
+#corzaguessr .timeline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--gradient);
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+#corzaguessr .timeline.progress-rewinding::after {
+  animation: corzaguessr-progress-rewind var(--duration-rewind) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes corzaguessr-progress-rewind {
+  0% {
+    opacity: 1;
+    transform: scaleX(var(--rewind-from, 0));
+  }
+
+  72% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
 }
 
 #corzaguessr .snippet,
