@@ -705,7 +705,7 @@
   border: 0;
 }
 
-#corzaguessr.mode-error .mode-prompt {
+#corzaguessr[data-app-status="error"] .mode-prompt {
   display: grid;
   inset: 0;
   z-index: 2;
