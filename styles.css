@@ -135,7 +135,10 @@
 }
 
 #corzaguessr .history {
+  --slot-motion-duration: var(--duration-slot);
   gap: 0;
+  overflow: hidden;
+  transition: height var(--slot-motion-duration) ease;
 }
 
 #corzaguessr .board {
@@ -758,6 +761,10 @@
 }
 
 #corzaguessr .modal-closing .slots {
+  --slot-motion-duration: var(--duration-result);
+}
+
+#corzaguessr .modal-closing .history {
   --slot-motion-duration: var(--duration-result);
 }
 
