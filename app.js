@@ -2649,17 +2649,42 @@ var AttemptHistoryView = class {
 	scheduler;
 	renderedHistory = [];
 	currentSignature = "";
+	sessionKey = "";
 	renderGeneration = 0;
 	nodeMotionGeneration = 0;
 	fadeGenerations = /* @__PURE__ */ new WeakMap();
 	collapseTimer = 0;
 	collapseListener = null;
+	collapseTarget = null;
+	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
 	constructor(elements, durations, reducedMotion, scheduler = browserUiScheduler) {
 		this.elements = elements;
 		this.durations = durations;
 		this.reducedMotion = reducedMotion;
 		this.scheduler = scheduler;
+	}
+	render(current, history, sessionKey) {
+		const snapshot = {
+			current,
+			history: [...history],
+			sessionKey
+		};
+		if (this.pendingSnapshot) {
+			this.pendingSnapshot = snapshot;
+			return;
+		}
+		if (this.sessionKey !== "" && sessionKey !== this.sessionKey && this.hasRenderedAttempts()) {
+			this.pendingSnapshot = snapshot;
+			this.collapseAttempts();
+			return;
+		}
+		this.applySnapshot(snapshot);
+	}
+	applySnapshot(snapshot) {
+		this.sessionKey = snapshot.sessionKey;
+		this.renderCurrent(snapshot.current, snapshot.sessionKey);
+		this.renderHistory(snapshot.history, snapshot.sessionKey);
 	}
 	renderHistory(entries, sessionKey) {
 		const rendered = entries.map((entry) => ({
@@ -2672,10 +2697,10 @@ var AttemptHistoryView = class {
 			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone;
 		})) return;
 		this.renderedHistory = rendered;
-		const generation = ++this.renderGeneration;
+		this.renderGeneration += 1;
 		this.cancelCollapse();
 		if (!rendered.length) {
-			this.collapseHistory(generation);
+			this.collapseHistory();
 			return;
 		}
 		const existing = new Map([...this.elements.history.children].map((child) => {
@@ -2727,35 +2752,51 @@ var AttemptHistoryView = class {
 		element.hidden = false;
 		this.fadeIn(element);
 	}
-	collapseHistory(generation) {
+	hasRenderedAttempts() {
+		return !this.elements.current.hidden || this.elements.history.children.length > 0;
+	}
+	collapseAttempts() {
+		const fading = [...!this.elements.current.hidden ? [this.elements.current] : [], ...[...this.elements.history.children]];
+		this.startCollapse(this.elements.container, fading, this.durations.collapse(), () => {
+			const pending = this.pendingSnapshot;
+			this.pendingSnapshot = null;
+			this.clearRenderedAttempts();
+			if (pending) this.applySnapshot(pending);
+		});
+	}
+	collapseHistory() {
 		const container = this.elements.history;
 		if (!container.children.length) {
 			container.style.height = "";
 			return;
 		}
-		if (this.reducedMotion.matches || this.durations.collapse() <= 0) {
-			this.finishCollapse(generation);
+		this.startCollapse(container, [...container.children], this.durations.collapse(), () => this.finishHistoryCollapse());
+	}
+	startCollapse(container, fading, duration, onFinished) {
+		this.cancelCollapse();
+		const generation = ++this.renderGeneration;
+		if (this.reducedMotion.matches || duration <= 0) {
+			onFinished();
 			return;
 		}
-		const measuredHeight = container.offsetHeight;
-		container.style.height = `${measuredHeight}px`;
-		for (const child of container.children) child.classList.add("fade");
+		container.style.height = `${container.offsetHeight}px`;
+		for (const element of fading) element.classList.add("fade");
 		container.offsetHeight;
 		container.style.height = "0px";
 		const finish = () => {
 			if (generation !== this.renderGeneration) return;
 			this.cancelCollapse(false);
-			this.finishCollapse(generation);
+			onFinished();
 		};
+		this.collapseTarget = container;
 		this.collapseListener = (event) => {
 			const transition = event;
 			if (event.target === container && (!transition.propertyName || transition.propertyName === "height")) finish();
 		};
 		container.addEventListener("transitionend", this.collapseListener);
-		this.collapseTimer = this.scheduler.setTimer(finish, this.durations.collapse());
+		this.collapseTimer = this.scheduler.setTimer(finish, duration);
 	}
-	finishCollapse(generation) {
-		if (generation !== this.renderGeneration) return;
+	finishHistoryCollapse() {
 		for (const child of this.elements.history.children) this.cancelWiggle(child);
 		this.elements.history.replaceChildren();
 		this.elements.history.style.height = "";
@@ -2763,9 +2804,26 @@ var AttemptHistoryView = class {
 	cancelCollapse(resetHeight = true) {
 		if (this.collapseTimer) this.scheduler.clearTimer(this.collapseTimer);
 		this.collapseTimer = 0;
-		if (this.collapseListener) this.elements.history.removeEventListener("transitionend", this.collapseListener);
+		if (this.collapseListener && this.collapseTarget) this.collapseTarget.removeEventListener("transitionend", this.collapseListener);
 		this.collapseListener = null;
-		if (resetHeight) this.elements.history.style.height = "";
+		if (resetHeight && this.collapseTarget) this.collapseTarget.style.height = "";
+		this.collapseTarget = null;
+	}
+	clearRenderedAttempts() {
+		this.renderedHistory = [];
+		this.currentSignature = "";
+		this.renderGeneration += 1;
+		this.fadeGenerations.delete(this.elements.current);
+		this.cancelWiggle(this.elements.current);
+		for (const child of this.elements.history.children) this.cancelWiggle(child);
+		this.applyTone(this.elements.current, this.elements.current.dataset.tone ?? "", "");
+		this.elements.current.classList.remove("fade", "wiggle");
+		this.elements.current.dataset.currentKey = "";
+		this.elements.current.textContent = "";
+		this.elements.current.hidden = true;
+		this.elements.container.style.height = "";
+		this.elements.history.replaceChildren();
+		this.elements.history.style.height = "";
 	}
 	applyTone(element, previous, next) {
 		if (previous === next) return;
@@ -3500,6 +3558,7 @@ var GameView = class {
 		this.modal = new ModalController(root, this.elements, this.durations, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
+			container: this.elements.currentSlot.parentElement,
 			current: this.elements.currentSlot,
 			history: this.elements.slots
 		}, {
@@ -3574,8 +3633,7 @@ var GameView = class {
 		this.renderRules();
 		this.elements.transportStatus.hidden = true;
 		this.elements.transportStatus.textContent = "";
-		this.attempts.renderCurrent(state.currentSlot, sessionKey);
-		this.attempts.renderHistory(state.history, sessionKey);
+		this.attempts.render(state.currentSlot, state.history, sessionKey);
 		this.autocomplete.setDependencies(state.tracks, guessed);
 		this.renderDiscovery(state);
 		this.renderResult(state.result);
