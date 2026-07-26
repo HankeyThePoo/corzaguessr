@@ -2779,9 +2779,29 @@ var AttemptHistoryView = class {
 			onFinished();
 			return;
 		}
+		const fadeStarts = fading.map((element) => {
+			const styles = getComputedStyle(element);
+			this.fadeGenerations.delete(element);
+			return {
+				element,
+				opacity: styles.opacity,
+				translate: styles.translate
+			};
+		});
 		container.style.height = `${container.offsetHeight}px`;
-		for (const element of fading) element.classList.add("fade");
+		for (const { element, opacity, translate } of fadeStarts) {
+			element.style.transition = "none";
+			element.style.opacity = opacity;
+			element.style.translate = translate;
+			element.classList.remove("fade");
+		}
 		container.offsetHeight;
+		for (const { element } of fadeStarts) {
+			element.style.transition = "";
+			element.classList.add("fade");
+			element.style.removeProperty("opacity");
+			element.style.removeProperty("translate");
+		}
 		container.style.height = "0px";
 		const finish = () => {
 			if (generation !== this.renderGeneration) return;
