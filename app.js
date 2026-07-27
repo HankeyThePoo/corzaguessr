@@ -332,6 +332,14 @@ var GameSession = class {
 		};
 		this.resultState = { ...result };
 	}
+	dismissResult() {
+		if (this.phaseState !== "result") return;
+		this.phaseState = "idle";
+		this.roundState = null;
+		this.roundHeardState = false;
+		this.playbackRequestedState = false;
+		this.resultState = null;
+	}
 	prompt() {
 		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : sixTryPrompt(this.attemptState);
 		return {
@@ -674,8 +682,15 @@ var GameController = class {
 		const mode = this.session.snapshot.mode;
 		if (!mode) return;
 		if (this.overlay === "result") {
-			const returnFocus = mode === "daily" && this.progress.dailyDone(this.budapestDate) ? "blitz" : "play";
-			this.view.closeResult(returnFocus, () => {
+			if (mode === "daily" && this.progress.dailyDone(this.budapestDate)) {
+				this.view.closeResult("blitz", () => {}, () => {
+					this.overlay = null;
+					this.session.dismissResult();
+					this.render();
+				});
+				return;
+			}
+			this.view.closeResult("play", () => {
 				if (mode === "daily" && this.budapestDate) this.dailyDate = this.budapestDate;
 				this.resetForMode(mode);
 			}, () => {
@@ -3798,6 +3813,7 @@ var GameView = class {
 			return;
 		}
 		const timed = result.mode === "blitz" || result.mode === "survival";
+		this.elements.next.textContent = result.mode === "daily" ? "CLOSE" : "NEW GAME";
 		this.elements.resultTitle.innerHTML = timed ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`;
 		const rows = resultRows(result);
 		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultModule(row, result.newPersonalBest)));
