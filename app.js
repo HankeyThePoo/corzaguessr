@@ -227,7 +227,7 @@ var GameSession = class {
 			playbackRequested: this.playbackRequestedState
 		};
 	}
-	reset(mode, resumedAttempt = 0, resumedHistory = [], resumedGuessedTrackIds = /* @__PURE__ */ new Set()) {
+	reset(mode, resumedAttempt = 0, resumedHistory = [], resumedGuessedTrackIds = /* @__PURE__ */ new Set(), resumedCurrentSlot = null) {
 		this.modeState = mode;
 		this.phaseState = "idle";
 		this.roundState = null;
@@ -236,11 +236,11 @@ var GameSession = class {
 		this.roundNumberState = 0;
 		this.guessesState = 0;
 		this.correctState = 0;
-		this.currentSlotState = null;
+		this.currentSlotState = resumedCurrentSlot ? { ...resumedCurrentSlot } : null;
 		this.historyState = resumedHistory.map((slot) => ({ ...slot }));
 		this.guessedTrackIdsState.clear();
 		for (const trackId of resumedGuessedTrackIds) this.guessedTrackIdsState.add(trackId);
-		this.nextSlotId = Math.max(this.nextSlotId, ...this.historyState.map((slot) => slot.id));
+		this.nextSlotId = Math.max(this.nextSlotId, resumedCurrentSlot?.id ?? 0, ...this.historyState.map((slot) => slot.id));
 		this.resultState = null;
 		this.playbackRequestedState = false;
 	}
@@ -965,7 +965,9 @@ var GameController = class {
 			correct: state.correct,
 			guesses: state.guesses,
 			elapsedMs: clock.elapsedMs,
-			dailyDate: this.dailyDate
+			dailyDate: this.dailyDate,
+			currentSlot: state.currentSlot,
+			history: state.history
 		});
 		this.session.finish(result);
 		this.overlay = "result";
@@ -978,10 +980,13 @@ var GameController = class {
 		const previousTrackId = this.session.snapshot.previousTrackId;
 		this.sessionNumber += 1;
 		this.playback.stop();
-		const savedDaily = mode === "daily" && this.progress.dailyInProgress(this.dailyDate) ? this.progress.daily : null;
+		const savedDaily = mode === "daily" && (this.progress.dailyInProgress(this.dailyDate) || this.progress.dailyDone(this.dailyDate)) ? this.progress.daily : null;
 		const resumed = savedDaily?.step ?? 0;
+		const completedDaily = savedDaily?.completed === true;
+		const restoredCurrent = completedDaily ? savedDaily.history[0] ?? null : null;
+		const restoredHistory = completedDaily ? savedDaily.history.slice(1) : savedDaily?.history ?? [];
 		const resumedGuesses = new Set((savedDaily?.history ?? []).filter((slot) => slot.tone === "wrong").map((slot) => this.tracks.find((track) => track.title === slot.text)?.dailyNumber).filter((trackNumber) => trackNumber !== void 0));
-		this.session.reset(mode, resumed, savedDaily?.history ?? [], resumedGuesses);
+		this.session.reset(mode, resumed, restoredHistory, resumedGuesses, restoredCurrent);
 		const initial = MODE_RULES[mode].initialTimeMs;
 		const milliseconds = initial ?? snippetSeconds(resumed) * 1e3;
 		this.view.beginProgressReset();
@@ -1115,6 +1120,10 @@ var ProgressService = class {
 	}
 	finish(run) {
 		if (run.mode === "daily") {
+			const completedHistory = run.currentSlot ? [{
+				...run.currentSlot,
+				id: run.attempt + 1
+			}, ...(run.history ?? []).map((slot) => ({ ...slot }))] : [];
 			const nextDaily = {
 				date: run.dailyDate,
 				dailyNumber: run.track.dailyNumber,
@@ -1122,7 +1131,7 @@ var ProgressService = class {
 				completed: true,
 				won: run.won,
 				step: run.attempt,
-				history: []
+				history: completedHistory
 			};
 			const dailyPersisted = this.repository.saveDaily(nextDaily);
 			if (dailyPersisted) this.dailyState = nextDaily;
@@ -1561,7 +1570,7 @@ function sanitizeDailyProgress(value) {
 		"step",
 		"history"
 	])) return emptyDailyProgress();
-	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || value.started !== true || typeof value.completed !== "boolean" || typeof value.won !== "boolean" || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || !value.completed && value.won || value.completed && value.history.length !== 0 || !value.completed && value.history.length !== value.step) return emptyDailyProgress();
+	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || value.started !== true || typeof value.completed !== "boolean" || typeof value.won !== "boolean" || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || !value.completed && value.won || value.completed && value.history.length !== 0 && value.history.length !== value.step + 1 || !value.completed && value.history.length !== value.step) return emptyDailyProgress();
 	const history = [];
 	for (let index = 0; index < value.history.length; index += 1) {
 		const candidate = value.history[index];
@@ -1570,8 +1579,9 @@ function sanitizeDailyProgress(value) {
 			"text",
 			"tone"
 		])) return emptyDailyProgress();
-		const expectedId = value.step - index;
-		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || candidate.tone !== "wrong" && candidate.tone !== "skip") return emptyDailyProgress();
+		const expectedId = value.completed ? value.step + 1 - index : value.step - index;
+		const validTone = value.completed && index === 0 ? value.won && candidate.tone === "correct" || !value.won && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
+		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || !validTone) return emptyDailyProgress();
 		history.push({
 			id: candidate.id,
 			text: candidate.text,
