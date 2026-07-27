@@ -264,7 +264,7 @@ var GameSession = class {
 		this.phaseState = "playing";
 		this.playbackRequestedState = true;
 		if (this.modeState !== "daily") this.previousTrackIdState = round.track.dailyNumber;
-		this.guessedTrackIdsState.clear();
+		if (isTimedMode(this.modeState)) this.guessedTrackIdsState.clear();
 		if (!this.currentSlotState) this.currentSlotState = this.prompt();
 	}
 	resumePlaying(round) {
@@ -3002,10 +3002,10 @@ var Autocomplete = class {
 		this.selectedIndex = preserved >= 0 ? preserved : this.suggestions.length ? 0 : -1;
 		this.render();
 	}
-	select(index) {
+	select(index, reveal = false) {
 		if (!this.suggestions.length) return;
 		this.selectedIndex = (index % this.suggestions.length + this.suggestions.length) % this.suggestions.length;
-		this.renderSelection();
+		this.renderSelection(reveal);
 	}
 	handleKeydown(event) {
 		if (event.key === "Escape") {
@@ -3015,7 +3015,7 @@ var Autocomplete = class {
 		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 			if (!this.suggestions.length) return;
 			event.preventDefault();
-			this.select(this.selectedIndex + (event.key === "ArrowDown" ? 1 : -1));
+			this.select(this.selectedIndex + (event.key === "ArrowDown" ? 1 : -1), true);
 			return;
 		}
 		if (event.key !== "Enter") return;
@@ -3041,20 +3041,31 @@ var Autocomplete = class {
 			return option;
 		});
 		this.list.replaceChildren(...options);
+		this.list.scrollTop = 0;
 		const visible = options.length > 0;
 		this.list.style.display = visible ? "block" : "none";
 		this.input.setAttribute("aria-expanded", String(visible));
 		this.renderSelection();
 	}
-	renderSelection() {
+	renderSelection(reveal = false) {
 		[...this.list.children].forEach((element, index) => {
 			const option = element;
 			const active = index === this.selectedIndex;
 			option.classList.toggle("active", active);
 			option.setAttribute("aria-selected", String(active));
 		});
-		if (this.suggestions.length && this.selectedIndex >= 0) this.input.setAttribute("aria-activedescendant", `corzaguessr-option-${this.selectedIndex}`);
-		else this.input.removeAttribute("aria-activedescendant");
+		if (this.suggestions.length && this.selectedIndex >= 0) {
+			this.input.setAttribute("aria-activedescendant", `corzaguessr-option-${this.selectedIndex}`);
+			if (reveal) {
+				const option = this.list.children[this.selectedIndex];
+				if (option) {
+					const top = option.offsetTop;
+					const bottom = top + option.offsetHeight;
+					if (top < this.list.scrollTop) this.list.scrollTop = top;
+					else if (bottom > this.list.scrollTop + this.list.clientHeight) this.list.scrollTop = bottom - this.list.clientHeight;
+				}
+			}
+		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
 //#endregion
