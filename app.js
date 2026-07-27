@@ -44,11 +44,11 @@ var RetryingCatalogLoader = class {
 		this.retryDelayMs = retryDelayMs;
 	}
 	load(date, callbacks) {
-		this.cancel();
+		this.cancelCurrent();
 		const generation = ++this.generation;
 		this.attempt(date, callbacks, generation);
 	}
-	cancel() {
+	cancelCurrent() {
 		this.generation += 1;
 		if (this.retryTimer) this.scheduler.clearTimeout(this.retryTimer);
 		this.retryTimer = 0;
@@ -227,20 +227,25 @@ var GameSession = class {
 			playbackRequested: this.playbackRequestedState
 		};
 	}
-	reset(mode, resumedAttempt = 0, resumedHistory = [], resumedGuessedTrackIds = /* @__PURE__ */ new Set(), resumedCurrentSlot = null) {
+	reset(mode, seed = {
+		attempt: 0,
+		history: [],
+		guessedTrackIds: /* @__PURE__ */ new Set(),
+		currentSlot: null
+	}) {
 		this.modeState = mode;
 		this.phaseState = "idle";
 		this.roundState = null;
 		this.roundHeardState = false;
-		this.attemptState = resumedAttempt;
+		this.attemptState = seed.attempt;
 		this.roundNumberState = 0;
 		this.guessesState = 0;
 		this.correctState = 0;
-		this.currentSlotState = resumedCurrentSlot ? { ...resumedCurrentSlot } : null;
-		this.historyState = resumedHistory.map((slot) => ({ ...slot }));
+		this.currentSlotState = seed.currentSlot ? { ...seed.currentSlot } : null;
+		this.historyState = seed.history.map((slot) => ({ ...slot }));
 		this.guessedTrackIdsState.clear();
-		for (const trackId of resumedGuessedTrackIds) this.guessedTrackIdsState.add(trackId);
-		this.nextSlotId = Math.max(this.nextSlotId, resumedCurrentSlot?.id ?? 0, ...this.historyState.map((slot) => slot.id));
+		for (const trackId of seed.guessedTrackIds) this.guessedTrackIdsState.add(trackId);
+		this.nextSlotId = Math.max(this.nextSlotId, seed.currentSlot?.id ?? 0, ...this.historyState.map((slot) => slot.id));
 		this.resultState = null;
 		this.playbackRequestedState = false;
 	}
@@ -678,7 +683,7 @@ var GameController = class {
 		if (!this.session.recordGuess(dailyNumber)) return;
 		this.resolveAttempt(dailyNumber === round.track.dailyNumber ? "correct" : "wrong", guessed);
 	}
-	newGame() {
+	resultAction() {
 		const mode = this.session.snapshot.mode;
 		if (!mode) return;
 		if (this.overlay === "result") {
@@ -708,10 +713,9 @@ var GameController = class {
 			return;
 		}
 		if (this.overlay || this.session.snapshot.phase === "result") return;
-		const round = this.playback.ownedRound;
-		if (round) {
+		if (this.playback.ownedRound) {
 			this.clock.pause();
-			this.playback.suspend(round);
+			this.playback.suspend();
 			if (requestsPlayback(this.session.snapshot.phase)) this.session.setPlaybackState(this.session.snapshot.roundHeard ? "paused" : "preparing", false);
 		}
 		this.overlay = "discovery";
@@ -724,8 +728,7 @@ var GameController = class {
 		const returnFocus = this.session.snapshot.mode ? "play" : "discovery";
 		this.view.closeDiscovery(returnFocus, () => {
 			this.overlay = null;
-			const round = this.playback.ownedRound;
-			if (round) this.playback.restore(round);
+			if (this.playback.ownedRound) this.playback.restore();
 			this.prime();
 			this.render();
 		});
@@ -753,22 +756,20 @@ var GameController = class {
 		}
 	}
 	handleVisibilityVisible() {
-		const round = this.playback.ownedRound;
-		if (round) this.playback.restore(round);
+		if (this.playback.ownedRound) this.playback.restore();
 		if (this.session.snapshot.mode === "daily") this.dailyBoundary.reconcile();
 	}
 	handleVisibilityHidden() {
 		const state = this.session.snapshot;
-		const round = this.playback.ownedRound;
-		if (!round || state.phase === "result") return;
+		if (!this.playback.ownedRound || state.phase === "result") return;
 		this.clock.pause();
-		this.playback.suspend(round);
+		this.playback.suspend();
 		if (requestsPlayback(state.phase)) {
 			this.session.setPlaybackState(state.roundHeard ? "paused" : "preparing", false);
 			this.render();
 		}
 	}
-	onPending(round, _seamless = false) {
+	onPending(round) {
 		this.session.beginPreparing(round);
 		if (this.session.snapshot.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track, this.session.snapshot.attempt);
 		this.render();
@@ -937,7 +938,7 @@ var GameController = class {
 					return;
 				}
 			}
-			this.playback.start({ seamless: true });
+			this.playback.start();
 			return;
 		}
 		const clockWasRunning = state.playbackRequested && this.clock.snapshot().running;
@@ -995,13 +996,9 @@ var GameController = class {
 		const previousTrackId = this.session.snapshot.previousTrackId;
 		this.sessionNumber += 1;
 		this.playback.stop();
-		const savedDaily = mode === "daily" && (this.progress.dailyInProgress(this.dailyDate) || this.progress.dailyDone(this.dailyDate)) ? this.progress.daily : null;
-		const resumed = savedDaily?.step ?? 0;
-		const completedDaily = savedDaily?.completed === true;
-		const restoredCurrent = completedDaily ? savedDaily.history[0] ?? null : null;
-		const restoredHistory = completedDaily ? savedDaily.history.slice(1) : savedDaily?.history ?? [];
-		const resumedGuesses = new Set((savedDaily?.history ?? []).filter((slot) => slot.tone === "wrong").map((slot) => this.tracks.find((track) => track.title === slot.text)?.dailyNumber).filter((trackNumber) => trackNumber !== void 0));
-		this.session.reset(mode, resumed, restoredHistory, resumedGuesses, restoredCurrent);
+		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
+		const resumed = seed?.attempt ?? 0;
+		this.session.reset(mode, seed);
 		const initial = MODE_RULES[mode].initialTimeMs;
 		const milliseconds = initial ?? snippetSeconds(resumed) * 1e3;
 		this.view.beginProgressReset();
@@ -1092,6 +1089,24 @@ var ProgressService = class {
 	dailyInProgress(date) {
 		return this.dailyState.date === date && this.dailyState.started && !this.dailyState.completed;
 	}
+	dailySessionSeed(date, tracks) {
+		if (this.dailyState.date !== date || !this.dailyState.started) return {
+			attempt: 0,
+			history: [],
+			guessedTrackIds: /* @__PURE__ */ new Set(),
+			currentSlot: null
+		};
+		const attempts = this.dailyState.history;
+		const currentSlot = this.dailyState.completed ? attempts[0] ?? null : null;
+		const history = this.dailyState.completed ? attempts.slice(1) : attempts;
+		const guessedTrackIds = new Set(attempts.filter((slot) => slot.tone === "wrong").map((slot) => tracks.find((track) => track.title === slot.text)?.dailyNumber).filter((trackNumber) => trackNumber !== void 0));
+		return {
+			attempt: this.dailyState.step,
+			history: history.map((slot) => ({ ...slot })),
+			guessedTrackIds,
+			currentSlot: currentSlot ? { ...currentSlot } : null
+		};
+	}
 	markDailyStarted(date, track, attempt) {
 		if (this.dailyInProgress(date)) return true;
 		const next = {
@@ -1117,9 +1132,6 @@ var ProgressService = class {
 		if (!this.repository.saveDaily(next)) return this.persistenceFailed("advance-daily");
 		this.dailyState = next;
 		return true;
-	}
-	updateDailyStep(step) {
-		return this.updateDailyAttempt(step, this.dailyState.history);
 	}
 	recordDiscovery(trackNumber) {
 		if (this.discoveriesState.has(trackNumber)) return true;
@@ -1474,9 +1486,6 @@ var GameClock = class {
 		const snapshot = this.snapshot();
 		this.callbacks.onTick(snapshot);
 		return snapshot;
-	}
-	stop() {
-		this.pause();
 	}
 	snapshot() {
 		const projected = this.project(this.now());
@@ -1961,7 +1970,7 @@ var DualSlotAudioPlayer = class {
 		this.standby = null;
 		this.releaseSlot(standby);
 	}
-	suspend(_round) {
+	suspend() {
 		if (this.suspension) return;
 		this.suspension = {
 			terminal: null,
@@ -1977,7 +1986,7 @@ var DualSlotAudioPlayer = class {
 		}
 		if (this.active) this.status = "paused";
 	}
-	restore(_round) {
+	restore() {
 		const suspension = this.suspension;
 		this.suspension = null;
 		if (!suspension) return;
@@ -2360,7 +2369,7 @@ var PlaybackCoordinator = class {
 		}
 		if (this.pending?.id !== round.id || operation !== this.operationGeneration) return true;
 		this.clearLoading();
-		this.callbacks.onPending(round, options.seamless === true);
+		this.callbacks.onPending(round);
 		this.beginLoadingNotice(round, "starting", operation);
 		if (this.audio.snapshot().activeReady) this.prefetch();
 		return true;
@@ -2386,7 +2395,7 @@ var PlaybackCoordinator = class {
 		this.audio.pause();
 		if (this.ownedRound) this.status = "paused";
 	}
-	suspend(_round) {
+	suspend() {
 		if (this.suspended) return;
 		this.statusBeforeSuspend = this.status;
 		this.suspended = true;
@@ -2395,7 +2404,7 @@ var PlaybackCoordinator = class {
 		this.clearLoading();
 		this.audio.suspend();
 	}
-	restore(_round) {
+	restore() {
 		if (!this.suspended) return;
 		this.suspended = false;
 		this.status = this.prepared ? "prepared" : this.retryRound ? "retry" : this.pending || this.active ? "paused" : this.statusBeforeSuspend === "empty" ? "empty" : "paused";
@@ -2405,14 +2414,6 @@ var PlaybackCoordinator = class {
 		} finally {
 			this.restoringFromSuspension = false;
 		}
-	}
-	releaseActive() {
-		this.operationGeneration += 1;
-		this.clearLoading();
-		this.audio.releaseActive();
-		this.active = null;
-		this.pending = null;
-		this.status = this.prepared ? "prepared" : this.retryRound ? "retry" : "empty";
 	}
 	stop() {
 		this.lifecycleGeneration += 1;
@@ -2499,14 +2500,6 @@ var PlaybackCoordinator = class {
 			if (this.mode !== "daily") this.failedTrackIds.add(failure.round.track.dailyNumber);
 			if (this.standbyRecoveryAttempts < MAXIMUM_STANDBY_RECOVERIES) {
 				this.standbyRecoveryAttempts += 1;
-				this.callbacks.onRecovery?.({
-					role: "standby",
-					stage: failure.stage,
-					action: "retry-standby",
-					round: failure.round,
-					attempt: this.standbyRecoveryAttempts,
-					error: failure.error
-				});
 				this.defer(() => this.prefetch());
 			} else this.standbyRecoveryBlocked = true;
 			return;
@@ -2535,28 +2528,12 @@ var PlaybackCoordinator = class {
 			this.automaticRecoveryBlocked = true;
 			this.retryRound = round;
 			this.status = "retry";
-			this.callbacks.onRecovery?.({
-				role: "active",
-				stage: failure.stage,
-				action: "manual-retry",
-				round,
-				attempt: this.activeRecoveryAttempts,
-				error: failure.error
-			});
 			this.callbacks.onRetry("THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.");
 			return;
 		}
 		if (!preserveIdentity && this.activeRecoveryAttempts < MAXIMUM_AUTOMATIC_RECOVERIES) {
 			this.activeRecoveryAttempts += 1;
 			this.status = "empty";
-			this.callbacks.onRecovery?.({
-				role: "active",
-				stage: failure.stage,
-				action: "replace-active",
-				round,
-				attempt: this.activeRecoveryAttempts,
-				error: failure.error
-			});
 			if (wasPrepared || !shouldResume) this.defer(() => this.prime());
 			else {
 				this.callbacks.onRetry("THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.");
@@ -2567,14 +2544,6 @@ var PlaybackCoordinator = class {
 		this.automaticRecoveryBlocked = true;
 		this.retryRound = round;
 		this.status = "retry";
-		this.callbacks.onRecovery?.({
-			role: "active",
-			stage: failure.stage,
-			action: "manual-retry",
-			round,
-			attempt: this.activeRecoveryAttempts,
-			error: failure.error
-		});
 		this.callbacks.onRetry("THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.");
 	}
 	prefetch() {
@@ -3183,7 +3152,7 @@ var ModalController = class {
 			this.openFrame = 0;
 			if (!this.transitionMatches("result", generation)) return;
 			this.elements.card.classList.add("modal-visible");
-			this.elements.next.focus({ preventScroll: true });
+			this.elements.resultAction.focus({ preventScroll: true });
 			this.announce(this.elements.resultMeta.dataset.announcement || "RESULT");
 		};
 		if (this.reducedMotion.matches) finishOpen();
@@ -3629,7 +3598,7 @@ var GameView = class {
 		this.volume.bind(handlers.setVolume);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.skip.addEventListener("click", handlers.skip);
-		this.elements.next.addEventListener("click", handlers.newGame);
+		this.elements.resultAction.addEventListener("click", handlers.resultAction);
 		this.elements.spotify.addEventListener("click", handlers.openSpotify);
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
@@ -3813,7 +3782,7 @@ var GameView = class {
 			return;
 		}
 		const timed = result.mode === "blitz" || result.mode === "survival";
-		this.elements.next.textContent = result.mode === "daily" ? "CLOSE" : "NEW GAME";
+		this.elements.resultAction.textContent = result.mode === "daily" ? "CLOSE" : "NEW GAME";
 		this.elements.resultTitle.innerHTML = timed ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`;
 		const rows = resultRows(result);
 		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultModule(row, result.newPersonalBest)));
@@ -3855,12 +3824,12 @@ var GameView = class {
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.newGame();
+				this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.resultAction();
 				return;
 			}
 			if (this.state.overlay === "result" && event.key === "Enter" && document.activeElement !== this.elements.spotify) {
 				event.preventDefault();
-				this.handlers.newGame();
+				this.handlers.resultAction();
 				return;
 			}
 			if (this.isArrowKey(event.key)) {
@@ -3893,7 +3862,7 @@ var GameView = class {
 		return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight";
 	}
 	moveModalFocus(overlay, key) {
-		const candidates = overlay === "result" ? [this.elements.next, this.elements.spotify] : [this.elements.discoveryClose, this.elements.discoveryReset];
+		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.spotify] : [this.elements.discoveryClose, this.elements.discoveryReset];
 		this.cycleFocus(candidates, key, candidates[0]);
 	}
 	movePrimaryFocus(key) {
@@ -3986,7 +3955,7 @@ var GameView = class {
 			rulesetCopy: this.required(".ruleset-copy"),
 			modePrompt: this.required(".mode-prompt"),
 			status: this.required(".status"),
-			next: this.required(".next"),
+			resultAction: this.required(".result-action"),
 			spotify: this.required(".spotify"),
 			result: this.required(".result-modal"),
 			resultTitle: this.required("#corzaguessr-result-title"),
@@ -4010,7 +3979,7 @@ function duration(styles, name) {
 	return value.endsWith("ms") ? Number.parseFloat(value) || 0 : value.endsWith("s") ? (Number.parseFloat(value) || 0) * 1e3 : 0;
 }
 function markup() {
-	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">DISCOVERY</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><p class="transport-status" role="status" aria-live="polite" hidden></p><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button next">NEW GAME</button><button type="button" class="button spotify">SPOTIFY</button></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><h3 id="corzaguessr-discovery-title" class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></h3><div class="discovery-items" role="list"></div><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
+	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">DISCOVERY</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><p class="transport-status" role="status" aria-live="polite" hidden></p><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button spotify">SPOTIFY</button></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><h3 id="corzaguessr-discovery-title" class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></h3><div class="discovery-items" role="list"></div><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
 }
 //#endregion
 //#region src/main.ts
@@ -4048,7 +4017,7 @@ if (root && !root.dataset.corzaguessrReady) {
 	});
 	audio.setVolume(initialVolume / 100);
 	playback = new PlaybackCoordinator(audio, {
-		onPending: (round, seamless) => controller?.onPending(round, seamless),
+		onPending: (round) => controller?.onPending(round),
 		onPlaying: (round, startedNewRound) => {
 			controller?.onAudioPlaying(round, startedNewRound);
 		},
@@ -4066,7 +4035,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		playbackShortcut: () => controller.playbackShortcut(),
 		skip: () => controller.skip(),
 		guess: (dailyNumber) => controller.guess(dailyNumber),
-		newGame: () => controller.newGame(),
+		resultAction: () => controller.resultAction(),
 		openDiscovery: () => controller.openDiscovery(),
 		closeDiscovery: () => controller.closeDiscovery(),
 		resetDiscovery: () => controller.resetDiscovery(),
