@@ -458,24 +458,6 @@
   pointer-events: none;
 }
 
-#corzaguessr .transport-status {
-  display: grid;
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  place-items: center;
-  margin: 0;
-  border-radius: inherit;
-  background: rgba(0, 0, 0, 0.72);
-  color: white;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-  text-align: center;
-  text-transform: uppercase;
-}
-
 #corzaguessr .time-change span {
   opacity: 0;
   color: white;
