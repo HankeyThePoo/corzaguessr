@@ -75,9 +75,9 @@
   mask-composite: exclude;
 }
 
-#corzaguessr .button:focus::after,
-#corzaguessr .play:focus::after,
-#corzaguessr .mode:not(:disabled):focus::after {
+#corzaguessr.keyboard-input .button:focus::after,
+#corzaguessr.keyboard-input .play:focus::after,
+#corzaguessr.keyboard-input .mode:not(:disabled):focus::after {
   opacity: 1;
 }
 
@@ -336,10 +336,7 @@
 }
 
 #corzaguessr .volume-control:focus-within {
-  box-shadow:
-    0 0 0 2px #050711,
-    0 0 0 4px #7bb0f7,
-    0 0 14px rgba(73, 241, 250, 0.22);
+  filter: brightness(1.16);
 }
 
 #corzaguessr .skip {
