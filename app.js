@@ -3931,8 +3931,9 @@ var GameView = class {
 	}
 	handleRootKeydown(event) {
 		if (!this.handlers || !this.state) return;
+		const pointerAnchor = this.inputModality === "pointer-fine" && this.hoveredButton && this.canNavigateTo(this.hoveredButton) ? this.hoveredButton : null;
 		const guessOwnsInput = this.state.guessEnabled && document.activeElement === this.elements.guess;
-		const hoveredAction = this.inputModality === "pointer-fine" && !guessOwnsInput && (event.key === "Enter" || event.key === " ") && this.hoveredButton && this.canNavigateTo(this.hoveredButton) ? this.hoveredButton : null;
+		const hoveredAction = pointerAnchor && !guessOwnsInput && (event.key === "Enter" || event.key === " ") ? pointerAnchor : null;
 		this.setInputModality("keyboard");
 		if (hoveredAction) {
 			event.preventDefault();
@@ -3953,7 +3954,7 @@ var GameView = class {
 			}
 			if (this.isArrowKey(event.key)) {
 				event.preventDefault();
-				this.moveModalFocus(this.state.overlay, event.key);
+				this.moveModalFocus(this.state.overlay, event.key, pointerAnchor);
 				return;
 			}
 			this.modal.trapFocus(event);
@@ -3969,7 +3970,7 @@ var GameView = class {
 				return;
 			}
 			event.preventDefault();
-			this.movePrimaryFocus(event.key);
+			this.movePrimaryFocus(event.key, pointerAnchor);
 			return;
 		}
 		if (event.key === "Enter" && this.state.appStatus !== "awaiting-mode" && !target?.closest("button, input, a, .suggest")) {
@@ -3980,11 +3981,11 @@ var GameView = class {
 	isArrowKey(key) {
 		return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight";
 	}
-	moveModalFocus(overlay, key) {
+	moveModalFocus(overlay, key, pointerAnchor) {
 		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.spotify] : [this.elements.discoveryClose, this.elements.discoveryReset];
-		this.cycleFocus(candidates, key, candidates[0]);
+		this.cycleFocus(candidates, key, candidates[0], pointerAnchor);
 	}
-	movePrimaryFocus(key) {
+	movePrimaryFocus(key, pointerAnchor) {
 		const elements = {
 			discovery: this.elements.discoveryButton,
 			daily: this.modeButtons.daily,
@@ -3995,7 +3996,8 @@ var GameView = class {
 		};
 		const entries = Object.entries(elements);
 		const enabled = new Set(entries.filter(([, element]) => this.canNavigateTo(element)).map(([id]) => id));
-		const current = entries.find(([, element]) => element === document.activeElement)?.[0] ?? null;
+		const currentElement = pointerAnchor && this.canNavigateTo(pointerAnchor) ? pointerAnchor : document.activeElement;
+		const current = entries.find(([, element]) => element === currentElement)?.[0] ?? null;
 		const completedDaily = this.state?.mode === "daily" && this.state.dailyProgress.date === this.state.dailyDate && this.state.dailyProgress.completed;
 		const target = nextPrimaryFocus({
 			current,
@@ -4008,10 +4010,11 @@ var GameView = class {
 	focusIfAvailable(element) {
 		if (element && this.canNavigateTo(element)) element.focus({ preventScroll: true });
 	}
-	cycleFocus(candidates, key, recommended) {
+	cycleFocus(candidates, key, recommended, pointerAnchor) {
 		const focusable = candidates.filter((element) => this.canNavigateTo(element));
 		if (!focusable.length) return;
-		const currentIndex = focusable.indexOf(document.activeElement);
+		const current = pointerAnchor && focusable.includes(pointerAnchor) ? pointerAnchor : document.activeElement;
+		const currentIndex = focusable.indexOf(current);
 		if (currentIndex < 0) {
 			(focusable.includes(recommended) ? recommended : focusable[0]).focus({ preventScroll: true });
 			return;
@@ -4050,6 +4053,7 @@ var GameView = class {
 	}
 	setInputModality(modality) {
 		this.inputModality = modality;
+		if (modality === "keyboard") this.hoveredButton = null;
 		this.root.classList.toggle("keyboard-input", modality === "keyboard");
 	}
 	required(selector) {
