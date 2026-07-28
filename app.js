@@ -3897,6 +3897,10 @@ var GameView = class {
 	}
 	bindPreview(element, preview) {
 		element.addEventListener("pointerenter", () => {
+			if (preview !== "discovery" && this.finePointer.matches && this.canNavigateTo(element)) {
+				this.inputModality = "pointer-fine";
+				element.focus({ preventScroll: true });
+			}
 			if (this.previewAllowed()) {
 				this.preview = preview;
 				this.renderRules();
