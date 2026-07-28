@@ -3646,6 +3646,7 @@ var GameView = class {
 	handlers = null;
 	state = null;
 	inputModality;
+	hoveredButton = null;
 	preview = null;
 	renderedDiscoveries = "";
 	renderedDiscoveryTracks = null;
@@ -3715,7 +3716,6 @@ var GameView = class {
 		this.elements.discoveryModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
 		});
-		for (const button of this.root.querySelectorAll("button")) button.addEventListener("pointerenter", () => this.focusHoveredButton(button));
 		for (const [mode, button] of Object.entries(this.modeButtons)) {
 			button.addEventListener("click", () => handlers.selectMode(mode));
 			this.bindPreview(button, mode);
@@ -3724,6 +3724,9 @@ var GameView = class {
 		this.root.addEventListener("keydown", (event) => this.handleRootKeydown(event), true);
 		this.root.addEventListener("pointermove", (event) => this.handlePointerMove(event));
 		this.root.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
+		this.root.addEventListener("pointerleave", () => {
+			this.hoveredButton = null;
+		});
 	}
 	render(state, sessionKey, guessed) {
 		this.state = state;
@@ -3928,7 +3931,15 @@ var GameView = class {
 	}
 	handleRootKeydown(event) {
 		if (!this.handlers || !this.state) return;
+		const guessOwnsInput = this.state.guessEnabled && document.activeElement === this.elements.guess;
+		const hoveredAction = this.inputModality === "pointer-fine" && !guessOwnsInput && (event.key === "Enter" || event.key === " ") && this.hoveredButton && this.canNavigateTo(this.hoveredButton) ? this.hoveredButton : null;
 		this.setInputModality("keyboard");
+		if (hoveredAction) {
+			event.preventDefault();
+			this.hoveredButton = null;
+			hoveredAction.click();
+			return;
+		}
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
@@ -4012,23 +4023,19 @@ var GameView = class {
 		if (element instanceof HTMLButtonElement && element.disabled) return false;
 		return element.offsetParent !== null;
 	}
-	focusHoveredButton(button) {
-		if (!this.finePointer.matches || !this.canNavigateTo(button)) return;
-		this.setInputModality("pointer-fine");
-		if (this.state?.guessEnabled && document.activeElement === this.elements.guess) return;
-		if (document.activeElement !== button) button.focus({ preventScroll: true });
-	}
 	handlePointerMove(event) {
 		if (event.pointerType !== "mouse" || !this.finePointer.matches) return;
 		this.setInputModality("pointer-fine");
 		const button = event.target instanceof Element ? event.target.closest("button") : null;
-		if (button instanceof HTMLButtonElement) this.focusHoveredButton(button);
+		this.hoveredButton = button instanceof HTMLButtonElement && this.canNavigateTo(button) ? button : null;
 	}
 	handlePointerDown(event) {
 		if (!this.handlers || !this.state) return;
 		const modality = event.pointerType === "mouse" && this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
 		this.setInputModality(modality);
 		const target = event.target instanceof Element ? event.target : null;
+		const button = target?.closest("button");
+		this.hoveredButton = modality === "pointer-fine" && button instanceof HTMLButtonElement && this.canNavigateTo(button) ? button : null;
 		if (modality === "pointer-fine" && document.activeElement === this.elements.guess && target?.closest("button")) {
 			event.preventDefault();
 			return;
