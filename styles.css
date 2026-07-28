@@ -472,6 +472,11 @@
   animation: corzaguessr-survival-hit var(--duration-feedback) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+#corzaguessr .time-change.survival-change-static span {
+  opacity: 1;
+  transform: none;
+}
+
 #corzaguessr .tick {
   position: absolute;
   inset: 0 auto 0;
@@ -832,6 +837,7 @@
 }
 
 #corzaguessr .discovery-modal {
+  position: fixed;
   z-index: 4;
   transition: background var(--duration-result) ease;
 }
@@ -956,9 +962,12 @@
 }
 
 @media (max-width: 600px) {
+  #corzaguessr .result-modal {
+    position: fixed;
+  }
+
   #corzaguessr .result-modal,
   #corzaguessr .discovery-modal {
-    position: fixed;
     align-items: center;
     padding: 8px;
     border-radius: 0;
