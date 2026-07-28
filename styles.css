@@ -863,11 +863,64 @@
 
 #corzaguessr .discovery-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 0.6rem;
-  height: min(78dvh, 650px);
+  height: auto;
+  max-height: min(78dvh, 650px);
   padding: 1rem;
   overflow: hidden;
+}
+
+#corzaguessr .progress-summary {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+#corzaguessr .progress-summary h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+#corzaguessr .progress-bests {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+#corzaguessr .progress-best {
+  display: grid;
+  align-content: center;
+  gap: 0.12rem;
+  min-height: 74px;
+  padding: 0.55rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+#corzaguessr .progress-best-mode {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+#corzaguessr .progress-best strong {
+  font-size: 0.86rem;
+  line-height: 1.15;
+}
+
+#corzaguessr .progress-best small {
+  font-size: 0.62rem;
+  line-height: 1.2;
+  opacity: 0.72;
 }
 
 #corzaguessr .discovery-title {
@@ -876,6 +929,11 @@
   margin: 0.25rem;
   text-align: center;
   font-size: 1.1rem;
+}
+
+#corzaguessr .discovery-title > span {
+  font-weight: 800;
+  letter-spacing: 0.1em;
 }
 
 #corzaguessr .discovery-title small {
@@ -888,6 +946,7 @@
   align-content: start;
   gap: 0.5rem;
   min-height: 0;
+  max-height: calc(210px + 2rem);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -974,7 +1033,17 @@
   }
 
   #corzaguessr .discovery-panel {
-    height: min(78dvh, calc(100dvh - 16px));
+    height: auto;
+    max-height: min(78dvh, calc(100dvh - 16px));
+  }
+
+  #corzaguessr .progress-bests {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #corzaguessr .progress-best {
+    min-height: 62px;
+    padding-block: 0.4rem;
   }
 }
 
