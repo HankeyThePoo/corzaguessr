@@ -3722,6 +3722,7 @@ var GameView = class {
 		}
 		this.bindPreview(this.elements.discoveryButton, "discovery");
 		this.root.addEventListener("keydown", (event) => this.handleRootKeydown(event), true);
+		this.root.addEventListener("pointermove", (event) => this.handlePointerMove(event));
 		this.root.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
 	}
 	render(state, sessionKey, guessed) {
@@ -3927,7 +3928,7 @@ var GameView = class {
 	}
 	handleRootKeydown(event) {
 		if (!this.handlers || !this.state) return;
-		this.inputModality = "keyboard";
+		this.setInputModality("keyboard");
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
@@ -4013,14 +4014,20 @@ var GameView = class {
 	}
 	focusHoveredButton(button) {
 		if (!this.finePointer.matches || !this.canNavigateTo(button)) return;
+		this.setInputModality("pointer-fine");
 		if (this.state?.guessEnabled && document.activeElement === this.elements.guess) return;
-		this.inputModality = "pointer-fine";
-		button.focus({ preventScroll: true });
+		if (document.activeElement !== button) button.focus({ preventScroll: true });
+	}
+	handlePointerMove(event) {
+		if (event.pointerType !== "mouse" || !this.finePointer.matches) return;
+		this.setInputModality("pointer-fine");
+		const button = event.target instanceof Element ? event.target.closest("button") : null;
+		if (button instanceof HTMLButtonElement) this.focusHoveredButton(button);
 	}
 	handlePointerDown(event) {
 		if (!this.handlers || !this.state) return;
 		const modality = event.pointerType === "mouse" && this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
-		this.inputModality = modality;
+		this.setInputModality(modality);
 		const target = event.target instanceof Element ? event.target : null;
 		if (modality === "pointer-fine" && document.activeElement === this.elements.guess && target?.closest("button")) {
 			event.preventDefault();
@@ -4033,6 +4040,10 @@ var GameView = class {
 		}
 		if (!this.state.guessEnabled || this.state.overlay || target?.closest("button, input, a, .suggest")) return;
 		this.elements.guess.focus({ preventScroll: true });
+	}
+	setInputModality(modality) {
+		this.inputModality = modality;
+		this.root.classList.toggle("keyboard-input", modality === "keyboard");
 	}
 	required(selector) {
 		const element = this.root.querySelector(selector);
