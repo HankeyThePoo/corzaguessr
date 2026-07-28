@@ -500,7 +500,7 @@ function clampRandom(value) {
 var COPY = {
 	modePrompt: "SELECT A MODE TO BEGIN",
 	loadingCatalog: "LOADING TRACKLIST...",
-	catalogError: "COULD NOT LOAD THE TRACKLIST, RETRYING...",
+	catalogError: "COULD NOT LOAD THE TRACKLIST.",
 	loadingTrack: "LOADING TRACK...",
 	trackError: "COULD NOT PLAY TRACK, PRESS PLAY TO RETRY!",
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
