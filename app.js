@@ -1591,7 +1591,7 @@ var STORAGE_KEYS = {
 	daily: "corzaguessr:daily",
 	personalBests: "corzaguessr:personal-bests"
 };
-function sanitizeDailyProgress(value) {
+function parseDailyProgress(value) {
 	if (!isRecord(value) || !hasExactKeys(value, [
 		"date",
 		"dailyNumber",
@@ -1629,7 +1629,7 @@ function sanitizeDailyProgress(value) {
 		history
 	};
 }
-function sanitizePersonalBests(value) {
+function parsePersonalBests(value) {
 	if (!isRecord(value) || !hasExactKeys(value, [
 		"classic",
 		"daily",
@@ -1668,7 +1668,7 @@ function validDailyBest(value) {
 	if (!isRecord(value) || !hasExactKeys(value, ["attempts", "date"]) || !isIntegerBetween(value.attempts, 0, 6) || typeof value.date !== "string") return false;
 	return value.attempts === 0 ? value.date === "" : isIsoDate(value.date);
 }
-function sanitizeDiscoveries(value) {
+function parseDiscoveries(value) {
 	if (!Array.isArray(value)) return /* @__PURE__ */ new Set();
 	const discoveries = /* @__PURE__ */ new Set();
 	for (const candidate of value) {
@@ -1715,9 +1715,9 @@ var LocalStorageProgressRepository = class {
 	}
 	load() {
 		return {
-			discoveries: sanitizeDiscoveries(this.readUnknown(STORAGE_KEYS.discoveries)),
-			daily: sanitizeDailyProgress(this.readUnknown(STORAGE_KEYS.daily)),
-			personalBests: sanitizePersonalBests(this.readUnknown(STORAGE_KEYS.personalBests))
+			discoveries: parseDiscoveries(this.readUnknown(STORAGE_KEYS.discoveries)),
+			daily: parseDailyProgress(this.readUnknown(STORAGE_KEYS.daily)),
+			personalBests: parsePersonalBests(this.readUnknown(STORAGE_KEYS.personalBests))
 		};
 	}
 	saveDiscoveries(discoveries) {
