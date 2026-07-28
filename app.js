@@ -735,8 +735,10 @@ var GameController = class {
 			this.view.announce("PROGRESS COULD NOT BE RESET IN THIS BROWSER.");
 			return;
 		}
+		const mode = this.session.snapshot.mode;
+		if (mode) this.resetForMode(mode);
+		else this.render();
 		this.view.announce("ALL PROGRESS RESET.");
-		this.render();
 	}
 	openSpotify() {
 		const result = this.session.snapshot.result;
@@ -1056,6 +1058,41 @@ var GameController = class {
 	}
 };
 //#endregion
+//#region src/domain/progress-defaults.ts
+function emptyDailyProgress() {
+	return {
+		date: "",
+		dailyNumber: null,
+		started: false,
+		completed: false,
+		won: false,
+		step: 0,
+		history: []
+	};
+}
+function emptyPersonalBests() {
+	return {
+		classic: {
+			current: 0,
+			best: 0,
+			snippetTotal: 0,
+			bestSnippetTotal: 0
+		},
+		daily: {
+			attempts: 0,
+			date: ""
+		},
+		blitz: {
+			score: 0,
+			accuracy: null
+		},
+		survival: {
+			score: 0,
+			accuracy: null
+		}
+	};
+}
+//#endregion
 //#region src/application/progress-service.ts
 var ProgressService = class {
 	repository;
@@ -1140,35 +1177,8 @@ var ProgressService = class {
 	resetProgress() {
 		if (!this.repository.clearProgress()) return this.persistenceFailed("reset-progress");
 		this.discoveriesState.clear();
-		this.dailyState = {
-			date: "",
-			dailyNumber: null,
-			started: false,
-			completed: false,
-			won: false,
-			step: 0,
-			history: []
-		};
-		this.bestsState = {
-			classic: {
-				current: 0,
-				best: 0,
-				snippetTotal: 0,
-				bestSnippetTotal: 0
-			},
-			daily: {
-				attempts: 0,
-				date: ""
-			},
-			blitz: {
-				score: 0,
-				accuracy: null
-			},
-			survival: {
-				score: 0,
-				accuracy: null
-			}
-		};
+		this.dailyState = emptyDailyProgress();
+		this.bestsState = emptyPersonalBests();
 		return true;
 	}
 	finish(run) {
@@ -1581,39 +1591,6 @@ var STORAGE_KEYS = {
 	daily: "corzaguessr:daily",
 	personalBests: "corzaguessr:personal-bests"
 };
-function emptyDailyProgress() {
-	return {
-		date: "",
-		dailyNumber: null,
-		started: false,
-		completed: false,
-		won: false,
-		step: 0,
-		history: []
-	};
-}
-function emptyPersonalBests() {
-	return {
-		classic: {
-			current: 0,
-			best: 0,
-			snippetTotal: 0,
-			bestSnippetTotal: 0
-		},
-		daily: {
-			attempts: 0,
-			date: ""
-		},
-		blitz: {
-			score: 0,
-			accuracy: null
-		},
-		survival: {
-			score: 0,
-			accuracy: null
-		}
-	};
-}
 function sanitizeDailyProgress(value) {
 	if (!isRecord(value) || !hasExactKeys(value, [
 		"date",
