@@ -3428,23 +3428,28 @@ var TimelineView = class {
 		if (!seconds) return;
 		this.clearSurvivalFeedback();
 		this.elements.timeChangeText.textContent = seconds > 0 ? `+${seconds}S` : `${seconds}S`;
-		this.elements.feedback.offsetWidth;
-		this.elements.feedback.classList.add(seconds > 0 ? "survival-reward" : "survival-penalty");
-		this.elements.timeChange.classList.add("survival-change");
-		if (this.reducedMotion.matches || this.durations.feedback <= 0) {
+		if (this.durations.feedback <= 0) {
 			this.clearSurvivalFeedback();
 			return;
+		}
+		if (this.reducedMotion.matches) this.elements.timeChange.classList.add("survival-change-static");
+		else {
+			this.elements.feedback.offsetWidth;
+			this.elements.feedback.classList.add(seconds > 0 ? "survival-reward" : "survival-penalty");
+			this.elements.timeChange.classList.add("survival-change");
 		}
 		const generation = ++this.survivalGeneration;
 		const finish = () => {
 			if (generation !== this.survivalGeneration) return;
 			this.clearSurvivalFeedback();
 		};
-		this.survivalListener = (event) => {
-			const animation = event;
-			if (event.target === this.elements.timeChangeText && (!animation.animationName || animation.animationName === "corzaguessr-survival-hit")) finish();
-		};
-		this.elements.timeChangeText.addEventListener("animationend", this.survivalListener);
+		if (!this.reducedMotion.matches) {
+			this.survivalListener = (event) => {
+				const animation = event;
+				if (event.target === this.elements.timeChangeText && (!animation.animationName || animation.animationName === "corzaguessr-survival-hit")) finish();
+			};
+			this.elements.timeChangeText.addEventListener("animationend", this.survivalListener);
+		}
 		this.survivalTimer = this.scheduler.setTimer(finish, this.durations.feedback);
 	}
 	clearSurvivalFeedback() {
@@ -3454,7 +3459,7 @@ var TimelineView = class {
 		if (this.survivalListener) this.elements.timeChangeText.removeEventListener("animationend", this.survivalListener);
 		this.survivalListener = null;
 		this.elements.feedback.classList.remove("survival-reward", "survival-penalty");
-		this.elements.timeChange.classList.remove("survival-change");
+		this.elements.timeChange.classList.remove("survival-change", "survival-change-static");
 		this.elements.timeChangeText.textContent = "";
 	}
 	progressScale() {
