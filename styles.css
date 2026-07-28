@@ -866,15 +866,15 @@
   gap: 0.6rem;
   height: auto;
   max-height: min(78dvh, 650px);
-  padding: 1rem;
+  padding: 0.75rem 1rem 1rem;
   overflow: hidden;
 }
 
 #corzaguessr .progress-summary {
   display: grid;
-  gap: 0.6rem;
+  gap: 0.75rem;
   margin-top: 0.15rem;
-  padding-top: 1rem;
+  padding-top: 0.75rem;
   border-top: 1px solid var(--line);
 }
 
@@ -889,9 +889,6 @@
 }
 
 #corzaguessr .progress-summary h4 {
-  display: grid;
-  align-items: start;
-  min-height: 2.55rem;
   margin: 0;
 }
 
@@ -935,7 +932,7 @@
 #corzaguessr .discovery-title {
   display: grid;
   gap: 0.15rem;
-  margin: 0;
+  margin: 0 0 0.15rem;
   text-align: center;
   font-size: 1.1rem;
 }
