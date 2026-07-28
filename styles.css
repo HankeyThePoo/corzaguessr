@@ -890,7 +890,7 @@
 
 #corzaguessr .progress-summary h4 {
   display: grid;
-  align-items: center;
+  align-items: start;
   min-height: 2.55rem;
   margin: 0;
 }
