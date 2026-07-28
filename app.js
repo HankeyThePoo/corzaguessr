@@ -68,6 +68,7 @@ var RetryingCatalogLoader = class {
 			if (generation !== this.generation || controller.signal.aborted || error instanceof DOMException && error.name === "AbortError") return;
 			this.abortController = null;
 			callbacks.onError(error);
+			if (!isRetryable(error)) return;
 			this.retryTimer = this.scheduler.setTimeout(() => {
 				this.retryTimer = 0;
 				this.attempt(date, callbacks, generation);
@@ -75,6 +76,9 @@ var RetryingCatalogLoader = class {
 		});
 	}
 };
+function isRetryable(error) {
+	return !(typeof error === "object" && error !== null && "retryable" in error && error.retryable === false);
+}
 //#endregion
 //#region src/domain/mode-rules.ts
 var SNIPPET_SECONDS = [
@@ -357,21 +361,7 @@ var GameSession = class {
 		if (outcome === "skip") if (isTimedMode(this.modeState)) text = "SKIPPED";
 		else {
 			const finalGuess = this.attemptState === 5;
-			const added = finalGuess ? 0 : [
-				1,
-				2,
-				4,
-				8,
-				16,
-				32
-			][this.attemptState + 1] - [
-				1,
-				2,
-				4,
-				8,
-				16,
-				32
-			][this.attemptState];
+			const added = finalGuess ? 0 : SNIPPET_SECONDS[this.attemptState + 1] - SNIPPET_SECONDS[this.attemptState];
 			text = finalGuess ? "FINAL GUESS SKIPPED" : `GUESS ${this.attemptState + 1} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`;
 		}
 		return {
@@ -1512,10 +1502,11 @@ var GameClock = class {
 	}
 	commit() {
 		if (!this.running || this.anchorMs === null) return;
-		const projected = this.project(this.now());
+		const now = this.now();
+		const projected = this.project(now);
 		this.elapsedMs = projected.elapsedMs;
 		this.remainingMs = projected.remainingMs;
-		this.anchorMs = this.now();
+		this.anchorMs = now;
 		if (this.remainingMs <= 0) this.expired = true;
 	}
 	schedule() {
@@ -2870,7 +2861,6 @@ var AttemptHistoryView = class {
 		element.classList.remove("wiggle");
 		element.offsetWidth;
 		element.classList.add("wiggle");
-		this.nodeMotionGeneration += 1;
 		let timer = 0;
 		const finish = () => {
 			const active = this.wiggles.get(element);
