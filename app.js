@@ -506,7 +506,7 @@ var COPY = {
 	selectedTrackRetry: "THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.",
 	selectedTrackReplacing: "THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.",
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
-	discovery: "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS"
+	progress: "VIEW YOUR PERSONAL BESTS AND THE TRACKS YOU'VE DISCOVERED"
 };
 //#endregion
 //#region src/application/game-view-model.ts
@@ -577,6 +577,7 @@ function composeGameViewModel(input) {
 		clock: input.clock,
 		result: session.result,
 		dailyProgress: input.dailyProgress,
+		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
 		discoveries: input.discoveries,
 		tracks: input.tracks,
@@ -725,13 +726,13 @@ var GameController = class {
 			this.render();
 		});
 	}
-	resetDiscovery() {
+	resetProgress() {
 		if (this.overlay !== "discovery") return;
-		if (!this.progress.resetDiscoveries()) {
-			this.view.announce("DISCOVERY COULD NOT BE RESET IN THIS BROWSER.");
+		if (!this.progress.resetProgress()) {
+			this.view.announce("PROGRESS COULD NOT BE RESET IN THIS BROWSER.");
 			return;
 		}
-		this.view.announce("DISCOVERY RESET.");
+		this.view.announce("ALL PROGRESS RESET.");
 		this.render();
 	}
 	openSpotify() {
@@ -819,7 +820,7 @@ var GameController = class {
 		this.render();
 	}
 	onProgressPersistenceFailure(failure) {
-		if (failure.operation === "reset-discoveries" || this.persistenceFailureQueued) return;
+		if (failure.operation === "reset-progress" || this.persistenceFailureQueued) return;
 		this.persistenceFailureQueued = true;
 		queueMicrotask(() => {
 			this.persistenceFailureQueued = false;
@@ -1042,6 +1043,7 @@ var GameController = class {
 			transport: this.playback.snapshot,
 			clock: this.clock.snapshot(),
 			dailyProgress: this.progress.daily,
+			personalBests: this.progress.personalBests,
 			dailyDate: this.dailyDate,
 			discoveries: this.progress.discoveries,
 			tracks: this.tracks,
@@ -1132,9 +1134,35 @@ var ProgressService = class {
 		this.discoveriesState = next;
 		return true;
 	}
-	resetDiscoveries() {
-		if (!this.repository.clearDiscoveries()) return this.persistenceFailed("reset-discoveries");
+	resetProgress() {
+		if (!this.repository.clearProgress()) return this.persistenceFailed("reset-progress");
 		this.discoveriesState.clear();
+		this.dailyState = {
+			date: "",
+			dailyNumber: null,
+			started: false,
+			completed: false,
+			won: false,
+			step: 0,
+			history: []
+		};
+		this.bestsState = {
+			classic: {
+				current: 0,
+				best: 0,
+				snippetTotal: 0,
+				bestSnippetTotal: 0
+			},
+			daily: 0,
+			blitz: {
+				score: 0,
+				accuracy: null
+			},
+			survival: {
+				score: 0,
+				accuracy: null
+			}
+		};
 		return true;
 	}
 	finish(run) {
@@ -1710,10 +1738,12 @@ var LocalStorageProgressRepository = class {
 			return false;
 		}
 	}
-	clearDiscoveries() {
+	clearProgress() {
 		try {
 			if (!this.storage) return false;
 			this.storage.removeItem(STORAGE_KEYS.discoveries);
+			this.storage.removeItem(STORAGE_KEYS.daily);
+			this.storage.removeItem(STORAGE_KEYS.personalBests);
 			return true;
 		} catch {
 			return false;
@@ -3363,6 +3393,61 @@ function createResultModule(row, newPersonalBest) {
 	return module;
 }
 //#endregion
+//#region src/ui/progress-summary.ts
+var ProgressSummaryView = class {
+	container;
+	signature = "";
+	constructor(container) {
+		this.container = container;
+	}
+	render(bests) {
+		const signature = JSON.stringify(bests);
+		if (signature === this.signature) return;
+		this.signature = signature;
+		this.container.replaceChildren(...rows(bests).map((row) => {
+			const item = document.createElement("div");
+			item.className = "progress-best";
+			const mode = document.createElement("span");
+			mode.className = "progress-best-mode";
+			mode.textContent = row.mode;
+			const value = document.createElement("strong");
+			value.textContent = row.value;
+			const detail = document.createElement("small");
+			detail.textContent = row.detail;
+			item.append(mode, value, detail);
+			return item;
+		}));
+	}
+};
+function rows(bests) {
+	const classicAverage = bests.classic.best ? bests.classic.bestSnippetTotal / bests.classic.best : 0;
+	return [
+		{
+			mode: "CLASSIC",
+			value: bests.classic.best ? `HIGHEST STREAK ${bests.classic.best}` : "--",
+			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}S` : "NO RECORD"
+		},
+		{
+			mode: "DAILY",
+			value: bests.daily ? `${bests.daily}/6` : "--",
+			detail: bests.daily ? "BEST ATTEMPT" : "NO RECORD"
+		},
+		{
+			mode: "BLITZ",
+			value: bests.blitz.score ? `${bests.blitz.score} CORRECT` : "--",
+			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% ACCURACY` : "NO RECORD"
+		},
+		{
+			mode: "SURVIVAL",
+			value: bests.survival.score ? formatClock(bests.survival.score / 1e3) : "--",
+			detail: bests.survival.score ? `${bests.survival.accuracy ?? 0}% ACCURACY` : "NO RECORD"
+		}
+	];
+}
+function formatDecimal(value) {
+	return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+//#endregion
 //#region src/ui/timeline-view.ts
 var TimelineView = class {
 	elements;
@@ -3543,6 +3628,7 @@ var GameView = class {
 	attempts;
 	timeline;
 	volume;
+	progressSummary;
 	durations;
 	handlers = null;
 	state = null;
@@ -3596,6 +3682,7 @@ var GameView = class {
 			timeChangeText: this.elements.timeChangeText
 		}, this.durations, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
+		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
 		if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => {
 			if (this.modal.discoveryLayoutActive) this.elements.discoveryShell.style.height = `${this.elements.discoveryPanel.offsetHeight}px`;
 		}).observe(this.elements.discoveryPanel);
@@ -3610,7 +3697,7 @@ var GameView = class {
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
 		this.elements.discoveryReset.addEventListener("click", () => {
-			if (window.confirm("RESET DISCOVERY? THIS HIDES ALL DISCOVERED TRACKS.")) handlers.resetDiscovery();
+			if (window.confirm("RESET ALL PROGRESS? THIS ERASES DISCOVERY, DAILY PROGRESS, AND PERSONAL BESTS.")) handlers.resetProgress();
 		});
 		this.elements.discoveryModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
@@ -3655,6 +3742,7 @@ var GameView = class {
 		this.attempts.render(state.currentSlot, state.history, sessionKey);
 		this.autocomplete.setDependencies(state.tracks, guessed);
 		this.renderDiscovery(state);
+		this.progressSummary.render(state.personalBests);
 		this.renderResult(state.result);
 		this.renderClock(state.clock);
 	}
@@ -3732,7 +3820,7 @@ var GameView = class {
 	}
 	renderRules() {
 		if (!this.state) return;
-		const text = this.state.transportText || (!this.preview || this.preview === this.state.mode ? this.state.rulesText : this.preview === "discovery" ? COPY.discovery : MODE_RULES[this.preview].description);
+		const text = this.state.transportText || (!this.preview || this.preview === this.state.mode ? this.state.rulesText : this.preview === "discovery" ? COPY.progress : MODE_RULES[this.preview].description);
 		const scroll = !this.state.transportText && !this.reducedMotion.matches && !this.state.inputVisible;
 		const signature = JSON.stringify([text, scroll]);
 		if (signature === this.rulesSignature) return;
@@ -3972,6 +4060,7 @@ var GameView = class {
 			discoveryReset: this.required(".discovery-reset"),
 			discoveryCount: this.required(".discovery-title small"),
 			discoveryItems: this.required(".discovery-items"),
+			progressBests: this.required(".progress-bests"),
 			audioPlayers,
 			volumeControl: this.required(".volume-control"),
 			volumeRange: this.required(".volume-range")
@@ -3983,7 +4072,7 @@ function duration(styles, name) {
 	return value.endsWith("ms") ? Number.parseFloat(value) || 0 : value.endsWith("s") ? (Number.parseFloat(value) || 0) * 1e3 : 0;
 }
 function markup() {
-	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">DISCOVERY</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button spotify">SPOTIFY</button></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><h3 id="corzaguessr-discovery-title" class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></h3><div class="discovery-items" role="list"></div><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
+	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button spotify">SPOTIFY</button></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-personal-bests-title"><h4 id="corzaguessr-personal-bests-title">PERSONAL BESTS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
 }
 //#endregion
 //#region src/main.ts
@@ -4042,7 +4131,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		resultAction: () => controller.resultAction(),
 		openDiscovery: () => controller.openDiscovery(),
 		closeDiscovery: () => controller.closeDiscovery(),
-		resetDiscovery: () => controller.resetDiscovery(),
+		resetProgress: () => controller.resetProgress(),
 		openSpotify: () => controller.openSpotify(),
 		setVolume: (volume, committed) => {
 			audio.setVolume(volume / 100);
