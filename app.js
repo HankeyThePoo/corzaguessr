@@ -503,6 +503,8 @@ var COPY = {
 	catalogError: "COULD NOT LOAD THE TRACKLIST.",
 	loadingTrack: "LOADING TRACK...",
 	trackError: "COULD NOT PLAY TRACK, PRESS PLAY TO RETRY!",
+	selectedTrackRetry: "THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.",
+	selectedTrackReplacing: "THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.",
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
 	discovery: "REVEAL TRACKS YOU'VE GUESSED CORRECTLY AND TRACK YOUR DISCOVERY PROGRESS"
 };
@@ -562,7 +564,7 @@ function composeGameViewModel(input) {
 		mode: session.mode,
 		phase: session.phase,
 		rulesText: rulesText(input),
-		transportText: transport.loading.visible ? transport.loading.message : "",
+		transportText: transport.loading.visible ? COPY.loadingTrack : "",
 		inputVisible,
 		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
 		guessEnabled,
@@ -800,16 +802,16 @@ var GameController = class {
 		if (isTimedMode(state.mode)) this.resolveAttempt("skip", null);
 		else this.render();
 	}
-	onAudioRetry(message) {
+	onAudioRecovery(kind) {
 		this.clock.pause();
-		if (message.includes("TRYING ANOTHER")) {
+		if (kind === "automatic-replacement") {
 			this.session.setIdle(true);
-			this.view.announce(message);
+			this.view.announce(COPY.selectedTrackReplacing);
 			return;
 		}
 		this.session.setRetry();
 		this.session.showTrackError(COPY.trackError);
-		this.view.announce(message);
+		this.view.announce(kind === "selected-track-retry" ? COPY.selectedTrackRetry : COPY.trackError);
 		this.render();
 		this.view.focusPlay();
 	}
@@ -2307,7 +2309,7 @@ var PlaybackCoordinator = class {
 		if (!this.mode || !this.factory || this.suspended) return false;
 		if (options.manualRetry) this.resetRecoveryCircuits();
 		if (!options.manualRetry && this.automaticRecoveryBlocked) {
-			this.callbacks.onRetry("COULD NOT PLAY TRACK, PRESS PLAY TO RETRY!");
+			this.callbacks.onRecovery("manual-retry");
 			return false;
 		}
 		let round = null;
@@ -2338,7 +2340,7 @@ var PlaybackCoordinator = class {
 			round = this.factory(this.failedTrackIds, this.previousTrackId);
 			if (!round) {
 				this.status = "retry";
-				this.callbacks.onRetry("COULD NOT PLAY TRACK, PRESS PLAY TO RETRY!");
+				this.callbacks.onRecovery("manual-retry");
 				return false;
 			}
 			this.prepared = round;
@@ -2519,7 +2521,7 @@ var PlaybackCoordinator = class {
 			this.automaticRecoveryBlocked = true;
 			this.retryRound = round;
 			this.status = "retry";
-			this.callbacks.onRetry("THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.");
+			this.callbacks.onRecovery("selected-track-retry");
 			return;
 		}
 		if (!preserveIdentity && this.activeRecoveryAttempts < MAXIMUM_AUTOMATIC_RECOVERIES) {
@@ -2527,7 +2529,7 @@ var PlaybackCoordinator = class {
 			this.status = "empty";
 			if (wasPrepared || !shouldResume) this.defer(() => this.prime());
 			else {
-				this.callbacks.onRetry("THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.");
+				this.callbacks.onRecovery("automatic-replacement");
 				this.defer(() => this.start());
 			}
 			return;
@@ -2535,7 +2537,7 @@ var PlaybackCoordinator = class {
 		this.automaticRecoveryBlocked = true;
 		this.retryRound = round;
 		this.status = "retry";
-		this.callbacks.onRetry("THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.");
+		this.callbacks.onRecovery("selected-track-retry");
 	}
 	prefetch() {
 		if (!isTimedMode(this.mode) || !this.factory || this.suspended || this.standby || this.standbyRecoveryBlocked) return;
@@ -2610,7 +2612,6 @@ var PlaybackCoordinator = class {
 	loadingSignal(visible) {
 		return {
 			visible,
-			message: visible ? "LOADING TRACK..." : "",
 			roundId: this.loadingOwner?.roundId ?? null,
 			stage: this.loadingOwner?.stage ?? null,
 			operationGeneration: this.loadingOwner?.generation ?? this.operationGeneration
@@ -4027,7 +4028,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onWaiting: (round) => controller?.onAudioWaiting(round),
 		onBlocked: (round) => controller?.onAudioBlocked(round),
 		onEnded: (round) => controller?.onAudioEnded(round),
-		onRetry: (message) => controller?.onAudioRetry(message),
+		onRecovery: (kind) => controller?.onAudioRecovery(kind),
 		onLoading: () => controller?.onLoading()
 	});
 	const dailyBoundary = new BudapestDateBoundary((date) => controller?.handleDateChanged(date));
