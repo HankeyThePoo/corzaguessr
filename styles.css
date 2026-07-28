@@ -1005,9 +1005,9 @@
 }
 
 @media (hover: hover) {
-  #corzaguessr .button:not(:disabled):hover::after,
-  #corzaguessr .play:not(:disabled):hover::after,
-  #corzaguessr .mode:not(:disabled):hover::after {
+  #corzaguessr:not(.keyboard-input) .button:not(:disabled):hover::after,
+  #corzaguessr:not(.keyboard-input) .play:not(:disabled):hover::after,
+  #corzaguessr:not(.keyboard-input) .mode:not(:disabled):hover::after {
     opacity: 1;
   }
 
