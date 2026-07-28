@@ -3715,6 +3715,7 @@ var GameView = class {
 		this.elements.discoveryModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
 		});
+		for (const button of this.root.querySelectorAll("button")) button.addEventListener("pointerenter", () => this.focusHoveredButton(button));
 		for (const [mode, button] of Object.entries(this.modeButtons)) {
 			button.addEventListener("click", () => handlers.selectMode(mode));
 			this.bindPreview(button, mode);
@@ -3897,10 +3898,6 @@ var GameView = class {
 	}
 	bindPreview(element, preview) {
 		element.addEventListener("pointerenter", () => {
-			if (preview !== "discovery" && this.finePointer.matches && this.canNavigateTo(element)) {
-				this.inputModality = "pointer-fine";
-				element.focus({ preventScroll: true });
-			}
 			if (this.previewAllowed()) {
 				this.preview = preview;
 				this.renderRules();
@@ -4014,12 +4011,18 @@ var GameView = class {
 		if (element instanceof HTMLButtonElement && element.disabled) return false;
 		return element.offsetParent !== null;
 	}
+	focusHoveredButton(button) {
+		if (!this.finePointer.matches || !this.canNavigateTo(button)) return;
+		if (this.state?.guessEnabled && document.activeElement === this.elements.guess) return;
+		this.inputModality = "pointer-fine";
+		button.focus({ preventScroll: true });
+	}
 	handlePointerDown(event) {
 		if (!this.handlers || !this.state) return;
 		const modality = event.pointerType === "mouse" && this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
 		this.inputModality = modality;
 		const target = event.target instanceof Element ? event.target : null;
-		if (modality === "pointer-fine" && document.activeElement === this.elements.guess && target?.closest(".skip") === this.elements.skip) {
+		if (modality === "pointer-fine" && document.activeElement === this.elements.guess && target?.closest("button")) {
 			event.preventDefault();
 			return;
 		}
