@@ -878,11 +878,18 @@
   border-top: 1px solid var(--line);
 }
 
-#corzaguessr .progress-summary h4 {
-  margin: 0;
+#corzaguessr .progress-summary h4,
+#corzaguessr .discovery-title > span {
+  font-family: inherit;
   font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1.2;
   letter-spacing: 0.1em;
   text-align: center;
+}
+
+#corzaguessr .progress-summary h4 {
+  margin: 0;
 }
 
 #corzaguessr .progress-bests {
@@ -928,11 +935,6 @@
   margin: 0.25rem;
   text-align: center;
   font-size: 1.1rem;
-}
-
-#corzaguessr .discovery-title > span {
-  font-weight: 800;
-  letter-spacing: 0.1em;
 }
 
 #corzaguessr .discovery-title small {
