@@ -1012,7 +1012,7 @@
 
   #corzaguessr .mode:not(:disabled):hover {
     filter: brightness(1.08) saturate(1.04);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
   }
 
   #corzaguessr .mode:not(:disabled):active {
