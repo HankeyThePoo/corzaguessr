@@ -137,12 +137,15 @@ function survivalAdjustment(outcome) {
 function accuracy(correct, guesses) {
 	return guesses > 0 ? Math.round(correct * 100 / guesses) : 0;
 }
-function updateDailyBest(bests, won, attempts) {
-	if (!won || bests.daily !== 0 && attempts >= bests.daily) return {
+function updateDailyBest(bests, won, attempts, date) {
+	if (!won || bests.daily.attempts !== 0 && attempts >= bests.daily.attempts) return {
 		changed: false,
 		newPersonalBest: false
 	};
-	bests.daily = attempts;
+	bests.daily = {
+		attempts,
+		date
+	};
 	return {
 		changed: true,
 		newPersonalBest: true
@@ -655,7 +658,7 @@ var GameController = class {
 		} else this.dailyBoundary.stop();
 		this.resetForMode(mode);
 		this.view.announce(MODE_RULES[mode].description);
-		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.view.focusMode("blitz");
+		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.view.focusMode("classic");
 		else this.view.focusPlay();
 	}
 	play() {
@@ -681,7 +684,7 @@ var GameController = class {
 		if (!mode) return;
 		if (this.overlay === "result") {
 			if (mode === "daily" && this.progress.dailyDone(this.budapestDate)) {
-				this.view.closeResult("blitz", () => {}, () => {
+				this.view.closeResult("classic", () => {}, () => {
 					this.overlay = null;
 					this.session.dismissResult();
 					this.render();
@@ -1153,7 +1156,10 @@ var ProgressService = class {
 				snippetTotal: 0,
 				bestSnippetTotal: 0
 			},
-			daily: 0,
+			daily: {
+				attempts: 0,
+				date: ""
+			},
 			blitz: {
 				score: 0,
 				accuracy: null
@@ -1184,7 +1190,7 @@ var ProgressService = class {
 			if (dailyPersisted) this.dailyState = nextDaily;
 			else this.persistenceFailed("complete-daily");
 			const nextBests = cloneBests(this.bestsState);
-			const update = updateDailyBest(nextBests, run.won, run.attempt + 1);
+			const update = updateDailyBest(nextBests, run.won, run.attempt + 1, run.dailyDate);
 			const bestPersisted = !update.changed || dailyPersisted && this.saveBests(nextBests);
 			if (update.changed && bestPersisted) this.bestsState = nextBests;
 			return {
@@ -1194,7 +1200,7 @@ var ProgressService = class {
 				spotify: run.track.spotify,
 				newPersonalBest: update.newPersonalBest && bestPersisted,
 				attempts: run.attempt + 1,
-				bestAttempts: this.bestsState.daily
+				bestAttempts: this.bestsState.daily.attempts
 			};
 		}
 		if (run.mode === "classic") {
@@ -1262,7 +1268,7 @@ function cloneDaily(progress) {
 function cloneBests(bests) {
 	return {
 		classic: { ...bests.classic },
-		daily: bests.daily,
+		daily: { ...bests.daily },
 		blitz: { ...bests.blitz },
 		survival: { ...bests.survival }
 	};
@@ -1594,7 +1600,10 @@ function emptyPersonalBests() {
 			snippetTotal: 0,
 			bestSnippetTotal: 0
 		},
-		daily: 0,
+		daily: {
+			attempts: 0,
+			date: ""
+		},
 		blitz: {
 			score: 0,
 			accuracy: null
@@ -1650,13 +1659,13 @@ function sanitizePersonalBests(value) {
 		"blitz",
 		"survival"
 	])) return emptyPersonalBests();
-	const { classic, blitz, survival } = value;
+	const { classic, daily, blitz, survival } = value;
 	if (!isRecord(classic) || !hasExactKeys(classic, [
 		"current",
 		"best",
 		"snippetTotal",
 		"bestSnippetTotal"
-	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !isIntegerBetween(value.daily, 0, 6) || !validScoreBest(blitz, false) || !validScoreBest(survival, true)) return emptyPersonalBests();
+	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validDailyBest(daily) || !validScoreBest(blitz, false) || !validScoreBest(survival, true)) return emptyPersonalBests();
 	return {
 		classic: {
 			current: classic.current,
@@ -1664,7 +1673,10 @@ function sanitizePersonalBests(value) {
 			snippetTotal: classic.snippetTotal,
 			bestSnippetTotal: classic.bestSnippetTotal
 		},
-		daily: value.daily,
+		daily: {
+			attempts: daily.attempts,
+			date: daily.date
+		},
 		blitz: {
 			score: blitz.score,
 			accuracy: blitz.accuracy
@@ -1674,6 +1686,10 @@ function sanitizePersonalBests(value) {
 			accuracy: survival.accuracy
 		}
 	};
+}
+function validDailyBest(value) {
+	if (!isRecord(value) || !hasExactKeys(value, ["attempts", "date"]) || !isIntegerBetween(value.attempts, 0, 6) || typeof value.date !== "string") return false;
+	return value.attempts === 0 ? value.date === "" : isIsoDate(value.date);
 }
 function sanitizeDiscoveries(value) {
 	if (!Array.isArray(value)) return /* @__PURE__ */ new Set();
@@ -3093,8 +3109,8 @@ var Autocomplete = class {
 //#region src/ui/focus-navigation.ts
 var MODES = [
 	"daily",
-	"blitz",
 	"classic",
+	"blitz",
 	"survival"
 ];
 function nextPrimaryFocus(state, key) {
@@ -3115,7 +3131,7 @@ function nextPrimaryFocus(state, key) {
 	return state.selectedMode && state.enabled.has("play") ? "play" : recommended;
 }
 function recommendedMode(state) {
-	if (state.completedDaily && state.enabled.has("blitz")) return "blitz";
+	if (state.completedDaily && state.enabled.has("classic")) return "classic";
 	if (!state.selectedMode && state.enabled.has("daily")) return "daily";
 	const selectedIndex = state.selectedMode ? MODES.indexOf(state.selectedMode) : -1;
 	for (let distance = 1; distance < MODES.length; distance += 1) {
@@ -3423,14 +3439,14 @@ function rows(bests) {
 	const classicAverage = bests.classic.best ? bests.classic.bestSnippetTotal / bests.classic.best : 0;
 	return [
 		{
-			mode: "CLASSIC",
-			value: bests.classic.best ? `HIGHEST STREAK ${bests.classic.best}` : "--",
-			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}S` : "NO RECORD"
+			mode: "DAILY",
+			value: bests.daily.attempts ? `${bests.daily.attempts}/6` : "--",
+			detail: bests.daily.attempts ? formatDailyDate(bests.daily.date) : "NO RECORD"
 		},
 		{
-			mode: "DAILY",
-			value: bests.daily ? `${bests.daily}/6` : "--",
-			detail: bests.daily ? "BEST ATTEMPT" : "NO RECORD"
+			mode: "CLASSIC",
+			value: bests.classic.best ? `${bests.classic.best}-GAME STREAK` : "--",
+			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}S` : "NO RECORD"
 		},
 		{
 			mode: "BLITZ",
@@ -3439,13 +3455,33 @@ function rows(bests) {
 		},
 		{
 			mode: "SURVIVAL",
-			value: bests.survival.score ? formatClock(bests.survival.score / 1e3) : "--",
+			value: bests.survival.score ? `${formatClock(bests.survival.score / 1e3)} SURVIVED` : "--",
 			detail: bests.survival.score ? `${bests.survival.accuracy ?? 0}% ACCURACY` : "NO RECORD"
 		}
 	];
 }
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+function formatDailyDate(value) {
+	const [year, month, day] = value.split("-").map(Number);
+	if (!year || !month || !day) return "NO RECORD";
+	const names = [
+		"JANUARY",
+		"FEBRUARY",
+		"MARCH",
+		"APRIL",
+		"MAY",
+		"JUNE",
+		"JULY",
+		"AUGUST",
+		"SEPTEMBER",
+		"OCTOBER",
+		"NOVEMBER",
+		"DECEMBER"
+	];
+	const suffix = day % 100 >= 11 && day % 100 <= 13 ? "TH" : day % 10 === 1 ? "ST" : day % 10 === 2 ? "ND" : day % 10 === 3 ? "RD" : "TH";
+	return `${names[month - 1]} ${day}${suffix}, ${year}`;
 }
 //#endregion
 //#region src/ui/timeline-view.ts
@@ -3808,7 +3844,7 @@ var GameView = class {
 		this.modal.openResult();
 	}
 	closeResult(returnFocus, beforeClose, afterClose) {
-		const target = returnFocus === "blitz" ? this.modeButtons.blitz : this.elements.play;
+		const target = returnFocus === "classic" ? this.modeButtons.classic : this.elements.play;
 		this.modal.close("result", this.elements.play, beforeClose, afterClose, target);
 	}
 	openDiscovery() {
@@ -4072,7 +4108,7 @@ function duration(styles, name) {
 	return value.endsWith("ms") ? Number.parseFloat(value) || 0 : value.endsWith("s") ? (Number.parseFloat(value) || 0) * 1e3 : 0;
 }
 function markup() {
-	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button spotify">SPOTIFY</button></div></div></div></div><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-personal-bests-title"><h4 id="corzaguessr-personal-bests-title">PERSONAL BESTS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
+	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button spotify">SPOTIFY</button></div></div></div></div><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-personal-bests-title"><h4 id="corzaguessr-personal-bests-title">PERSONAL BESTS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
 }
 //#endregion
 //#region src/main.ts
