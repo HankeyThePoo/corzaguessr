@@ -889,6 +889,9 @@
 }
 
 #corzaguessr .progress-summary h4 {
+  display: grid;
+  align-items: center;
+  min-height: 2.55rem;
   margin: 0;
 }
 
@@ -939,6 +942,7 @@
 
 #corzaguessr .discovery-title small {
   font-size: 0.9rem;
+  line-height: 1.2;
 }
 
 #corzaguessr .discovery-panel > .actions {
