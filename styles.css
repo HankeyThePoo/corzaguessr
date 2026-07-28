@@ -1005,6 +1005,12 @@
 }
 
 @media (hover: hover) {
+  #corzaguessr .button:not(:disabled):hover::after,
+  #corzaguessr .play:not(:disabled):hover::after,
+  #corzaguessr .mode:not(:disabled):hover::after {
+    opacity: 1;
+  }
+
   #corzaguessr .button:not(:disabled):hover,
   #corzaguessr .play:not(:disabled):hover {
     filter: brightness(1.08) saturate(1.04);
