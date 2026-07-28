@@ -837,7 +837,6 @@
 }
 
 #corzaguessr .discovery-modal {
-  position: fixed;
   z-index: 4;
   transition: background var(--duration-result) ease;
 }
@@ -940,6 +939,12 @@
   font-size: 0.9rem;
 }
 
+#corzaguessr .discovery-panel > .actions {
+  margin-top: 0.15rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
 #corzaguessr .discovery-items {
   display: grid;
   grid-auto-rows: max-content;
@@ -1021,7 +1026,8 @@
 }
 
 @media (max-width: 600px) {
-  #corzaguessr .result-modal {
+  #corzaguessr .result-modal,
+  #corzaguessr .discovery-modal {
     position: fixed;
   }
 
