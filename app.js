@@ -429,14 +429,14 @@ function validateTrackCatalog(value) {
 		const duration = record.duration;
 		const spotify = typeof record.spotify === "string" ? record.spotify.trim() : "";
 		const dailyNumber = record.dailyNumber;
-		const dailyFrom = typeof record.dailyFrom === "string" ? record.dailyFrom.trim() : "";
+		const releaseDate = typeof record.releaseDate === "string" ? record.releaseDate.trim() : "";
 		if (!title) fail("has no title.");
 		if (titles.has(title)) fail(`duplicates title "${title}".`);
 		if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) fail("has an invalid duration.");
 		if (!Number.isSafeInteger(dailyNumber) || Number(dailyNumber) <= 0) fail("has an invalid dailyNumber.");
 		if (numbers.has(Number(dailyNumber))) fail(`duplicates dailyNumber ${String(dailyNumber)}.`);
 		if (spotify && !/^[A-Za-z0-9]{22}$/.test(spotify)) fail("has an invalid Spotify track ID.");
-		if (!isIsoDate(dailyFrom)) fail("has an invalid dailyFrom date.");
+		if (!isIsoDate(releaseDate)) fail("has an invalid releaseDate.");
 		titles.add(title);
 		numbers.add(Number(dailyNumber));
 		return {
@@ -444,7 +444,7 @@ function validateTrackCatalog(value) {
 			duration: Number(duration),
 			spotify,
 			dailyNumber: Number(dailyNumber),
-			dailyFrom,
+			releaseDate,
 			isNew: record.isNew === true
 		};
 	});
@@ -458,7 +458,7 @@ function stableHash(value) {
 	return hash >>> 0;
 }
 function selectDailyTrack(tracks, date, persistedNumber) {
-	const available = tracks.filter((track) => track.dailyFrom <= date);
+	const available = tracks.filter((track) => track.releaseDate <= date);
 	if (available.length === 0) return null;
 	if (persistedNumber !== null) {
 		const persisted = available.find((track) => track.dailyNumber === persistedNumber);
@@ -476,7 +476,7 @@ function selectDailyTrack(tracks, date, persistedNumber) {
 	return selected;
 }
 function isDailyTrackAvailable(tracks, date, dailyNumber) {
-	return tracks.some((track) => track.dailyNumber === dailyNumber && track.dailyFrom <= date);
+	return tracks.some((track) => track.dailyNumber === dailyNumber && track.releaseDate <= date);
 }
 function dailyClipStart(track, date) {
 	const clip = Math.min(SNIPPET_SECONDS.at(-1), track.duration);
@@ -516,7 +516,7 @@ var COPY = {
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
 	if (progress.date === dailyDate && progress.started && !progress.completed && progress.dailyNumber !== null) return !isDailyTrackAvailable(tracks, dailyDate, progress.dailyNumber);
-	return !tracks.some((track) => track.dailyFrom <= dailyDate);
+	return !tracks.some((track) => track.releaseDate <= dailyDate);
 }
 function dailyDone(progress, date) {
 	return progress.date === date && progress.completed;
@@ -567,9 +567,9 @@ function composeGameViewModel(input) {
 		mode: session.mode,
 		phase: session.phase,
 		rulesText: rulesText(input),
-		transportText: transport.loading.visible ? COPY.loadingTrack : "",
+		transportText: transport.loading.visible || !!session.mode && ["idle", "retry"].includes(session.phase) && !transport.readyToStart ? COPY.loadingTrack : "",
 		inputVisible,
-		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
+		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase && (!["idle", "retry"].includes(session.phase) || transport.readyToStart)),
 		guessEnabled,
 		skipEnabled: !!(guessEnabled && session.round && acceptsAttempt),
 		playbackIcon: session.playbackRequested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
@@ -850,6 +850,7 @@ var GameController = class {
 		const state = this.session.snapshot;
 		if (this.appStatus !== "ready" || !state.mode || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
 		if (state.phase === "idle" || state.phase === "retry") {
+			if (!this.playback.snapshot.readyToStart) return;
 			this.playback.start({ manualRetry: state.phase === "retry" });
 			return;
 		}
@@ -1822,6 +1823,7 @@ var DualSlotAudioPlayer = class {
 	callbacks;
 	timing;
 	playbackTimeoutMs;
+	materializeSources;
 	slots;
 	active = null;
 	standby = null;
@@ -1833,11 +1835,12 @@ var DualSlotAudioPlayer = class {
 	watchdogOwner = null;
 	watchdogTimer = 0;
 	volume = 1;
-	constructor(elements, sourceForRound, callbacks, timing = browserTiming, playbackTimeoutMs = 1e4) {
+	constructor(elements, sourceForRound, callbacks, timing = browserTiming, playbackTimeoutMs = 1e4, materializeSources = false) {
 		this.sourceForRound = sourceForRound;
 		this.callbacks = callbacks;
 		this.timing = timing;
 		this.playbackTimeoutMs = playbackTimeoutMs;
+		this.materializeSources = materializeSources;
 		this.slots = elements.map((element, id) => ({
 			id,
 			element,
@@ -1846,6 +1849,7 @@ var DualSlotAudioPlayer = class {
 			generation: 0,
 			playGeneration: 0,
 			controller: null,
+			objectUrl: null,
 			failed: false,
 			ready: false,
 			playRequested: false,
@@ -2064,6 +2068,10 @@ var DualSlotAudioPlayer = class {
 		} else this.standby = slot;
 		this.bind(slot);
 		slot.element.preload = "auto";
+		if (this.materializeSources) {
+			this.loadMaterializedSource(slot, round, role);
+			return true;
+		}
 		slot.element.src = this.sourceForRound(round);
 		slot.element.load();
 		if (slot.element.error) {
@@ -2072,6 +2080,28 @@ var DualSlotAudioPlayer = class {
 		}
 		if (slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
 		return true;
+	}
+	async loadMaterializedSource(slot, round, role) {
+		const generation = slot.generation;
+		const signal = slot.controller?.signal;
+		try {
+			const response = await fetch(this.sourceForRound(round), signal ? { signal } : void 0);
+			if (!response.ok) throw new Error(`Audio request failed with HTTP ${response.status}.`);
+			const blob = await response.blob();
+			if (!this.isLive(slot, generation, round.id)) return;
+			const objectUrl = URL.createObjectURL(blob);
+			if (!this.isLive(slot, generation, round.id)) {
+				URL.revokeObjectURL(objectUrl);
+				return;
+			}
+			slot.objectUrl = objectUrl;
+			slot.element.src = objectUrl;
+			slot.element.load();
+			if (slot.element.error) this.fail(slot, role, role === "active" ? "active-preload" : "standby-preload", mediaErrorToError(slot.element.error, "Downloaded audio could not be staged."));
+		} catch (error) {
+			if (!this.isLive(slot, generation, round.id) || isNamedError(error, "AbortError")) return;
+			this.fail(slot, role, role === "active" ? "active-preload" : "standby-preload", normalizeError(error));
+		}
 	}
 	bind(slot) {
 		const controller = new AbortController();
@@ -2086,13 +2116,27 @@ var DualSlotAudioPlayer = class {
 		slot.element.addEventListener("canplay", () => {
 			if (live()) this.markReady(slot);
 		}, { signal: controller.signal });
+		slot.element.addEventListener("canplaythrough", () => {
+			if (live()) this.markReady(slot);
+		}, { signal: controller.signal });
+		slot.element.addEventListener("progress", () => {
+			if (live()) this.markReady(slot);
+		}, { signal: controller.signal });
+		slot.element.addEventListener("seeked", () => {
+			if (live()) this.markReady(slot);
+		}, { signal: controller.signal });
 		slot.element.addEventListener("playing", () => {
 			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
 			if (!this.operation || !this.isCurrentPlaybackOperation(slot, this.operation)) return;
+			this.correctLateSeek(slot);
 			this.cancelPlaybackWatchdog(this.operation);
 			this.status = "playing";
 			this.markReady(slot);
 			this.callbacks.onPlaying(round);
+		}, { signal: controller.signal });
+		slot.element.addEventListener("timeupdate", () => {
+			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
+			this.correctLateSeek(slot);
 		}, { signal: controller.signal });
 		const wait = () => {
 			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
@@ -2184,10 +2228,14 @@ var DualSlotAudioPlayer = class {
 		this.watchdogOwner = null;
 	}
 	seek(slot) {
-		if (!slot.round || slot.element.readyState < HTMLMediaElement.HAVE_METADATA) return;
+		if (!slot.round || slot.element.readyState < HTMLMediaElement.HAVE_METADATA || slot.element.seeking) return;
 		try {
-			slot.element.currentTime = Math.min(slot.round.clipStart, Math.max(0, slot.element.duration - .05));
+			slot.element.currentTime = this.targetTime(slot);
 		} catch {}
+	}
+	targetTime(slot) {
+		if (!slot.round) return 0;
+		return Math.min(slot.round.clipStart, Math.max(0, slot.element.duration - .05));
 	}
 	correctLateSeek(slot) {
 		if (!slot.round || slot.element.readyState < HTMLMediaElement.HAVE_METADATA) return;
@@ -2208,6 +2256,8 @@ var DualSlotAudioPlayer = class {
 		element.pause();
 		element.removeAttribute("src");
 		element.load();
+		if (slot.objectUrl) URL.revokeObjectURL(slot.objectUrl);
+		slot.objectUrl = null;
 		if (replaceFailedElement) {
 			const replacement = element.cloneNode(false);
 			replacement.volume = this.volume;
@@ -2293,12 +2343,15 @@ var PlaybackCoordinator = class {
 		return this.active ?? this.pending ?? this.prepared ?? this.retryRound;
 	}
 	get snapshot() {
+		const stagedRound = this.prepared ?? this.retryRound;
+		const audio = this.audio.snapshot();
 		return {
 			status: this.status,
 			generation: this.operationGeneration,
 			mode: this.mode,
 			preparedRoundId: this.prepared?.id ?? null,
 			pendingRoundId: this.pending?.id ?? null,
+			readyToStart: !!(stagedRound && audio.activeRoundId === stagedRound.id && audio.activeReady),
 			activeRoundId: this.active?.id ?? null,
 			standbyRoundId: this.standby?.id ?? null,
 			retryRoundId: this.retryRound?.id ?? null,
@@ -2308,7 +2361,7 @@ var PlaybackCoordinator = class {
 			standbyRecoveryAttempts: this.standbyRecoveryAttempts,
 			automaticRecoveryBlocked: this.automaticRecoveryBlocked,
 			standbyRecoveryBlocked: this.standbyRecoveryBlocked,
-			audio: this.audio.snapshot()
+			audio
 		};
 	}
 	configure(mode, factory, previousTrackId) {
@@ -2450,6 +2503,7 @@ var PlaybackCoordinator = class {
 		const audio = this.audio.snapshot();
 		if (event.role === "active") {
 			if (audio.activeRoundId !== event.round.id || audio.activeGeneration !== event.generation || !this.owns(event.round)) return;
+			this.callbacks.onReady?.();
 			this.prefetch();
 			return;
 		}
@@ -4126,6 +4180,7 @@ if (root && !root.dataset.corzaguessrReady) {
 	const view = new GameView(root, initialVolume);
 	const moduleUrl = new URL(import.meta.url);
 	const catalogUrl = new URL("tracks.json", moduleUrl);
+	const audioBaseUrl = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/", moduleUrl);
 	catalogUrl.search = moduleUrl.search;
 	let controller;
 	let playback;
@@ -4139,7 +4194,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onExpired: () => controller?.onClockExpired()
 	});
 	const audio = new DualSlotAudioPlayer(view.audioElements, (round) => {
-		const url = new URL(`${String(round.track.dailyNumber).padStart(2, "0")}.mp3`, "https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/");
+		const url = new URL(`${String(round.track.dailyNumber).padStart(2, "0")}.mp3`, audioBaseUrl);
 		url.hash = `t=${round.clipStart}`;
 		return url.href;
 	}, {
@@ -4149,9 +4204,10 @@ if (root && !root.dataset.corzaguessrReady) {
 		onEnded: (round) => playback?.handleEnded(round),
 		onBlocked: (round) => playback?.handleBlocked(round),
 		onFailure: (failure) => playback?.handleFailure(failure)
-	});
+	}, void 0, void 0, false);
 	audio.setVolume(initialVolume / 100);
 	playback = new PlaybackCoordinator(audio, {
+		onReady: () => controller?.onLoading(),
 		onPending: (round) => controller?.onPending(round),
 		onPlaying: (round, startedNewRound) => {
 			controller?.onAudioPlaying(round, startedNewRound);
