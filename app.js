@@ -745,6 +745,11 @@ var GameController = class {
 		const spotify = result && (result.mode === "classic" || result.mode === "daily") ? result.spotify : "";
 		if (spotify) this.navigator.openSpotify(spotify);
 	}
+	openDiscoverySpotify(dailyNumber) {
+		if (this.overlay !== "discovery" || !this.progress.discoveries.has(dailyNumber)) return;
+		const spotify = this.tracks.find((track) => track.dailyNumber === dailyNumber)?.spotify ?? "";
+		if (spotify) this.navigator.openSpotify(spotify);
+	}
 	handleDateChanged(date) {
 		if (this.session.snapshot.mode !== "daily" || date === this.budapestDate) return;
 		this.budapestDate = date;
@@ -3137,6 +3142,176 @@ var Autocomplete = class {
 	}
 };
 //#endregion
+//#region src/ui/discovery-list-view.ts
+var DiscoveryListView = class {
+	count;
+	items;
+	coverUrl;
+	expandedTrackId = null;
+	openSpotify = null;
+	tracks = null;
+	discoveriesSignature = "";
+	constructor(count, items, coverUrl) {
+		this.count = count;
+		this.items = items;
+		this.coverUrl = coverUrl;
+	}
+	bind(openSpotify) {
+		this.openSpotify = openSpotify;
+	}
+	render(tracks, discoveries) {
+		const signature = [...discoveries].sort((a, b) => a - b).join(",");
+		if (tracks === this.tracks && signature === this.discoveriesSignature) return;
+		this.tracks = tracks;
+		this.discoveriesSignature = signature;
+		const ordered = [...tracks].sort((a, b) => b.dailyNumber - a.dailyNumber);
+		const discovered = ordered.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
+		this.count.textContent = `${discovered} / ${ordered.length} (${ordered.length ? Math.round(discovered * 100 / ordered.length) : 0}%)`;
+		if (this.expandedTrackId !== null && !discoveries.has(this.expandedTrackId)) this.expandedTrackId = null;
+		this.items.replaceChildren(...ordered.map((track) => discoveries.has(track.dailyNumber) ? this.createDiscoveredItem(track) : this.createUndiscoveredItem(track)));
+	}
+	createDiscoveredItem(track) {
+		const item = document.createElement("div");
+		item.className = "discovery-item discovery-item-known";
+		item.dataset.trackId = String(track.dailyNumber);
+		item.setAttribute("role", "listitem");
+		const detailsId = `corzaguessr-discovery-track-${track.dailyNumber}`;
+		const toggle = document.createElement("button");
+		toggle.type = "button";
+		toggle.className = "discovery-item-toggle";
+		toggle.setAttribute("aria-controls", detailsId);
+		const compact = document.createElement("span");
+		compact.className = "discovery-item-compact";
+		compact.textContent = track.title;
+		const details = document.createElement("span");
+		details.id = detailsId;
+		details.className = "discovery-track-details";
+		const cover = document.createElement("span");
+		cover.className = "discovery-cover";
+		const image = document.createElement("img");
+		image.src = this.coverUrl(track.dailyNumber);
+		image.alt = "";
+		image.width = 200;
+		image.height = 200;
+		image.loading = "lazy";
+		image.decoding = "async";
+		image.addEventListener("error", () => {
+			image.hidden = true;
+			cover.classList.add("missing");
+		}, { once: true });
+		cover.append(image);
+		const [artist, title] = splitTrackTitle(track.title);
+		const metadata = document.createElement("span");
+		metadata.className = "discovery-track-metadata";
+		const artistElement = document.createElement("span");
+		artistElement.className = "discovery-artist";
+		artistElement.textContent = artist;
+		const titleElement = document.createElement("strong");
+		titleElement.className = "discovery-song-title";
+		titleElement.textContent = title;
+		const date = document.createElement("small");
+		date.className = "discovery-release-date";
+		date.textContent = `RELEASED ${formatReleaseDate(track.releaseDate)}`;
+		metadata.append(artistElement, titleElement, date);
+		details.append(cover, metadata);
+		toggle.append(compact, details);
+		toggle.addEventListener("click", () => this.toggle(track.dailyNumber));
+		item.append(toggle);
+		if (track.spotify) {
+			const spotify = document.createElement("button");
+			spotify.type = "button";
+			spotify.className = "discovery-track-spotify";
+			spotify.textContent = "SPOTIFY";
+			spotify.setAttribute("aria-label", `OPEN ${track.title} ON SPOTIFY`);
+			spotify.addEventListener("click", () => this.openSpotify?.(track.dailyNumber));
+			item.append(spotify);
+		}
+		this.applyExpandedState(item, track.dailyNumber === this.expandedTrackId);
+		return item;
+	}
+	createUndiscoveredItem(track) {
+		const item = document.createElement("div");
+		item.className = "discovery-item";
+		item.setAttribute("role", "listitem");
+		if (track.isNew) {
+			item.classList.add("discovery-item-new");
+			const badge = document.createElement("span");
+			badge.className = "discovery-new";
+			badge.textContent = "NEW";
+			badge.setAttribute("aria-hidden", "true");
+			const hidden = document.createElement("span");
+			hidden.className = "discovery-track";
+			hidden.textContent = "?".repeat(20);
+			item.append(badge, hidden, badge.cloneNode(true));
+			item.setAttribute("aria-label", "NEW UNDISCOVERED TRACK");
+		} else {
+			item.textContent = "?".repeat(20);
+			item.setAttribute("aria-hidden", "true");
+		}
+		return item;
+	}
+	toggle(trackId) {
+		const previousId = this.expandedTrackId;
+		this.expandedTrackId = previousId === trackId ? null : trackId;
+		if (previousId !== null) this.updateItem(previousId, false);
+		const opening = this.expandedTrackId === trackId;
+		this.updateItem(trackId, opening);
+		if (opening) requestAnimationFrame(() => this.revealExpandedItem(trackId));
+	}
+	updateItem(trackId, expanded) {
+		const item = this.items.querySelector(`.discovery-item[data-track-id="${trackId}"]`);
+		if (item) this.applyExpandedState(item, expanded);
+	}
+	applyExpandedState(item, expanded) {
+		item.classList.toggle("expanded", expanded);
+		const toggle = item.querySelector(".discovery-item-toggle");
+		const details = item.querySelector(".discovery-track-details");
+		const spotify = item.querySelector(".discovery-track-spotify");
+		toggle?.setAttribute("aria-expanded", String(expanded));
+		if (toggle) {
+			const title = item.dataset.trackId ? this.tracks?.find((track) => String(track.dailyNumber) === item.dataset.trackId)?.title : null;
+			toggle.setAttribute("aria-label", `${expanded ? "HIDE" : "SHOW"} DETAILS FOR ${title ?? "TRACK"}`);
+		}
+		if (details) details.setAttribute("aria-hidden", String(!expanded));
+		if (spotify) spotify.disabled = !expanded;
+	}
+	revealExpandedItem(trackId) {
+		if (this.expandedTrackId !== trackId) return;
+		const item = this.items.querySelector(`.discovery-item[data-track-id="${trackId}"]`);
+		if (!item) return;
+		const top = item.offsetTop;
+		const bottom = top + item.offsetHeight;
+		if (top < this.items.scrollTop) this.items.scrollTop = top;
+		else if (bottom > this.items.scrollTop + this.items.clientHeight) this.items.scrollTop = bottom - this.items.clientHeight;
+	}
+};
+function splitTrackTitle(value) {
+	const separator = value.indexOf(" - ");
+	return separator < 0 ? ["", value] : [value.slice(0, separator), value.slice(separator + 3)];
+}
+function formatReleaseDate(value) {
+	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
+	if (!year || !month || !day) return value;
+	const monthName = [
+		"JANUARY",
+		"FEBRUARY",
+		"MARCH",
+		"APRIL",
+		"MAY",
+		"JUNE",
+		"JULY",
+		"AUGUST",
+		"SEPTEMBER",
+		"OCTOBER",
+		"NOVEMBER",
+		"DECEMBER"
+	][Number(month) - 1];
+	if (!monthName) return value;
+	const numericDay = Number(day);
+	const remainder = numericDay % 100;
+	return `${monthName} ${numericDay}${remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH"}, ${year}`;
+}
+//#endregion
 //#region src/ui/focus-navigation.ts
 var MODES = [
 	"daily",
@@ -3695,6 +3870,7 @@ var GameView = class {
 	attempts;
 	timeline;
 	volume;
+	discovery;
 	progressSummary;
 	durations;
 	handlers = null;
@@ -3702,12 +3878,10 @@ var GameView = class {
 	inputModality;
 	hoveredButton = null;
 	preview = null;
-	renderedDiscoveries = "";
-	renderedDiscoveryTracks = null;
 	resultSignature = "";
 	rulesSignature = "";
 	announcementFrame = 0;
-	constructor(root, initialVolume = 100) {
+	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${dailyNumber}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
 		root.dataset.corzaguessrReady = "true";
@@ -3750,6 +3924,7 @@ var GameView = class {
 			timeChangeText: this.elements.timeChangeText
 		}, this.durations, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
+		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
 		if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => {
 			if (this.modal.discoveryLayoutActive) this.elements.discoveryShell.style.height = `${this.elements.discoveryPanel.offsetHeight}px`;
@@ -3758,6 +3933,7 @@ var GameView = class {
 	bind(handlers) {
 		this.handlers = handlers;
 		this.volume.bind(handlers.setVolume);
+		this.discovery.bind(handlers.openDiscoverySpotify);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.skip.addEventListener("click", handlers.skip);
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
@@ -3907,35 +4083,7 @@ var GameView = class {
 		}
 	}
 	renderDiscovery(state) {
-		const signature = [...state.discoveries].sort((a, b) => a - b).join(",");
-		if (state.tracks === this.renderedDiscoveryTracks && signature === this.renderedDiscoveries) return;
-		this.renderedDiscoveryTracks = state.tracks;
-		this.renderedDiscoveries = signature;
-		const tracks = [...state.tracks].sort((a, b) => b.dailyNumber - a.dailyNumber);
-		const discovered = tracks.reduce((count, track) => count + Number(state.discoveries.has(track.dailyNumber)), 0);
-		this.elements.discoveryCount.textContent = `${discovered} / ${tracks.length} (${tracks.length ? Math.round(discovered * 100 / tracks.length) : 0}%)`;
-		this.elements.discoveryItems.replaceChildren(...tracks.map((track) => {
-			const known = state.discoveries.has(track.dailyNumber);
-			const item = document.createElement("div");
-			item.className = "discovery-item";
-			item.setAttribute("role", "listitem");
-			if (track.isNew && !known) {
-				item.classList.add("discovery-item-new");
-				const badge = document.createElement("span");
-				badge.className = "discovery-new";
-				badge.textContent = "NEW";
-				badge.setAttribute("aria-hidden", "true");
-				const hidden = document.createElement("span");
-				hidden.className = "discovery-track";
-				hidden.textContent = "?".repeat(20);
-				item.append(badge, hidden, badge.cloneNode(true));
-				item.setAttribute("aria-label", "NEW UNDISCOVERED TRACK");
-			} else {
-				item.textContent = known ? track.title : "?".repeat(20);
-				if (!known) item.setAttribute("aria-hidden", "true");
-			}
-			return item;
-		}));
+		this.discovery.render(state.tracks, state.discoveries);
 	}
 	renderResult(result) {
 		const signature = result ? JSON.stringify(result) : "";
@@ -4177,8 +4325,13 @@ if (root && !root.dataset.corzaguessrReady) {
 	const volumeSettings = new LocalStorageVolumeSettingsRepository();
 	const initialVolume = volumeSettings.load();
 	let volumePersistenceFailureAnnounced = false;
-	const view = new GameView(root, initialVolume);
 	const moduleUrl = new URL(import.meta.url);
+	const coverBaseUrl = new URL("covers/", moduleUrl);
+	const view = new GameView(root, initialVolume, (dailyNumber) => {
+		const url = new URL(`${dailyNumber}.webp`, coverBaseUrl);
+		url.search = moduleUrl.search;
+		return url.href;
+	});
 	const catalogUrl = new URL("tracks.json", moduleUrl);
 	const audioBaseUrl = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/", moduleUrl);
 	catalogUrl.search = moduleUrl.search;
@@ -4231,6 +4384,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		closeDiscovery: () => controller.closeDiscovery(),
 		resetProgress: () => controller.resetProgress(),
 		openSpotify: () => controller.openSpotify(),
+		openDiscoverySpotify: (dailyNumber) => controller.openDiscoverySpotify(dailyNumber),
 		setVolume: (volume, committed) => {
 			audio.setVolume(volume / 100);
 			if (!committed) return;
