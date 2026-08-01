@@ -567,9 +567,9 @@ function composeGameViewModel(input) {
 		mode: session.mode,
 		phase: session.phase,
 		rulesText: rulesText(input),
-		transportText: transport.loading.visible || !!session.mode && ["idle", "retry"].includes(session.phase) && !transport.readyToStart ? COPY.loadingTrack : "",
+		transportText: transport.loading.visible ? COPY.loadingTrack : "",
 		inputVisible,
-		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase && (!["idle", "retry"].includes(session.phase) || transport.readyToStart)),
+		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
 		guessEnabled,
 		skipEnabled: !!(guessEnabled && session.round && acceptsAttempt),
 		playbackIcon: session.playbackRequested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
@@ -855,7 +855,6 @@ var GameController = class {
 		const state = this.session.snapshot;
 		if (this.appStatus !== "ready" || !state.mode || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
 		if (state.phase === "idle" || state.phase === "retry") {
-			if (!this.playback.snapshot.readyToStart) return;
 			this.playback.start({ manualRetry: state.phase === "retry" });
 			return;
 		}
@@ -2348,7 +2347,6 @@ var PlaybackCoordinator = class {
 		return this.active ?? this.pending ?? this.prepared ?? this.retryRound;
 	}
 	get snapshot() {
-		const stagedRound = this.prepared ?? this.retryRound;
 		const audio = this.audio.snapshot();
 		return {
 			status: this.status,
@@ -2356,7 +2354,6 @@ var PlaybackCoordinator = class {
 			mode: this.mode,
 			preparedRoundId: this.prepared?.id ?? null,
 			pendingRoundId: this.pending?.id ?? null,
-			readyToStart: !!(stagedRound && audio.activeRoundId === stagedRound.id && audio.activeReady),
 			activeRoundId: this.active?.id ?? null,
 			standbyRoundId: this.standby?.id ?? null,
 			retryRoundId: this.retryRound?.id ?? null,
