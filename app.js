@@ -3220,7 +3220,7 @@ var DiscoveryListView = class {
 		if (track.spotify) {
 			const spotify = document.createElement("button");
 			spotify.type = "button";
-			spotify.className = "discovery-track-spotify";
+			spotify.className = "button discovery-track-spotify";
 			spotify.textContent = "SPOTIFY";
 			spotify.setAttribute("aria-label", `OPEN ${track.title} ON SPOTIFY`);
 			spotify.addEventListener("click", () => this.openSpotify?.(track.dailyNumber));
