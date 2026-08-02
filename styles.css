@@ -1,12 +1,3 @@
-@font-face {
-  font-family: "Monument Extended";
-  src: url("https://raw.githubusercontent.com/HankeyThePoo/font/master/PPMonumentExtended-Black.woff2")
-    format("woff2");
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 #corzaguessr {
   --gradient: linear-gradient(135deg, #49f1fa, #7bb0f7 50%, #8d64f5);
   --gradient-background-soft: linear-gradient(
