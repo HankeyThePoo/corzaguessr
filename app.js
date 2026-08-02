@@ -2750,6 +2750,7 @@ var PlaybackCoordinator = class {
 			this.status = "playing";
 			if (this.mode === "classic") this.heardClassicRoundId = round.id;
 			this.previousTrackId = this.mode === "daily" ? this.previousTrackId : round.track.dailyNumber;
+			if (this.mode === "speedrun") this.failedTrackIds.clear();
 			this.resetActiveRecovery();
 			this.clearLoading();
 			this.callbacks.onPlaying(round, true);
