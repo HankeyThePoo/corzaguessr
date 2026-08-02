@@ -816,9 +816,7 @@ var GameController = class {
 			this.view.announce("PROGRESS COULD NOT BE RESET IN THIS BROWSER.");
 			return;
 		}
-		const mode = this.session.snapshot.mode;
-		if (mode) this.resetForMode(mode);
-		else this.render();
+		this.resetToModeSelection();
 		this.view.announce("ALL PROGRESS RESET.");
 	}
 	openSpotify() {
@@ -1115,6 +1113,21 @@ var GameController = class {
 		this.appStatus = this.tracks.length ? "ready" : this.appStatus;
 		this.view.resetTransientUi();
 		this.prime();
+		this.render();
+	}
+	resetToModeSelection() {
+		this.dailyBoundary.stop();
+		this.sessionNumber += 1;
+		this.playback.stop();
+		this.session.reset(null);
+		this.view.beginProgressReset();
+		this.clock.configure({
+			kind: "classic",
+			initialMs: 1e3,
+			limitMs: 1e3
+		});
+		if (this.tracks.length) this.appStatus = "awaiting-mode";
+		this.view.resetTransientUi();
 		this.render();
 	}
 	createRound(mode, failed, avoid) {
