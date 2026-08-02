@@ -128,7 +128,7 @@ var MODE_RULES = {
 	},
 	speedrun: {
 		initialTimeMs: 3e4,
-		description: "GUESS EVERY TRACK BEFORE TIME RUNS OUT",
+		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
 		roundStyle: "timed",
 		clockKind: "survival",
 		clockDisplay: "survival",
