@@ -4553,6 +4553,7 @@ function markup() {
 //#endregion
 //#region src/main.ts
 var JSDELIVR_REPOSITORY_BASE_URL = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/");
+var trackAssetNumber = (dailyNumber) => String(dailyNumber).padStart(2, "0");
 var root = document.querySelector("#corzaguessr");
 if (root && !root.dataset.corzaguessrReady) {
 	const volumeSettings = new LocalStorageVolumeSettingsRepository();
@@ -4561,7 +4562,7 @@ if (root && !root.dataset.corzaguessrReady) {
 	const moduleUrl = new URL(import.meta.url);
 	const coverBaseUrl = new URL("covers/", JSDELIVR_REPOSITORY_BASE_URL);
 	const view = new GameView(root, initialVolume, (dailyNumber) => {
-		return new URL(`${dailyNumber}.webp`, coverBaseUrl).href;
+		return new URL(`${trackAssetNumber(dailyNumber)}.webp`, coverBaseUrl).href;
 	});
 	const catalogUrl = new URL("tracks.json", moduleUrl);
 	const audioBaseUrl = new URL("tracks/", JSDELIVR_REPOSITORY_BASE_URL);
@@ -4578,7 +4579,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onExpired: () => controller?.onClockExpired()
 	});
 	const audio = new DualSlotAudioPlayer(view.audioElements, (round) => {
-		const url = new URL(`${String(round.track.dailyNumber).padStart(2, "0")}.mp3`, audioBaseUrl);
+		const url = new URL(`${trackAssetNumber(round.track.dailyNumber)}.mp3`, audioBaseUrl);
 		url.hash = `t=${round.clipStart}`;
 		return url.href;
 	}, {
