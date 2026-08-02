@@ -4564,7 +4564,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		return new URL(`${dailyNumber}.webp`, coverBaseUrl).href;
 	});
 	const catalogUrl = new URL("tracks.json", moduleUrl);
-	const audioBaseUrl = new URL(new URL("tracks/", JSDELIVR_REPOSITORY_BASE_URL), moduleUrl);
+	const audioBaseUrl = new URL("tracks/", JSDELIVR_REPOSITORY_BASE_URL);
 	catalogUrl.search = moduleUrl.search;
 	let controller;
 	let playback;
