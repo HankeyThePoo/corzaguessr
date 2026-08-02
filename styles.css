@@ -724,12 +724,12 @@
   background: rgba(16, 185, 129, 0.12);
 }
 
-#corzaguessr .slot.correct.new-discovery {
+#corzaguessr .slot.correct.speedrun-milestone {
   border-color: transparent;
   background: var(--gradient-background-soft);
 }
 
-#corzaguessr .slot.correct.new-discovery::after {
+#corzaguessr .slot.correct.speedrun-milestone::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -975,6 +975,15 @@
 #corzaguessr .discovery-title small {
   font-size: 0.9rem;
   line-height: 1.2;
+}
+
+#corzaguessr .discovery-speedrun {
+  appearance: none;
+  padding: 0;
+  background: none;
+  color: inherit;
+  line-height: inherit;
+  cursor: pointer;
 }
 
 #corzaguessr .discovery-panel > .actions {
