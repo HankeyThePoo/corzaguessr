@@ -684,6 +684,7 @@
 }
 
 #corzaguessr .slot {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -702,6 +703,19 @@
     opacity var(--slot-motion-duration) ease,
     translate var(--slot-motion-duration) ease;
   translate: 0 0;
+}
+
+#corzaguessr .slot.new-discovery::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  background: var(--gradient);
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 
 #corzaguessr .slot.fade {
