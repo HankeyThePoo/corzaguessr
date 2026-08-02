@@ -846,6 +846,11 @@
   margin-top: 0;
 }
 
+#corzaguessr .result-module:not(:first-child) .result-value,
+#corzaguessr .progress-best small {
+  text-transform: none;
+}
+
 #corzaguessr .result-label {
   font-size: 0.78rem;
   letter-spacing: 0.06em;
