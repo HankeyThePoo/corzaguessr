@@ -3485,7 +3485,7 @@ var DiscoveryListView = class {
 		titleElement.textContent = title;
 		const date = document.createElement("small");
 		date.className = "discovery-release-date";
-		date.textContent = `RELEASED ${formatReleaseDate(track.releaseDate)}`;
+		date.textContent = `RELEASE DATE: ${formatReleaseDate(track.releaseDate)}`;
 		metadata.append(artistElement, titleElement, date);
 		details.append(cover, metadata);
 		toggle.append(compact, details);
