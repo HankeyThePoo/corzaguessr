@@ -108,7 +108,7 @@ var MODE_RULES = {
 	},
 	speedrun: {
 		initialTimeMs: 3e4,
-		description: "SPEEDRUN: GUESS EVERY TRACK BEFORE TIME RUNS OUT"
+		description: "GUESS EVERY TRACK BEFORE TIME RUNS OUT"
 	}
 };
 function isTimedMode(mode) {
@@ -320,8 +320,7 @@ var GameSession = class {
 		if (this.currentSlotState) this.currentSlotState = {
 			id: this.currentSlotState.id,
 			text: message,
-			tone: "blink technical",
-			speedrunMilestone: false
+			tone: "blink technical"
 		};
 	}
 	markRoundStopped() {
@@ -373,8 +372,7 @@ var GameSession = class {
 			this.currentSlotState = {
 				id: ++this.nextSlotId,
 				text: speedrunWon ? "SPEEDRUN COMPLETE" : "TIME'S UP",
-				tone: "",
-				speedrunMilestone: false
+				tone: ""
 			};
 		}
 		this.resultState = { ...result };
@@ -391,8 +389,7 @@ var GameSession = class {
 		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : sixTryPrompt(this.attemptState);
 		return {
 			id: ++this.nextSlotId,
-			...prompt,
-			speedrunMilestone: false
+			...prompt
 		};
 	}
 	createAttemptSlot(outcome, title, speedrunMilestone) {
@@ -403,12 +400,15 @@ var GameSession = class {
 			const added = finalGuess ? 0 : SNIPPET_SECONDS[this.attemptState + 1] - SNIPPET_SECONDS[this.attemptState];
 			text = finalGuess ? "FINAL GUESS SKIPPED" : `GUESS ${this.attemptState + 1} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`;
 		}
-		return {
+		const slot = {
 			id: ++this.nextSlotId,
 			text,
-			tone: outcome,
-			speedrunMilestone: outcome === "correct" && speedrunMilestone
+			tone: outcome
 		};
+		return outcome === "correct" && speedrunMilestone ? {
+			...slot,
+			speedrunMilestone: true
+		} : slot;
 	}
 	archive(slot) {
 		const timed = isTimedMode(this.modeState);
@@ -551,7 +551,7 @@ var COPY = {
 //#endregion
 //#region src/application/daily-share.ts
 var SHARE_URL = "https://stolenvalorhq.com/corzaguessr";
-var MONTHS = [
+var MONTHS$1 = [
 	"January",
 	"February",
 	"March",
@@ -573,7 +573,7 @@ function formatDailyShare(date, result) {
 }
 function formatShareDate(value) {
 	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
-	const monthName = month ? MONTHS[Number(month) - 1] : void 0;
+	const monthName = month ? MONTHS$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
 //#endregion
@@ -607,6 +607,11 @@ function rulesText(input) {
 }
 function composeGameViewModel(input) {
 	const { session, transport } = input;
+	const speedrunTracksLeft = Math.max(0, input.tracks.length - session.speedrunCorrectTrackIds.size);
+	const currentSlot = session.mode === "speedrun" && session.currentSlot?.tone === "prompt" ? {
+		...session.currentSlot,
+		text: `${speedrunTracksLeft} ${speedrunTracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT`
+	} : session.currentSlot;
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyDone(input.dailyProgress, input.dailyDate) && !session.round);
 	const playPhase = [
@@ -640,7 +645,7 @@ function composeGameViewModel(input) {
 		playbackIcon: session.playbackRequested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: snippetSeconds(session.attempt),
 		skipText: skipLabel(session.mode, session.attempt),
-		currentSlot: session.currentSlot,
+		currentSlot,
 		history: session.history,
 		clock: input.clock,
 		result: session.result,
@@ -845,7 +850,7 @@ var GameController = class {
 		}
 	}
 	handleVisibilityVisible() {
-		if (this.playback.ownedRound) this.playback.restore();
+		if (this.playback.ownedRound && !this.overlay) this.playback.restore();
 		if (this.session.snapshot.mode === "daily") this.dailyBoundary.reconcile();
 	}
 	handleVisibilityHidden() {
@@ -1756,17 +1761,15 @@ function parseDailyProgress(value) {
 		if (!isRecord(candidate) || !hasExactKeys(candidate, [
 			"id",
 			"text",
-			"tone",
-			"speedrunMilestone"
+			"tone"
 		])) return emptyDailyProgress();
 		const expectedId = value.completed ? value.step + 1 - index : value.step - index;
 		const validTone = value.completed && index === 0 ? value.won && candidate.tone === "correct" || !value.won && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
-		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || typeof candidate.speedrunMilestone !== "boolean" || candidate.speedrunMilestone || !validTone) return emptyDailyProgress();
+		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || !validTone) return emptyDailyProgress();
 		history.push({
 			id: candidate.id,
 			text: candidate.text,
-			tone: candidate.tone,
-			speedrunMilestone: false
+			tone: candidate.tone
 		});
 	}
 	return {
@@ -2659,7 +2662,6 @@ var PlaybackCoordinator = class {
 		const audio = this.audio.snapshot();
 		if (event.role === "active") {
 			if (audio.activeRoundId !== event.round.id || audio.activeGeneration !== event.generation || !this.owns(event.round)) return;
-			this.callbacks.onReady?.();
 			this.prefetch();
 			return;
 		}
@@ -2910,7 +2912,7 @@ var AttemptHistoryView = class {
 			key: `${sessionKey}:${entry.id}`,
 			text: entry.text,
 			tone: entry.tone,
-			speedrunMilestone: entry.speedrunMilestone
+			speedrunMilestone: entry.speedrunMilestone === true
 		}));
 		if (rendered.length === this.renderedHistory.length && rendered.every((entry, index) => {
 			const previous = this.renderedHistory[index];
@@ -2941,7 +2943,7 @@ var AttemptHistoryView = class {
 			const previousTone = element.dataset.tone ?? "";
 			this.applyTone(element, previousTone, entry.tone);
 			element.textContent = entry.text;
-			this.applySpeedrunMilestone(element, entry.speedrunMilestone, entry.text);
+			this.applySpeedrunMilestone(element, entry.speedrunMilestone === true, entry.text);
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
 			if (isNew) fadeNodes.push(element);
 			return element;
@@ -2971,7 +2973,7 @@ var AttemptHistoryView = class {
 		}
 		element.dataset.currentKey = `${sessionKey}:${slot.id}`;
 		element.textContent = slot.text;
-		this.applySpeedrunMilestone(element, slot.speedrunMilestone, slot.text);
+		this.applySpeedrunMilestone(element, slot.speedrunMilestone === true, slot.text);
 		element.hidden = false;
 		this.fadeIn(element);
 	}
@@ -3303,7 +3305,32 @@ var Autocomplete = class {
 	}
 };
 //#endregion
+//#region src/ui/date-format.ts
+var MONTHS = [
+	"JANUARY",
+	"FEBRUARY",
+	"MARCH",
+	"APRIL",
+	"MAY",
+	"JUNE",
+	"JULY",
+	"AUGUST",
+	"SEPTEMBER",
+	"OCTOBER",
+	"NOVEMBER",
+	"DECEMBER"
+];
+function formatOrdinalDate(value) {
+	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
+	const monthName = month ? MONTHS[Number(month) - 1] : void 0;
+	if (!year || !monthName || !day) return value;
+	const numericDay = Number(day);
+	const remainder = numericDay % 100;
+	return `${monthName} ${numericDay}${remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH"}, ${year}`;
+}
+//#endregion
 //#region src/ui/discovery-list-view.ts
+var formatReleaseDate = formatOrdinalDate;
 var DiscoveryListView = class {
 	count;
 	items;
@@ -3463,28 +3490,6 @@ var DiscoveryListView = class {
 function splitTrackTitle(value) {
 	const separator = value.indexOf(" - ");
 	return separator < 0 ? ["", value] : [value.slice(0, separator), value.slice(separator + 3)];
-}
-function formatReleaseDate(value) {
-	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
-	if (!year || !month || !day) return value;
-	const monthName = [
-		"JANUARY",
-		"FEBRUARY",
-		"MARCH",
-		"APRIL",
-		"MAY",
-		"JUNE",
-		"JULY",
-		"AUGUST",
-		"SEPTEMBER",
-		"OCTOBER",
-		"NOVEMBER",
-		"DECEMBER"
-	][Number(month) - 1];
-	if (!monthName) return value;
-	const numericDay = Number(day);
-	const remainder = numericDay % 100;
-	return `${monthName} ${numericDay}${remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH"}, ${year}`;
 }
 //#endregion
 //#region src/ui/focus-navigation.ts
@@ -3827,7 +3832,7 @@ function rows(bests) {
 		{
 			mode: "DAILY",
 			value: bests.daily.attempts ? `${bests.daily.attempts}/6` : "--",
-			detail: bests.daily.attempts ? formatDailyDate(bests.daily.date) : "NO RECORD"
+			detail: bests.daily.attempts ? formatOrdinalDate(bests.daily.date) : "NO RECORD"
 		},
 		{
 			mode: "CLASSIC",
@@ -3848,26 +3853,6 @@ function rows(bests) {
 }
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-function formatDailyDate(value) {
-	const [year, month, day] = value.split("-").map(Number);
-	if (!year || !month || !day) return "NO RECORD";
-	const names = [
-		"JANUARY",
-		"FEBRUARY",
-		"MARCH",
-		"APRIL",
-		"MAY",
-		"JUNE",
-		"JULY",
-		"AUGUST",
-		"SEPTEMBER",
-		"OCTOBER",
-		"NOVEMBER",
-		"DECEMBER"
-	];
-	const suffix = day % 100 >= 11 && day % 100 <= 13 ? "TH" : day % 10 === 1 ? "ST" : day % 10 === 2 ? "ND" : day % 10 === 3 ? "RD" : "TH";
-	return `${names[month - 1]} ${day}${suffix}, ${year}`;
 }
 //#endregion
 //#region src/ui/timeline-view.ts
@@ -4334,11 +4319,10 @@ var GameView = class {
 			}
 		});
 	}
-	swapResultSecondaryLabel(text, generation, afterTransition = () => {}) {
+	swapResultSecondaryLabel(text, generation) {
 		const label = this.elements.resultSecondaryLabel;
 		if (label.textContent === text || this.reducedMotion.matches) {
 			label.textContent = text;
-			afterTransition();
 			return;
 		}
 		label.classList.remove("fading");
@@ -4349,10 +4333,6 @@ var GameView = class {
 			label.textContent = text;
 			label.classList.remove("fading");
 		}, this.durations.rewind);
-		window.setTimeout(() => {
-			if (generation !== this.resultCopyFeedbackGeneration) return;
-			afterTransition();
-		}, this.durations.rewind * 2);
 	}
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
@@ -4591,7 +4571,6 @@ if (root && !root.dataset.corzaguessrReady) {
 	}, void 0, void 0, false);
 	audio.setVolume(initialVolume / 100);
 	playback = new PlaybackCoordinator(audio, {
-		onReady: () => controller?.onLoading(),
 		onPending: (round) => controller?.onPending(round),
 		onPlaying: (round, startedNewRound) => {
 			controller?.onAudioPlaying(round, startedNewRound);
