@@ -501,14 +501,14 @@ function validateTrackCatalog(value) {
 		const duration = record.duration;
 		const spotify = typeof record.spotify === "string" ? record.spotify.trim() : "";
 		const dailyNumber = record.dailyNumber;
-		const releaseDate = typeof record.releaseDate === "string" ? record.releaseDate.trim() : "";
+		const releaseDate = record.releaseDate === null ? null : typeof record.releaseDate === "string" ? record.releaseDate.trim() : fail("has an invalid releaseDate.");
 		if (!title) fail("has no title.");
 		if (titles.has(title)) fail(`duplicates title "${title}".`);
 		if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) fail("has an invalid duration.");
 		if (!Number.isSafeInteger(dailyNumber) || Number(dailyNumber) <= 0) fail("has an invalid dailyNumber.");
 		if (numbers.has(Number(dailyNumber))) fail(`duplicates dailyNumber ${String(dailyNumber)}.`);
 		if (spotify && !/^[A-Za-z0-9]{22}$/.test(spotify)) fail("has an invalid Spotify track ID.");
-		if (!isIsoDate(releaseDate)) fail("has an invalid releaseDate.");
+		if (releaseDate !== null && !isIsoDate(releaseDate)) fail("has an invalid releaseDate.");
 		titles.add(title);
 		numbers.add(Number(dailyNumber));
 		return {
@@ -530,7 +530,7 @@ function stableHash(value) {
 	return hash >>> 0;
 }
 function selectDailyTrack(tracks, date, persistedNumber) {
-	const available = tracks.filter((track) => track.releaseDate <= date);
+	const available = tracks.filter((track) => isReleasedBy(track, date));
 	if (available.length === 0) return null;
 	if (persistedNumber !== null) {
 		const persisted = available.find((track) => track.dailyNumber === persistedNumber);
@@ -548,7 +548,10 @@ function selectDailyTrack(tracks, date, persistedNumber) {
 	return selected;
 }
 function isDailyTrackAvailable(tracks, date, dailyNumber) {
-	return tracks.some((track) => track.dailyNumber === dailyNumber && track.releaseDate <= date);
+	return tracks.some((track) => track.dailyNumber === dailyNumber && isReleasedBy(track, date));
+}
+function hasDailyTrackAvailable(tracks, date) {
+	return tracks.some((track) => isReleasedBy(track, date));
 }
 function dailyClipStart(track, date) {
 	const clip = Math.min(SNIPPET_SECONDS.at(-1), track.duration);
@@ -569,6 +572,9 @@ function selectRandomTrack(tracks, failed, previousTrackId, random = Math.random
 }
 function clampRandom(value) {
 	return Math.max(0, Math.min(.999999999999, value));
+}
+function isReleasedBy(track, date) {
+	return track.releaseDate !== null && track.releaseDate <= date;
 }
 //#endregion
 //#region src/application/copy.ts
@@ -616,7 +622,7 @@ function formatShareDate(value) {
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
 	if (progress.date === dailyDate && progress.started && !progress.completed && progress.dailyNumber !== null) return !isDailyTrackAvailable(tracks, dailyDate, progress.dailyNumber);
-	return !tracks.some((track) => track.releaseDate <= dailyDate);
+	return !hasDailyTrackAvailable(tracks, dailyDate);
 }
 function dailyDone(progress, date) {
 	return progress.date === date && progress.completed;
@@ -3401,7 +3407,9 @@ function formatOrdinalDate(value) {
 }
 //#endregion
 //#region src/ui/discovery-list-view.ts
-var formatReleaseDate = formatOrdinalDate;
+function formatReleaseDate(value) {
+	return value === null ? "TBA" : formatOrdinalDate(value);
+}
 var DiscoveryListView = class {
 	count;
 	items;
