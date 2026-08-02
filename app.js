@@ -92,27 +92,52 @@ var SNIPPET_SECONDS = [
 var MODE_RULES = {
 	classic: {
 		initialTimeMs: null,
-		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED"
+		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
+		roundStyle: "six-try",
+		clockKind: "classic",
+		clockDisplay: "snippet",
+		adjustsTime: false,
+		failurePolicy: "heard-fixed"
 	},
 	daily: {
 		initialTimeMs: null,
-		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES"
+		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
+		roundStyle: "six-try",
+		clockKind: "classic",
+		clockDisplay: "snippet",
+		adjustsTime: false,
+		failurePolicy: "fixed"
 	},
 	blitz: {
 		initialTimeMs: 6e4,
-		description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT"
+		description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
+		roundStyle: "timed",
+		clockKind: "blitz",
+		clockDisplay: "countdown",
+		adjustsTime: false,
+		failurePolicy: "replace"
 	},
 	survival: {
 		initialTimeMs: 3e4,
-		description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT"
+		description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT",
+		roundStyle: "timed",
+		clockKind: "survival",
+		clockDisplay: "survival",
+		adjustsTime: true,
+		failurePolicy: "replace"
 	},
 	speedrun: {
 		initialTimeMs: 3e4,
-		description: "GUESS EVERY TRACK BEFORE TIME RUNS OUT"
+		description: "GUESS EVERY TRACK BEFORE TIME RUNS OUT",
+		roundStyle: "timed",
+		clockKind: "survival",
+		clockDisplay: "survival",
+		adjustsTime: true,
+		failurePolicy: "replace"
 	}
 };
 function isTimedMode(mode) {
-	return mode === "blitz" || mode === "survival" || mode === "speedrun";
+	return mode !== null && MODE_RULES[mode].roundStyle === "timed";
 }
 function snippetSeconds(attempt) {
 	return SNIPPET_SECONDS[Math.max(0, Math.min(SNIPPET_SECONDS.length - 1, attempt))];
@@ -126,7 +151,7 @@ function sixTryPrompt(attempt) {
 	const finalAttempt = attempt === SNIPPET_SECONDS.length - 1;
 	return {
 		text: finalAttempt ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${SNIPPET_SECONDS.length}`,
-		tone: finalAttempt ? "blink prompt" : "prompt"
+		tone: finalAttempt ? "final-prompt" : "prompt"
 	};
 }
 function timedPrompt(roundNumber) {
@@ -236,7 +261,6 @@ var GameSession = class {
 	correctState = 0;
 	currentSlotState = null;
 	historyState = [];
-	previousTrackIdState = null;
 	guessedTrackIdsState = /* @__PURE__ */ new Set();
 	speedrunCorrectTrackIdsState = /* @__PURE__ */ new Set();
 	resultState = null;
@@ -254,7 +278,6 @@ var GameSession = class {
 			correct: this.correctState,
 			currentSlot: this.currentSlotState ? { ...this.currentSlotState } : null,
 			history: this.historyState.map((slot) => ({ ...slot })),
-			previousTrackId: this.previousTrackIdState,
 			guessedTrackIds: new Set(this.guessedTrackIdsState),
 			speedrunCorrectTrackIds: new Set(this.speedrunCorrectTrackIdsState),
 			result: this.resultState ? { ...this.resultState } : null,
@@ -298,7 +321,6 @@ var GameSession = class {
 		this.roundHeardState = true;
 		this.phaseState = "playing";
 		this.playbackRequestedState = true;
-		if (this.modeState !== "daily") this.previousTrackIdState = round.track.dailyNumber;
 		if (isTimedMode(this.modeState)) this.guessedTrackIdsState.clear();
 		if (!this.currentSlotState) this.currentSlotState = this.prompt();
 	}
@@ -320,7 +342,7 @@ var GameSession = class {
 		if (this.currentSlotState) this.currentSlotState = {
 			id: this.currentSlotState.id,
 			text: message,
-			tone: "blink technical"
+			tone: "technical"
 		};
 	}
 	markRoundStopped() {
@@ -340,6 +362,7 @@ var GameSession = class {
 		return true;
 	}
 	resolveSixTry(outcome, guessedTitle) {
+		if (this.modeState !== "classic" && this.modeState !== "daily") throw new Error("Six-try attempts require Classic or Daily mode.");
 		const slot = this.createAttemptSlot(outcome, guessedTitle, false);
 		const finished = outcome === "correct" || this.attemptState === 5;
 		if (finished) this.currentSlotState = slot;
@@ -351,6 +374,7 @@ var GameSession = class {
 		return { finished };
 	}
 	resolveTimed(outcome, guessedTitle) {
+		if (!isTimedMode(this.modeState)) throw new Error("Timed attempts require Blitz, Survival, or Speedrun mode.");
 		const speedrunMilestone = !!(outcome === "correct" && this.modeState === "speedrun" && this.roundState && !this.speedrunCorrectTrackIdsState.has(this.roundState.track.dailyNumber));
 		if (outcome === "correct" && this.modeState === "speedrun" && this.roundState) this.speedrunCorrectTrackIdsState.add(this.roundState.track.dailyNumber);
 		this.archive(this.createAttemptSlot(outcome, guessedTitle, speedrunMilestone));
@@ -364,6 +388,7 @@ var GameSession = class {
 		this.playbackRequestedState = false;
 	}
 	finish(result) {
+		if (!this.modeState || result.mode !== this.modeState) throw new Error("Game result mode must match the active session mode.");
 		this.phaseState = "result";
 		this.playbackRequestedState = false;
 		this.roundHeardState = false;
@@ -372,7 +397,7 @@ var GameSession = class {
 			this.currentSlotState = {
 				id: ++this.nextSlotId,
 				text: speedrunWon ? "SPEEDRUN COMPLETE" : "TIME'S UP",
-				tone: ""
+				tone: "neutral"
 			};
 		}
 		this.resultState = { ...result };
@@ -428,6 +453,16 @@ var GameSession = class {
 };
 //#endregion
 //#region src/domain/track-catalog.ts
+function summarizeDiscovery(tracks, discoveries) {
+	const discovered = tracks.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
+	const total = tracks.length;
+	return {
+		discovered,
+		total,
+		percentage: total ? Math.round(discovered * 100 / total) : 0,
+		complete: total > 0 && discovered === total
+	};
+}
 function isIsoDate(value) {
 	if (typeof value !== "string") return false;
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -647,6 +682,7 @@ function composeGameViewModel(input) {
 		skipText: skipLabel(session.mode, session.attempt),
 		currentSlot,
 		history: session.history,
+		unavailableGuessIds: session.guessedTrackIds,
 		clock: input.clock,
 		result: session.result,
 		dailyProgress: input.dailyProgress,
@@ -827,12 +863,20 @@ var GameController = class {
 	shareDaily() {
 		const result = this.session.snapshot.result;
 		if (this.overlay !== "result" || result?.mode !== "daily") return;
-		this.resultClipboard.copy(formatDailyShare(this.dailyDate, result)).then((copied) => {
+		const sessionNumber = this.sessionNumber;
+		const dailyDate = this.dailyDate;
+		const stillCurrent = () => {
+			return this.sessionNumber === sessionNumber && this.dailyDate === dailyDate && this.overlay === "result" && this.session.snapshot.result?.mode === "daily";
+		};
+		this.resultClipboard.copy(formatDailyShare(dailyDate, result)).then((copied) => {
+			if (!stillCurrent()) return;
 			if (copied) {
 				this.view.showDailyShareCopied();
 				this.view.announce("RESULT COPIED TO CLIPBOARD.");
 			} else this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER.");
-		}, () => this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER."));
+		}, () => {
+			if (stillCurrent()) this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER.");
+		});
 	}
 	openDiscoverySpotify(dailyNumber) {
 		if (this.overlay !== "discovery" || !this.progress.discoveries.has(dailyNumber)) return;
@@ -1026,7 +1070,7 @@ var GameController = class {
 				this.finishGame(true, round);
 				return;
 			}
-			if (mode === "survival" || mode === "speedrun") {
+			if (MODE_RULES[mode].adjustsTime) {
 				const adjustment = survivalAdjustment(outcome);
 				this.view.flashSurvivalChange(adjustment / 1e3);
 				const snapshot = this.clock.adjust(adjustment);
@@ -1070,20 +1114,7 @@ var GameController = class {
 		this.finishing = true;
 		const clock = this.clock.pause();
 		this.playback.stop();
-		const result = this.progress.finish({
-			mode,
-			won,
-			track: round.track,
-			attempt: state.attempt,
-			correct: state.correct,
-			guesses: state.guesses,
-			elapsedMs: clock.elapsedMs,
-			dailyDate: this.dailyDate,
-			currentSlot: state.currentSlot,
-			history: state.history,
-			speedrunCorrectTrackCount: state.speedrunCorrectTrackIds.size,
-			catalogTrackCount: this.tracks.length
-		});
+		const result = this.progress.finish(finishedRun(mode, won, round, state, clock, this.dailyDate, this.tracks.length));
 		this.session.finish(result);
 		this.overlay = "result";
 		this.view.resetTransientUi();
@@ -1092,13 +1123,12 @@ var GameController = class {
 		this.finishing = false;
 	}
 	resetForMode(mode) {
-		const previousTrackId = this.session.snapshot.previousTrackId;
 		this.sessionNumber += 1;
-		this.playback.stop();
 		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
 		const resumed = seed?.attempt ?? 0;
 		this.session.reset(mode, seed);
-		const initial = MODE_RULES[mode].initialTimeMs;
+		const rule = MODE_RULES[mode];
+		const initial = rule.initialTimeMs;
 		const milliseconds = initial ?? snippetSeconds(resumed) * 1e3;
 		this.view.beginProgressReset();
 		this.clock.configure(initial === null ? {
@@ -1106,10 +1136,10 @@ var GameController = class {
 			initialMs: milliseconds,
 			limitMs: milliseconds
 		} : {
-			kind: mode === "survival" || mode === "speedrun" ? "survival" : "blitz",
+			kind: rule.clockKind,
 			initialMs: milliseconds
 		});
-		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid), previousTrackId);
+		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.appStatus = this.tracks.length ? "ready" : this.appStatus;
 		this.view.resetTransientUi();
 		this.prime();
@@ -1118,7 +1148,7 @@ var GameController = class {
 	resetToModeSelection() {
 		this.dailyBoundary.stop();
 		this.sessionNumber += 1;
-		this.playback.stop();
+		this.playback.reset();
 		this.session.reset(null);
 		this.view.beginProgressReset();
 		this.clock.configure({
@@ -1157,9 +1187,7 @@ var GameController = class {
 		return dailyCatalogPending(this.session.snapshot.mode, this.tracks, this.dailyDate, this.progress.daily);
 	}
 	speedrunUnlocked() {
-		if (!this.tracks.length) return false;
-		const discoveries = this.progress.discoveries;
-		return this.tracks.every((track) => discoveries.has(track.dailyNumber));
+		return summarizeDiscovery(this.tracks, this.progress.discoveries).complete;
 	}
 	render() {
 		const session = this.session.snapshot;
@@ -1175,9 +1203,46 @@ var GameController = class {
 			tracks: this.tracks,
 			overlay: this.overlay
 		});
-		this.view.render(viewModel, String(this.sessionNumber), session.guessedTrackIds);
+		this.view.render(viewModel, String(this.sessionNumber));
 	}
 };
+function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCount) {
+	switch (mode) {
+		case "daily": return {
+			mode,
+			won,
+			track: round.track,
+			attempt: state.attempt,
+			dailyDate,
+			currentSlot: state.currentSlot,
+			history: state.history
+		};
+		case "classic": return {
+			mode,
+			won,
+			track: round.track,
+			attempt: state.attempt
+		};
+		case "blitz": return {
+			mode,
+			correct: state.correct,
+			guesses: state.guesses
+		};
+		case "survival": return {
+			mode,
+			correct: state.correct,
+			guesses: state.guesses,
+			elapsedMs: clock.elapsedMs
+		};
+		case "speedrun": return {
+			mode,
+			won,
+			elapsedMs: clock.elapsedMs,
+			completedTrackCount: state.speedrunCorrectTrackIds.size,
+			catalogTrackCount
+		};
+	}
+}
 //#endregion
 //#region src/domain/progress-defaults.ts
 function emptyDailyProgress() {
@@ -1314,7 +1379,7 @@ var ProgressService = class {
 			const completedHistory = run.currentSlot ? [{
 				...run.currentSlot,
 				id: run.attempt + 1
-			}, ...(run.history ?? []).map((slot) => ({ ...slot }))] : [];
+			}, ...run.history.map((slot) => ({ ...slot }))] : [];
 			const nextDaily = {
 				date: run.dailyDate,
 				dailyNumber: run.track.dailyNumber,
@@ -1359,8 +1424,8 @@ var ProgressService = class {
 				bestAverage: best.best ? best.bestSnippetTotal / best.best : 0
 			};
 		}
-		const runAccuracy = accuracy(run.correct, run.guesses);
 		if (run.mode === "blitz") {
+			const runAccuracy = accuracy(run.correct, run.guesses);
 			const nextBests = cloneBests(this.bestsState);
 			const update = updateTimedBest(nextBests, "blitz", run.correct, runAccuracy);
 			const bestPersisted = !update.changed || this.saveBests(nextBests);
@@ -1376,8 +1441,8 @@ var ProgressService = class {
 		}
 		if (run.mode === "speedrun") {
 			const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
-			const completedTracks = run.speedrunCorrectTrackCount ?? 0;
-			const catalogTrackCount = run.catalogTrackCount ?? 0;
+			const completedTracks = run.completedTrackCount;
+			const catalogTrackCount = run.catalogTrackCount;
 			const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
 			const nextBests = cloneBests(this.bestsState);
 			const update = updateSpeedrunBest(nextBests, completed, elapsedMs, catalogTrackCount);
@@ -1394,6 +1459,7 @@ var ProgressService = class {
 				bestTrackCount: this.bestsState.speedrun.trackCount
 			};
 		}
+		const runAccuracy = accuracy(run.correct, run.guesses);
 		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
 		const nextBests = cloneBests(this.bestsState);
 		const update = updateTimedBest(nextBests, "survival", elapsedMs, runAccuracy);
@@ -1431,6 +1497,11 @@ function cloneBests(bests) {
 		survival: { ...bests.survival },
 		speedrun: { ...bests.speedrun }
 	};
+}
+//#endregion
+//#region src/application/track-assets.ts
+function trackAssetNumber(dailyNumber) {
+	return String(dailyNumber).padStart(2, "0");
 }
 //#endregion
 //#region src/platform/browser-external-navigator.ts
@@ -1767,7 +1838,7 @@ function parseDailyProgress(value) {
 		"step",
 		"history"
 	])) return emptyDailyProgress();
-	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || value.started !== true || typeof value.completed !== "boolean" || typeof value.won !== "boolean" || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || !value.completed && value.won || value.completed && value.history.length !== 0 && value.history.length !== value.step + 1 || !value.completed && value.history.length !== value.step) return emptyDailyProgress();
+	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || value.started !== true || typeof value.completed !== "boolean" || typeof value.won !== "boolean" || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || !value.completed && value.won || value.completed && value.history.length !== value.step + 1 || !value.completed && value.history.length !== value.step) return emptyDailyProgress();
 	const history = [];
 	for (let index = 0; index < value.history.length; index += 1) {
 		const candidate = value.history[index];
@@ -1997,7 +2068,6 @@ var DualSlotAudioPlayer = class {
 	callbacks;
 	timing;
 	playbackTimeoutMs;
-	materializeSources;
 	slots;
 	active = null;
 	standby = null;
@@ -2009,12 +2079,11 @@ var DualSlotAudioPlayer = class {
 	watchdogOwner = null;
 	watchdogTimer = 0;
 	volume = 1;
-	constructor(elements, sourceForRound, callbacks, timing = browserTiming, playbackTimeoutMs = 1e4, materializeSources = false) {
+	constructor(elements, sourceForRound, callbacks, timing = browserTiming, playbackTimeoutMs = 1e4) {
 		this.sourceForRound = sourceForRound;
 		this.callbacks = callbacks;
 		this.timing = timing;
 		this.playbackTimeoutMs = playbackTimeoutMs;
-		this.materializeSources = materializeSources;
 		this.slots = elements.map((element, id) => ({
 			id,
 			element,
@@ -2023,7 +2092,6 @@ var DualSlotAudioPlayer = class {
 			generation: 0,
 			playGeneration: 0,
 			controller: null,
-			objectUrl: null,
 			failed: false,
 			ready: false,
 			playRequested: false,
@@ -2242,10 +2310,6 @@ var DualSlotAudioPlayer = class {
 		} else this.standby = slot;
 		this.bind(slot);
 		slot.element.preload = "auto";
-		if (this.materializeSources) {
-			this.loadMaterializedSource(slot, round, role);
-			return true;
-		}
 		slot.element.src = this.sourceForRound(round);
 		slot.element.load();
 		if (slot.element.error) {
@@ -2254,28 +2318,6 @@ var DualSlotAudioPlayer = class {
 		}
 		if (slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
 		return true;
-	}
-	async loadMaterializedSource(slot, round, role) {
-		const generation = slot.generation;
-		const signal = slot.controller?.signal;
-		try {
-			const response = await fetch(this.sourceForRound(round), signal ? { signal } : void 0);
-			if (!response.ok) throw new Error(`Audio request failed with HTTP ${response.status}.`);
-			const blob = await response.blob();
-			if (!this.isLive(slot, generation, round.id)) return;
-			const objectUrl = URL.createObjectURL(blob);
-			if (!this.isLive(slot, generation, round.id)) {
-				URL.revokeObjectURL(objectUrl);
-				return;
-			}
-			slot.objectUrl = objectUrl;
-			slot.element.src = objectUrl;
-			slot.element.load();
-			if (slot.element.error) this.fail(slot, role, role === "active" ? "active-preload" : "standby-preload", mediaErrorToError(slot.element.error, "Downloaded audio could not be staged."));
-		} catch (error) {
-			if (!this.isLive(slot, generation, round.id) || isNamedError(error, "AbortError")) return;
-			this.fail(slot, role, role === "active" ? "active-preload" : "standby-preload", normalizeError(error));
-		}
 	}
 	bind(slot) {
 		const controller = new AbortController();
@@ -2294,10 +2336,10 @@ var DualSlotAudioPlayer = class {
 			if (live()) this.markReady(slot);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("progress", () => {
-			if (live()) this.markReady(slot);
+			if (live() && slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("seeked", () => {
-			if (live()) this.markReady(slot);
+			if (live() && slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("playing", () => {
 			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
@@ -2430,8 +2472,6 @@ var DualSlotAudioPlayer = class {
 		element.pause();
 		element.removeAttribute("src");
 		element.load();
-		if (slot.objectUrl) URL.revokeObjectURL(slot.objectUrl);
-		slot.objectUrl = null;
 		if (replaceFailedElement) {
 			const replacement = element.cloneNode(false);
 			replacement.volume = this.volume;
@@ -2493,7 +2533,7 @@ var PlaybackCoordinator = class {
 	factory = null;
 	previousTrackId = null;
 	failedTrackIds = /* @__PURE__ */ new Set();
-	successfulRoundIds = /* @__PURE__ */ new Set();
+	heardClassicRoundId = null;
 	activeRecoveryAttempts = 0;
 	standbyRecoveryAttempts = 0;
 	automaticRecoveryBlocked = false;
@@ -2536,13 +2576,14 @@ var PlaybackCoordinator = class {
 			audio
 		};
 	}
-	configure(mode, factory, previousTrackId) {
+	configure(mode, factory) {
+		const changingMode = this.mode !== mode;
 		this.stop();
 		this.mode = mode;
 		this.factory = factory;
-		this.previousTrackId = previousTrackId;
+		if (changingMode) this.previousTrackId = null;
 		this.failedTrackIds.clear();
-		this.successfulRoundIds.clear();
+		this.heardClassicRoundId = null;
 		this.resetRecoveryCircuits();
 	}
 	prime() {
@@ -2555,7 +2596,10 @@ var PlaybackCoordinator = class {
 	}
 	start(options = {}) {
 		if (!this.mode || !this.factory || this.suspended) return false;
-		if (options.manualRetry) this.resetRecoveryCircuits();
+		if (options.manualRetry) {
+			this.resetRecoveryCircuits();
+			if (!this.retryRound) this.failedTrackIds.clear();
+		}
 		if (!options.manualRetry && this.automaticRecoveryBlocked) {
 			this.callbacks.onRecovery("manual-retry");
 			return false;
@@ -2670,6 +2714,15 @@ var PlaybackCoordinator = class {
 		this.suspended = false;
 		this.status = "empty";
 	}
+	reset() {
+		this.stop();
+		this.mode = null;
+		this.factory = null;
+		this.previousTrackId = null;
+		this.failedTrackIds.clear();
+		this.heardClassicRoundId = null;
+		this.resetRecoveryCircuits();
+	}
 	handleReady(event) {
 		if (this.suspended) return;
 		const audio = this.audio.snapshot();
@@ -2689,9 +2742,8 @@ var PlaybackCoordinator = class {
 			this.active = round;
 			this.retryRound = null;
 			this.status = "playing";
-			this.successfulRoundIds.add(round.id);
+			if (this.mode === "classic") this.heardClassicRoundId = round.id;
 			this.previousTrackId = this.mode === "daily" ? this.previousTrackId : round.track.dailyNumber;
-			this.failedTrackIds.clear();
 			this.resetActiveRecovery();
 			this.clearLoading();
 			this.callbacks.onPlaying(round, true);
@@ -2700,7 +2752,7 @@ var PlaybackCoordinator = class {
 		}
 		if (this.active?.id === round.id) {
 			this.status = "playing";
-			this.successfulRoundIds.add(round.id);
+			if (this.mode === "classic") this.heardClassicRoundId = round.id;
 			this.resetActiveRecovery();
 			this.clearLoading();
 			this.callbacks.onPlaying(round, false);
@@ -2738,7 +2790,7 @@ var PlaybackCoordinator = class {
 		if (failure.role === "standby") {
 			if (this.standby?.id !== failure.round.id) return;
 			this.standby = null;
-			if (this.mode !== "daily") this.failedTrackIds.add(failure.round.track.dailyNumber);
+			if (this.mode && MODE_RULES[this.mode].failurePolicy !== "fixed") this.failedTrackIds.add(failure.round.track.dailyNumber);
 			if (this.standbyRecoveryAttempts < MAXIMUM_STANDBY_RECOVERIES) {
 				this.standbyRecoveryAttempts += 1;
 				this.defer(() => this.prefetch());
@@ -2756,10 +2808,11 @@ var PlaybackCoordinator = class {
 			"playing",
 			"waiting"
 		].includes(this.status);
-		const preserveIdentity = this.mode === "daily" || this.mode === "classic" && this.successfulRoundIds.has(round.id);
+		const failurePolicy = this.mode ? MODE_RULES[this.mode].failurePolicy : "replace";
+		const preserveIdentity = failurePolicy === "fixed" || failurePolicy === "heard-fixed" && this.heardClassicRoundId === round.id;
 		this.operationGeneration += 1;
 		this.clearLoading();
-		if (this.mode !== "daily") this.failedTrackIds.add(round.track.dailyNumber);
+		if (failurePolicy !== "fixed") this.failedTrackIds.add(round.track.dailyNumber);
 		this.prepared = null;
 		this.pending = null;
 		this.active = null;
@@ -3086,8 +3139,8 @@ var AttemptHistoryView = class {
 	}
 	applyTone(element, previous, next) {
 		if (previous === next) return;
-		if (previous) element.classList.remove(...previous.split(/\s+/).filter(Boolean));
-		if (next) element.classList.add(...next.split(/\s+/).filter(Boolean));
+		element.classList.remove(...toneClasses(previous));
+		element.classList.add(...toneClasses(next));
 		element.dataset.tone = next;
 	}
 	applySpeedrunMilestone(element, speedrunMilestone, text) {
@@ -3144,6 +3197,11 @@ var AttemptHistoryView = class {
 		this.wiggles.get(element)?.cancel();
 	}
 };
+function toneClasses(tone) {
+	if (tone === "correct" || tone === "wrong" || tone === "skip") return [tone];
+	if (tone === "final-prompt" || tone === "technical") return ["blink"];
+	return [];
+}
 //#endregion
 //#region src/ui/track-search.ts
 var TOKEN_ALIASES = {
@@ -3368,20 +3426,21 @@ var DiscoveryListView = class {
 		this.tracks = tracks;
 		this.discoveriesSignature = signature;
 		const ordered = [...tracks].sort((a, b) => b.dailyNumber - a.dailyNumber);
-		const discovered = ordered.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
-		const percentage = ordered.length ? Math.round(discovered * 100 / ordered.length) : 0;
-		const complete = ordered.length > 0 && discovered === ordered.length;
-		this.count.replaceChildren(document.createTextNode(`${discovered} / ${ordered.length} (${percentage}%)${complete ? " " : ""}`));
+		const { discovered, total, percentage, complete } = summarizeDiscovery(tracks, discoveries);
+		this.count.replaceChildren(document.createTextNode(`${discovered} / ${total} (${percentage}%)${complete ? " " : ""}`));
 		if (complete) {
 			const speedrun = document.createElement("button");
 			speedrun.type = "button";
 			speedrun.className = "discovery-speedrun";
 			speedrun.textContent = "✦";
+			speedrun.tabIndex = -1;
 			speedrun.setAttribute("aria-label", "START SPEEDRUN");
+			speedrun.addEventListener("pointerdown", (event) => event.preventDefault());
+			speedrun.addEventListener("focus", () => speedrun.blur());
 			speedrun.addEventListener("click", () => this.startSpeedrun?.());
 			this.count.append(speedrun);
 		}
-		this.count.setAttribute("aria-label", `${discovered} of ${ordered.length}, ${percentage} percent${complete ? ", Discovery complete" : ""}`);
+		this.count.setAttribute("aria-label", `${discovered} of ${total}, ${percentage} percent${complete ? ", Discovery complete" : ""}`);
 		if (this.expandedTrackId !== null && !discoveries.has(this.expandedTrackId)) this.expandedTrackId = null;
 		this.items.replaceChildren(...ordered.map((track) => discoveries.has(track.dailyNumber) ? this.createDiscoveredItem(track) : this.createUndiscoveredItem(track)));
 	}
@@ -3693,7 +3752,7 @@ var ModalController = class {
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
 		const container = this.kind === "result" ? this.elements.result : this.elements.discoveryPanel;
-		const focusable = [...container.querySelectorAll("button:not([disabled]), input:not([disabled])")].filter((element) => !element.hidden && element.offsetParent !== null);
+		const focusable = [...container.querySelectorAll("button:not([disabled]), input:not([disabled])")].filter((element) => element.tabIndex >= 0 && !element.hidden && element.offsetParent !== null);
 		if (!focusable.length) return;
 		const first = focusable[0];
 		const last = focusable.at(-1);
@@ -3741,7 +3800,7 @@ var ModalController = class {
 		if (window.scrollX !== snapshot.scrollX || window.scrollY !== snapshot.scrollY) window.scrollTo(snapshot.scrollX, snapshot.scrollY);
 	}
 	canFocus(element) {
-		return element.isConnected && !element.matches(":disabled") && !element.hidden && !element.closest("[inert]");
+		return element.isConnected && element.tabIndex >= 0 && !element.matches(":disabled") && !element.hidden && !element.closest("[inert]");
 	}
 	beginOpen() {
 		this.cancelCloseWait();
@@ -4069,7 +4128,7 @@ var GameView = class {
 	resultCopyFeedbackGeneration = 0;
 	rulesSignature = "";
 	announcementFrame = 0;
-	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${dailyNumber}.webp`) {
+	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
 		root.dataset.corzaguessrReady = "true";
@@ -4149,7 +4208,7 @@ var GameView = class {
 			this.hoveredButton = null;
 		});
 	}
-	render(state, sessionKey, guessed) {
+	render(state, sessionKey) {
 		this.state = state;
 		this.root.dataset.appStatus = state.appStatus;
 		this.root.dataset.sessionStatus = state.phase;
@@ -4179,7 +4238,7 @@ var GameView = class {
 		this.elements.snippet.style.width = `${state.snippetSeconds / SNIPPET_SECONDS.at(-1) * 100}%`;
 		this.renderRules();
 		this.attempts.render(state.currentSlot, state.history, sessionKey);
-		this.autocomplete.setDependencies(state.tracks, guessed);
+		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds);
 		this.renderDiscovery(state);
 		this.progressSummary.render(state.personalBests);
 		this.renderResult(state.result);
@@ -4193,8 +4252,9 @@ var GameView = class {
 		let progress = 0;
 		if (!mode) this.elements.endtime.textContent = "0:01";
 		else if (isTimedMode(mode)) {
-			const survival = mode === "survival" || mode === "speedrun";
-			const initial = MODE_RULES[mode].initialTimeMs;
+			const rule = MODE_RULES[mode];
+			const survival = rule.clockDisplay === "survival";
+			const initial = rule.initialTimeMs;
 			this.elements.endtime.textContent = formatClock(survival ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3);
 			display = formatClock((survival ? clock.elapsedMs : clock.remainingMs) / 1e3);
 			const denominator = survival ? clock.maxRemainingMs : initial;
@@ -4553,7 +4613,6 @@ function markup() {
 //#endregion
 //#region src/main.ts
 var JSDELIVR_REPOSITORY_BASE_URL = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/");
-var trackAssetNumber = (dailyNumber) => String(dailyNumber).padStart(2, "0");
 var root = document.querySelector("#corzaguessr");
 if (root && !root.dataset.corzaguessrReady) {
 	const volumeSettings = new LocalStorageVolumeSettingsRepository();
@@ -4589,7 +4648,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onEnded: (round) => playback?.handleEnded(round),
 		onBlocked: (round) => playback?.handleBlocked(round),
 		onFailure: (failure) => playback?.handleFailure(failure)
-	}, void 0, void 0, false);
+	});
 	audio.setVolume(initialVolume / 100);
 	playback = new PlaybackCoordinator(audio, {
 		onPending: (round) => controller?.onPending(round),
