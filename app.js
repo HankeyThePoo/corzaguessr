@@ -779,8 +779,10 @@ var GameController = class {
 		const result = this.session.snapshot.result;
 		if (this.overlay !== "result" || result?.mode !== "daily") return;
 		this.resultClipboard.copy(formatDailyShare(this.dailyDate, result)).then((copied) => {
-			if (copied) this.view.announce("RESULT COPIED TO CLIPBOARD.");
-			else this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER.");
+			if (copied) {
+				this.view.showDailyShareCopied();
+				this.view.announce("RESULT COPIED TO CLIPBOARD.");
+			} else this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER.");
 		}, () => this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER."));
 	}
 	openDiscoverySpotify(dailyNumber) {
@@ -3934,6 +3936,7 @@ var GameView = class {
 	hoveredButton = null;
 	preview = null;
 	resultSignature = "";
+	resultCopyFeedbackTimer = 0;
 	rulesSignature = "";
 	announcementFrame = 0;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${dailyNumber}.webp`) {
@@ -4092,6 +4095,15 @@ var GameView = class {
 	clearAttemptEntry() {
 		this.autocomplete.reset();
 	}
+	showDailyShareCopied() {
+		if (this.state?.overlay !== "result" || this.state.result?.mode !== "daily") return;
+		if (this.resultCopyFeedbackTimer) window.clearTimeout(this.resultCopyFeedbackTimer);
+		this.elements.resultSecondary.textContent = "COPIED";
+		this.resultCopyFeedbackTimer = window.setTimeout(() => {
+			this.resultCopyFeedbackTimer = 0;
+			if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.elements.resultSecondary.textContent = "SHARE";
+		}, 1200);
+	}
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
 		this.elements.status.textContent = "";
@@ -4147,6 +4159,10 @@ var GameView = class {
 		const signature = result ? JSON.stringify(result) : "";
 		if (signature === this.resultSignature) return;
 		this.resultSignature = signature;
+		if (this.resultCopyFeedbackTimer) {
+			window.clearTimeout(this.resultCopyFeedbackTimer);
+			this.resultCopyFeedbackTimer = 0;
+		}
 		if (!result) {
 			this.elements.resultTitle.textContent = "";
 			this.elements.resultMeta.replaceChildren();
