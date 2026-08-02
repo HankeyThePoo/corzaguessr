@@ -1,11 +1,5 @@
 #corzaguessr {
   --gradient: linear-gradient(135deg, #49f1fa, #7bb0f7 50%, #8d64f5);
-  --gradient-border-soft: linear-gradient(
-    135deg,
-    rgba(73, 241, 250, 0.5),
-    rgba(123, 176, 247, 0.5) 50%,
-    rgba(141, 100, 245, 0.5)
-  );
   --gradient-background-soft: linear-gradient(
     135deg,
     rgba(73, 241, 250, 0.12),
@@ -699,6 +693,7 @@
 }
 
 #corzaguessr .slot {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -731,9 +726,21 @@
 
 #corzaguessr .slot.correct.new-discovery {
   border-color: transparent;
-  background:
-    var(--gradient-background-soft) padding-box,
-    var(--gradient-border-soft) border-box;
+  background: var(--gradient-background-soft);
+}
+
+#corzaguessr .slot.correct.new-discovery::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--gradient);
+  opacity: 0.5;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 
 #corzaguessr .slot.wrong {
