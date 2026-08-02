@@ -214,6 +214,15 @@
   width: 128px;
 }
 
+#corzaguessr .result-secondary-label {
+  opacity: 1;
+  transition: opacity var(--duration-rewind) ease;
+}
+
+#corzaguessr .result-secondary-label.fading {
+  opacity: 0;
+}
+
 #corzaguessr .mode {
   flex: 1;
 }
