@@ -4100,12 +4100,12 @@ var GameView = class {
 		if (this.state?.overlay !== "result" || this.state.result?.mode !== "daily") return;
 		if (this.resultCopyFeedbackTimer) window.clearTimeout(this.resultCopyFeedbackTimer);
 		const generation = ++this.resultCopyFeedbackGeneration;
-		this.swapResultSecondaryLabel("COPIED", generation, () => {
-			this.resultCopyFeedbackTimer = window.setTimeout(() => {
-				this.resultCopyFeedbackTimer = 0;
-				if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.swapResultSecondaryLabel("SHARE", generation);
-			}, this.durations.feedback);
-		});
+		this.elements.resultSecondaryLabel.classList.remove("fading");
+		this.elements.resultSecondaryLabel.textContent = "COPIED";
+		this.resultCopyFeedbackTimer = window.setTimeout(() => {
+			this.resultCopyFeedbackTimer = 0;
+			if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.swapResultSecondaryLabel("SHARE", generation);
+		}, this.durations.feedback);
 	}
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
