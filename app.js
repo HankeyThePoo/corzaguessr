@@ -530,7 +530,7 @@ var MONTHS = [
 ];
 function formatDailyShare(date, result) {
 	const attempts = Math.max(1, Math.min(6, Math.trunc(result.attempts)));
-	const squares = Array.from({ length: 6 }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join("");
+	const squares = Array.from({ length: 6 }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
 	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : "I didn't get it in 6 tries!";
 	return `CORZAGUESSR DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${SHARE_URL}`;
 }
@@ -631,7 +631,7 @@ var GameController = class {
 	view;
 	dailyBoundary;
 	navigator;
-	resultShare;
+	resultClipboard;
 	random;
 	session = new GameSession();
 	appStatus = "loading";
@@ -643,7 +643,7 @@ var GameController = class {
 	nextRoundId = 0;
 	finishing = false;
 	persistenceFailureQueued = false;
-	constructor(catalog, progress, clock, playback, view, dailyBoundary, navigator, resultShare, random = Math.random) {
+	constructor(catalog, progress, clock, playback, view, dailyBoundary, navigator, resultClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
 		this.clock = clock;
@@ -651,7 +651,7 @@ var GameController = class {
 		this.view = view;
 		this.dailyBoundary = dailyBoundary;
 		this.navigator = navigator;
-		this.resultShare = resultShare;
+		this.resultClipboard = resultClipboard;
 		this.random = random;
 	}
 	bootstrap(date) {
@@ -778,9 +778,9 @@ var GameController = class {
 	shareDaily() {
 		const result = this.session.snapshot.result;
 		if (this.overlay !== "result" || result?.mode !== "daily") return;
-		this.resultShare.share(formatDailyShare(this.dailyDate, result)).then((outcome) => {
-			if (outcome === "copied") this.view.announce("RESULT COPIED TO CLIPBOARD.");
-			else if (outcome === "failed") this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER.");
+		this.resultClipboard.copy(formatDailyShare(this.dailyDate, result)).then((copied) => {
+			if (copied) this.view.announce("RESULT COPIED TO CLIPBOARD.");
+			else this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER.");
 		}, () => this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER."));
 	}
 	openDiscoverySpotify(dailyNumber) {
@@ -1334,31 +1334,22 @@ var BrowserExternalNavigator = class {
 	}
 };
 //#endregion
-//#region src/platform/browser-result-share.ts
-var BrowserResultShare = class {
+//#region src/platform/browser-result-clipboard.ts
+var BrowserResultClipboard = class {
 	target;
 	constructor(target = navigator) {
 		this.target = target;
 	}
-	async share(text) {
-		if (this.target.share) try {
-			await this.target.share({ text });
-			return "shared";
-		} catch (error) {
-			if (isAbortError(error)) return "cancelled";
-		}
+	async copy(text) {
 		try {
-			if (!this.target.clipboard) return "failed";
+			if (!this.target.clipboard) return false;
 			await this.target.clipboard.writeText(text);
-			return "copied";
+			return true;
 		} catch {
-			return "failed";
+			return false;
 		}
 	}
 };
-function isAbortError(error) {
-	return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
-}
 //#endregion
 //#region src/platform/budapest-date-boundary.ts
 var BUDAPEST_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
@@ -4443,7 +4434,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onLoading: () => controller?.onLoading()
 	});
 	const dailyBoundary = new BudapestDateBoundary((date) => controller?.handleDateChanged(date));
-	controller = new GameController(catalog, progress, clock, playback, view, dailyBoundary, new BrowserExternalNavigator(), new BrowserResultShare());
+	controller = new GameController(catalog, progress, clock, playback, view, dailyBoundary, new BrowserExternalNavigator(), new BrowserResultClipboard());
 	view.bind({
 		selectMode: (mode) => controller.selectMode(mode),
 		play: () => controller.play(),
