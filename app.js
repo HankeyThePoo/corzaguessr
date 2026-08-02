@@ -292,7 +292,8 @@ var GameSession = class {
 		if (this.currentSlotState) this.currentSlotState = {
 			id: this.currentSlotState.id,
 			text: message,
-			tone: "blink technical"
+			tone: "blink technical",
+			newDiscovery: false
 		};
 	}
 	markRoundStopped() {
@@ -311,8 +312,8 @@ var GameSession = class {
 		this.guessedTrackIdsState.add(trackNumber);
 		return true;
 	}
-	resolveSixTry(outcome, guessedTitle) {
-		const slot = this.createAttemptSlot(outcome, guessedTitle);
+	resolveSixTry(outcome, guessedTitle, newDiscovery = false) {
+		const slot = this.createAttemptSlot(outcome, guessedTitle, newDiscovery);
 		const finished = outcome === "correct" || this.attemptState === 5;
 		if (finished) this.currentSlotState = slot;
 		else this.archive(slot);
@@ -322,8 +323,8 @@ var GameSession = class {
 		}
 		return { finished };
 	}
-	resolveTimed(outcome, guessedTitle) {
-		this.archive(this.createAttemptSlot(outcome, guessedTitle));
+	resolveTimed(outcome, guessedTitle, newDiscovery = false) {
+		this.archive(this.createAttemptSlot(outcome, guessedTitle, newDiscovery));
 		if (outcome !== "skip") this.guessesState += 1;
 		if (outcome === "correct") this.correctState += 1;
 		this.roundNumberState += 1;
@@ -340,7 +341,8 @@ var GameSession = class {
 		if (isTimedMode(this.modeState)) this.currentSlotState = {
 			id: ++this.nextSlotId,
 			text: "TIME'S UP",
-			tone: ""
+			tone: "",
+			newDiscovery: false
 		};
 		this.resultState = { ...result };
 	}
@@ -356,10 +358,11 @@ var GameSession = class {
 		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : sixTryPrompt(this.attemptState);
 		return {
 			id: ++this.nextSlotId,
-			...prompt
+			...prompt,
+			newDiscovery: false
 		};
 	}
-	createAttemptSlot(outcome, title) {
+	createAttemptSlot(outcome, title, newDiscovery) {
 		let text = title;
 		if (outcome === "skip") if (isTimedMode(this.modeState)) text = "SKIPPED";
 		else {
@@ -370,7 +373,8 @@ var GameSession = class {
 		return {
 			id: ++this.nextSlotId,
 			text,
-			tone: outcome
+			tone: outcome,
+			newDiscovery: outcome === "correct" && newDiscovery
 		};
 	}
 	archive(slot) {
@@ -967,10 +971,10 @@ var GameController = class {
 			}
 		}
 		this.view.clearAttemptEntry();
-		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
+		const newDiscovery = outcome === "correct" && this.progress.recordDiscovery(round.track.dailyNumber) === "new";
 		if (isTimedMode(mode)) {
 			this.playback.pause();
-			this.session.resolveTimed(outcome, guessed?.title ?? "");
+			this.session.resolveTimed(outcome, guessed?.title ?? "", newDiscovery);
 			this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
 			if (mode === "survival") {
 				const adjustment = survivalAdjustment(outcome);
@@ -985,7 +989,7 @@ var GameController = class {
 			return;
 		}
 		const clockWasRunning = state.playbackRequested && this.clock.snapshot().running;
-		const resolution = this.session.resolveSixTry(outcome, guessed?.title ?? "");
+		const resolution = this.session.resolveSixTry(outcome, guessed?.title ?? "", newDiscovery);
 		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
 			this.finishGame(outcome === "correct");
@@ -1213,11 +1217,14 @@ var ProgressService = class {
 		return true;
 	}
 	recordDiscovery(trackNumber) {
-		if (this.discoveriesState.has(trackNumber)) return true;
+		if (this.discoveriesState.has(trackNumber)) return "known";
 		const next = new Set(this.discoveriesState).add(trackNumber);
-		if (!this.repository.saveDiscoveries(next)) return this.persistenceFailed("record-discovery");
+		if (!this.repository.saveDiscoveries(next)) {
+			this.persistenceFailed("record-discovery");
+			return "failed";
+		}
 		this.discoveriesState = next;
-		return true;
+		return "new";
 	}
 	resetProgress() {
 		if (!this.repository.clearProgress()) return this.persistenceFailed("reset-progress");
@@ -1670,15 +1677,17 @@ function parseDailyProgress(value) {
 		if (!isRecord(candidate) || !hasExactKeys(candidate, [
 			"id",
 			"text",
-			"tone"
+			"tone",
+			"newDiscovery"
 		])) return emptyDailyProgress();
 		const expectedId = value.completed ? value.step + 1 - index : value.step - index;
 		const validTone = value.completed && index === 0 ? value.won && candidate.tone === "correct" || !value.won && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
-		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || !validTone) return emptyDailyProgress();
+		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || typeof candidate.newDiscovery !== "boolean" || candidate.newDiscovery && candidate.tone !== "correct" || !validTone) return emptyDailyProgress();
 		history.push({
 			id: candidate.id,
 			text: candidate.text,
-			tone: candidate.tone
+			tone: candidate.tone,
+			newDiscovery: candidate.newDiscovery
 		});
 	}
 	return {
@@ -2812,11 +2821,12 @@ var AttemptHistoryView = class {
 		const rendered = entries.map((entry) => ({
 			key: `${sessionKey}:${entry.id}`,
 			text: entry.text,
-			tone: entry.tone
+			tone: entry.tone,
+			newDiscovery: entry.newDiscovery
 		}));
 		if (rendered.length === this.renderedHistory.length && rendered.every((entry, index) => {
 			const previous = this.renderedHistory[index];
-			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone;
+			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone && previous.newDiscovery === entry.newDiscovery;
 		})) return;
 		this.renderedHistory = rendered;
 		this.renderGeneration += 1;
@@ -2843,6 +2853,7 @@ var AttemptHistoryView = class {
 			const previousTone = element.dataset.tone ?? "";
 			this.applyTone(element, previousTone, entry.tone);
 			element.textContent = entry.text;
+			this.applyDiscovery(element, entry.newDiscovery, entry.text);
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
 			if (isNew) fadeNodes.push(element);
 			return element;
@@ -2854,7 +2865,7 @@ var AttemptHistoryView = class {
 		for (const element of wiggleNodes) this.startWiggle(element);
 	}
 	renderCurrent(slot, sessionKey) {
-		const signature = slot ? `${sessionKey}:${slot.id}|${slot.text}|${slot.tone}` : "";
+		const signature = slot ? `${sessionKey}:${slot.id}|${slot.text}|${slot.tone}|${Number(slot.newDiscovery)}` : "";
 		if (signature === this.currentSignature) return;
 		this.currentSignature = signature;
 		const element = this.elements.current;
@@ -2866,11 +2877,13 @@ var AttemptHistoryView = class {
 			element.classList.remove("fade");
 			element.dataset.currentKey = "";
 			element.textContent = "";
+			this.applyDiscovery(element, false, "");
 			element.hidden = true;
 			return;
 		}
 		element.dataset.currentKey = `${sessionKey}:${slot.id}`;
 		element.textContent = slot.text;
+		this.applyDiscovery(element, slot.newDiscovery, slot.text);
 		element.hidden = false;
 		this.fadeIn(element);
 	}
@@ -2960,6 +2973,7 @@ var AttemptHistoryView = class {
 		for (const child of this.elements.history.children) this.cancelWiggle(child);
 		this.applyTone(this.elements.current, this.elements.current.dataset.tone ?? "", "");
 		this.elements.current.classList.remove("fade", "wiggle");
+		this.applyDiscovery(this.elements.current, false, "");
 		this.elements.current.dataset.currentKey = "";
 		this.elements.current.textContent = "";
 		this.elements.current.hidden = true;
@@ -2972,6 +2986,11 @@ var AttemptHistoryView = class {
 		if (previous) element.classList.remove(...previous.split(/\s+/).filter(Boolean));
 		if (next) element.classList.add(...next.split(/\s+/).filter(Boolean));
 		element.dataset.tone = next;
+	}
+	applyDiscovery(element, newDiscovery, text) {
+		element.classList.toggle("new-discovery", newDiscovery);
+		if (newDiscovery) element.setAttribute("aria-label", `${text}. New discovery.`);
+		else element.removeAttribute("aria-label");
 	}
 	fadeIn(element) {
 		if (this.reducedMotion.matches) {
