@@ -3879,12 +3879,13 @@ var ProgressSummaryView = class {
 	constructor(container) {
 		this.container = container;
 	}
-	render(bests) {
-		const signature = JSON.stringify(bests);
+	render(bests, daily, dailyDate) {
+		const summaryRows = rows(bests, daily, dailyDate);
+		const signature = JSON.stringify(summaryRows);
 		if (signature === this.signature) return;
 		this.signature = signature;
 		this.container.classList.toggle("has-speedrun-best", bests.speedrun.trackCount > 0);
-		this.container.replaceChildren(...rows(bests).map((row) => {
+		this.container.replaceChildren(...summaryRows.map((row) => {
 			const item = document.createElement("div");
 			item.className = "progress-best";
 			if (row.mode === "SPEEDRUN") item.classList.add("progress-best-speedrun");
@@ -3900,13 +3901,14 @@ var ProgressSummaryView = class {
 		}));
 	}
 };
-function rows(bests) {
+function rows(bests, daily, dailyDate) {
 	const classicAverage = bests.classic.best ? bests.classic.bestSnippetTotal / bests.classic.best : 0;
+	const dailyComplete = daily.date === dailyDate && daily.completed;
 	const standard = [
 		{
 			mode: "DAILY",
-			value: bests.daily.attempts ? `${bests.daily.attempts}/6` : "--",
-			detail: bests.daily.attempts ? formatOrdinalDate(bests.daily.date) : "NO RECORD"
+			value: dailyComplete ? daily.won ? `${daily.step + 1}/6` : "FAILED" : "",
+			detail: dailyComplete ? formatOrdinalDate(daily.date) : ""
 		},
 		{
 			mode: "CLASSIC",
@@ -4240,7 +4242,7 @@ var GameView = class {
 		this.attempts.render(state.currentSlot, state.history, sessionKey);
 		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds);
 		this.renderDiscovery(state);
-		this.progressSummary.render(state.personalBests);
+		this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
 		this.renderResult(state.result);
 		this.renderClock(state.clock);
 	}
