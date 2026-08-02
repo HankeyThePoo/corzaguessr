@@ -4552,20 +4552,19 @@ function markup() {
 }
 //#endregion
 //#region src/main.ts
+var JSDELIVR_REPOSITORY_BASE_URL = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/");
 var root = document.querySelector("#corzaguessr");
 if (root && !root.dataset.corzaguessrReady) {
 	const volumeSettings = new LocalStorageVolumeSettingsRepository();
 	const initialVolume = volumeSettings.load();
 	let volumePersistenceFailureAnnounced = false;
 	const moduleUrl = new URL(import.meta.url);
-	const coverBaseUrl = new URL("covers/", moduleUrl);
+	const coverBaseUrl = new URL("covers/", JSDELIVR_REPOSITORY_BASE_URL);
 	const view = new GameView(root, initialVolume, (dailyNumber) => {
-		const url = new URL(`${dailyNumber}.webp`, coverBaseUrl);
-		url.search = moduleUrl.search;
-		return url.href;
+		return new URL(`${dailyNumber}.webp`, coverBaseUrl).href;
 	});
 	const catalogUrl = new URL("tracks.json", moduleUrl);
-	const audioBaseUrl = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/tracks/", moduleUrl);
+	const audioBaseUrl = new URL(new URL("tracks/", JSDELIVR_REPOSITORY_BASE_URL), moduleUrl);
 	catalogUrl.search = moduleUrl.search;
 	let controller;
 	let playback;
