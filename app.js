@@ -532,7 +532,7 @@ function formatDailyShare(date, result) {
 	const attempts = Math.max(1, Math.min(6, Math.trunc(result.attempts)));
 	const squares = Array.from({ length: 6 }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
 	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : "I didn't get it in 6 tries!";
-	return `CORZAGUESSR DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${SHARE_URL}`;
+	return `CORZAGUESSR✦ DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${SHARE_URL}`;
 }
 function formatShareDate(value) {
 	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
@@ -782,8 +782,8 @@ var GameController = class {
 			if (copied) {
 				this.view.showDailyShareCopied();
 				this.view.announce("RESULT COPIED TO CLIPBOARD.");
-			} else this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER.");
-		}, () => this.view.announce("RESULT COULD NOT BE SHARED IN THIS BROWSER."));
+			} else this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER.");
+		}, () => this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER."));
 	}
 	openDiscoverySpotify(dailyNumber) {
 		if (this.overlay !== "discovery" || !this.progress.discoveries.has(dailyNumber)) return;
@@ -3937,6 +3937,7 @@ var GameView = class {
 	preview = null;
 	resultSignature = "";
 	resultCopyFeedbackTimer = 0;
+	resultCopyFeedbackGeneration = 0;
 	rulesSignature = "";
 	announcementFrame = 0;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${dailyNumber}.webp`) {
@@ -4098,11 +4099,13 @@ var GameView = class {
 	showDailyShareCopied() {
 		if (this.state?.overlay !== "result" || this.state.result?.mode !== "daily") return;
 		if (this.resultCopyFeedbackTimer) window.clearTimeout(this.resultCopyFeedbackTimer);
-		this.elements.resultSecondary.textContent = "COPIED";
-		this.resultCopyFeedbackTimer = window.setTimeout(() => {
-			this.resultCopyFeedbackTimer = 0;
-			if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.elements.resultSecondary.textContent = "SHARE";
-		}, 1200);
+		const generation = ++this.resultCopyFeedbackGeneration;
+		this.swapResultSecondaryLabel("COPIED", generation, () => {
+			this.resultCopyFeedbackTimer = window.setTimeout(() => {
+				this.resultCopyFeedbackTimer = 0;
+				if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.swapResultSecondaryLabel("SHARE", generation);
+			}, this.durations.feedback);
+		});
 	}
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
@@ -4163,6 +4166,8 @@ var GameView = class {
 			window.clearTimeout(this.resultCopyFeedbackTimer);
 			this.resultCopyFeedbackTimer = 0;
 		}
+		this.resultCopyFeedbackGeneration += 1;
+		this.elements.resultSecondaryLabel.classList.remove("fading");
 		if (!result) {
 			this.elements.resultTitle.textContent = "";
 			this.elements.resultMeta.replaceChildren();
@@ -4176,7 +4181,7 @@ var GameView = class {
 		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultModule(row, result.newPersonalBest)));
 		this.elements.resultMeta.dataset.announcement = resultAnnouncement(result, rows);
 		const daily = result.mode === "daily";
-		this.elements.resultSecondary.textContent = daily ? "SHARE" : "SPOTIFY";
+		this.elements.resultSecondaryLabel.textContent = daily ? "SHARE" : "SPOTIFY";
 		this.elements.resultSecondary.setAttribute("aria-label", daily ? "SHARE DAILY RESULT" : "OPEN RESULT TRACK ON SPOTIFY");
 		this.elements.resultSecondary.hidden = !daily && (result.mode !== "classic" || !result.spotify);
 	}
@@ -4205,6 +4210,26 @@ var GameView = class {
 				this.renderRules();
 			}
 		});
+	}
+	swapResultSecondaryLabel(text, generation, afterTransition = () => {}) {
+		const label = this.elements.resultSecondaryLabel;
+		if (label.textContent === text || this.reducedMotion.matches) {
+			label.textContent = text;
+			afterTransition();
+			return;
+		}
+		label.classList.remove("fading");
+		label.offsetWidth;
+		label.classList.add("fading");
+		window.setTimeout(() => {
+			if (generation !== this.resultCopyFeedbackGeneration) return;
+			label.textContent = text;
+			label.classList.remove("fading");
+		}, this.durations.rewind);
+		window.setTimeout(() => {
+			if (generation !== this.resultCopyFeedbackGeneration) return;
+			afterTransition();
+		}, this.durations.rewind * 2);
 	}
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
@@ -4344,6 +4369,10 @@ var GameView = class {
 	queryElements() {
 		const audioPlayers = [...this.root.querySelectorAll(".audio")];
 		if (audioPlayers.length !== 2) throw new Error("Corzaguessr requires two audio elements.");
+		const resultSecondary = this.required(".result-secondary");
+		const resultSecondaryLabel = document.createElement("span");
+		resultSecondaryLabel.className = "result-secondary-label";
+		resultSecondary.append(resultSecondaryLabel);
 		return {
 			headerAction: this.required(".header-action"),
 			modes: this.required(".modes"),
@@ -4370,7 +4399,8 @@ var GameView = class {
 			modePrompt: this.required(".mode-prompt"),
 			status: this.required(".status"),
 			resultAction: this.required(".result-action"),
-			resultSecondary: this.required(".result-secondary"),
+			resultSecondary,
+			resultSecondaryLabel,
 			result: this.required(".result-modal"),
 			resultTitle: this.required("#corzaguessr-result-title"),
 			resultMeta: this.required("#corzaguessr-result-meta"),
