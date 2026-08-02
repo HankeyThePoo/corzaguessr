@@ -3824,9 +3824,11 @@ var ProgressSummaryView = class {
 		const signature = JSON.stringify(bests);
 		if (signature === this.signature) return;
 		this.signature = signature;
+		this.container.classList.toggle("has-speedrun-best", bests.speedrun.trackCount > 0);
 		this.container.replaceChildren(...rows(bests).map((row) => {
 			const item = document.createElement("div");
 			item.className = "progress-best";
+			if (row.mode === "SPEEDRUN") item.classList.add("progress-best-speedrun");
 			const mode = document.createElement("span");
 			mode.className = "progress-best-mode";
 			mode.textContent = row.mode;
@@ -3841,7 +3843,7 @@ var ProgressSummaryView = class {
 };
 function rows(bests) {
 	const classicAverage = bests.classic.best ? bests.classic.bestSnippetTotal / bests.classic.best : 0;
-	return [
+	const standard = [
 		{
 			mode: "DAILY",
 			value: bests.daily.attempts ? `${bests.daily.attempts}/6` : "--",
@@ -3863,6 +3865,12 @@ function rows(bests) {
 			detail: bests.survival.score ? `${bests.survival.accuracy ?? 0}% ACCURACY` : "NO RECORD"
 		}
 	];
+	if (bests.speedrun.trackCount > 0) standard.push({
+		mode: "SPEEDRUN",
+		value: formatClock(bests.speedrun.timeMs / 1e3),
+		detail: `${bests.speedrun.trackCount} ${bests.speedrun.trackCount === 1 ? "TRACK" : "TRACKS"}`
+	});
+	return standard;
 }
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
