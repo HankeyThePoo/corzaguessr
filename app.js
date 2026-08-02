@@ -634,7 +634,7 @@ function rulesText(input) {
 	const { session, dailyProgress, dailyDate } = input;
 	if (session.mode === "daily" && dailyDone(dailyProgress, dailyDate)) {
 		const attempts = dailyProgress.step + 1;
-		return `${dailyProgress.won ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK TOMORROW`;
+		return `${dailyProgress.won ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK IN ${formatDailyCountdown(input.dailyCountdownMs)}`;
 	}
 	if (input.appStatus === "loading") return COPY.loadingCatalog;
 	if (input.appStatus === "error") return COPY.catalogError;
@@ -645,6 +645,14 @@ function rulesText(input) {
 		if (dailyInProgress(dailyProgress, dailyDate)) return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${dailyProgress.step + 1}`;
 	}
 	return MODE_RULES[session.mode].description;
+}
+function formatDailyCountdown(milliseconds) {
+	const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1e3));
+	return [
+		Math.floor(totalSeconds / 3600),
+		Math.floor(totalSeconds % 3600 / 60),
+		totalSeconds % 60
+	].map((value) => String(value).padStart(2, "0")).join(":");
 }
 function composeGameViewModel(input) {
 	const { session, transport } = input;
@@ -722,6 +730,7 @@ var GameController = class {
 	tracks = [];
 	budapestDate = "1970-01-01";
 	dailyDate = "1970-01-01";
+	dailyCountdownMs = 0;
 	overlay = null;
 	sessionNumber = 0;
 	nextRoundId = 0;
@@ -772,8 +781,10 @@ var GameController = class {
 		} else this.dailyBoundary.stop();
 		this.resetForMode(mode);
 		this.view.announce(MODE_RULES[mode].description);
-		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.view.focusMode("classic");
-		else this.view.focusPlay();
+		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) {
+			this.startDailyCountdown();
+			this.view.focusMode("classic");
+		} else this.view.focusPlay();
 	}
 	play() {
 		this.handlePlay(false);
@@ -799,6 +810,7 @@ var GameController = class {
 		if (this.overlay === "result") {
 			if (mode === "daily" && this.progress.dailyDone(this.budapestDate)) {
 				this.view.closeResult("classic", () => {}, () => {
+					this.startDailyCountdown();
 					this.overlay = null;
 					this.session.dismissResult();
 					this.render();
@@ -892,6 +904,8 @@ var GameController = class {
 	handleDateChanged(date) {
 		if (this.session.snapshot.mode !== "daily" || date === this.budapestDate) return;
 		this.budapestDate = date;
+		this.dailyBoundary.stopCountdown();
+		this.dailyCountdownMs = 0;
 		if (this.session.snapshot.phase !== "result") {
 			this.dailyDate = date;
 			this.resetForMode("daily");
@@ -1129,6 +1143,8 @@ var GameController = class {
 		this.finishing = false;
 	}
 	resetForMode(mode) {
+		this.dailyBoundary.stopCountdown();
+		this.dailyCountdownMs = 0;
 		this.sessionNumber += 1;
 		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
 		const resumed = seed?.attempt ?? 0;
@@ -1205,11 +1221,18 @@ var GameController = class {
 			dailyProgress: this.progress.daily,
 			personalBests: this.progress.personalBests,
 			dailyDate: this.dailyDate,
+			dailyCountdownMs: this.dailyCountdownMs,
 			discoveries: this.progress.discoveries,
 			tracks: this.tracks,
 			overlay: this.overlay
 		});
 		this.view.render(viewModel, String(this.sessionNumber));
+	}
+	startDailyCountdown() {
+		this.dailyBoundary.startCountdown((remainingMs) => {
+			this.dailyCountdownMs = remainingMs;
+			if (!this.overlay && this.session.snapshot.mode === "daily") this.render();
+		});
 	}
 };
 function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCount) {
@@ -1553,7 +1576,10 @@ var browserRuntime = {
 var BudapestDateBoundary = class {
 	onDateChanged;
 	runtime;
-	timer = 0;
+	boundaryTimer = 0;
+	countdownTimer = 0;
+	nextBoundaryAt = 0;
+	countdownTick = null;
 	currentDate = "";
 	active = false;
 	constructor(onDateChanged, runtime = browserRuntime) {
@@ -1571,24 +1597,40 @@ var BudapestDateBoundary = class {
 		this.scheduleNextBoundary();
 		return this.currentDate;
 	}
+	startCountdown(onTick) {
+		this.countdownTick = onTick;
+		if (!this.active) return;
+		if (!this.nextBoundaryAt) this.scheduleNextBoundary();
+		this.emitCountdown();
+	}
+	stopCountdown() {
+		this.countdownTick = null;
+		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
+		this.countdownTimer = 0;
+	}
 	reconcile() {
 		const date = budapestDate(new Date(this.runtime.now()));
 		if (date !== this.currentDate) {
 			this.currentDate = date;
 			this.onDateChanged(date);
 		}
-		if (this.active) this.scheduleNextBoundary();
+		if (this.active) {
+			this.scheduleNextBoundary();
+			if (this.countdownTick) this.emitCountdown();
+		}
 		return date;
 	}
 	stop() {
 		this.active = false;
-		if (this.timer) this.runtime.clearTimeout(this.timer);
-		this.timer = 0;
+		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
+		this.boundaryTimer = 0;
+		this.nextBoundaryAt = 0;
+		this.stopCountdown();
 	}
 	scheduleNextBoundary() {
 		if (!this.active) return;
-		if (this.timer) this.runtime.clearTimeout(this.timer);
-		this.timer = 0;
+		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
+		this.boundaryTimer = 0;
 		const now = this.runtime.now();
 		const today = budapestDate(new Date(now));
 		let lower = now;
@@ -1599,7 +1641,18 @@ var BudapestDateBoundary = class {
 			if (budapestDate(new Date(middle)) === today) lower = middle;
 			else upper = middle;
 		}
-		this.timer = this.runtime.setTimeout(() => this.reconcile(), Math.max(1, upper - now));
+		this.nextBoundaryAt = upper;
+		this.boundaryTimer = this.runtime.setTimeout(() => this.reconcile(), Math.max(1, upper - now));
+	}
+	emitCountdown() {
+		if (!this.active || !this.countdownTick) return;
+		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
+		this.countdownTimer = 0;
+		const remainingMs = Math.max(0, this.nextBoundaryAt - this.runtime.now());
+		this.countdownTick(remainingMs);
+		if (!remainingMs) return;
+		const untilNextSecond = remainingMs % 1e3 || 1e3;
+		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
 	}
 };
 //#endregion
