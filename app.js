@@ -3836,7 +3836,7 @@ function formatAttempts(value) {
 function formatAverage(value) {
 	if (!Number.isFinite(value) || value <= 0) return "--";
 	const rounded = Math.round(value * 10) / 10;
-	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}S`;
+	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
 }
 function resultRows(result) {
 	if (result.mode === "daily") return [
@@ -3911,7 +3911,7 @@ function rows(bests) {
 		{
 			mode: "CLASSIC",
 			value: bests.classic.best ? `${bests.classic.best}-GAME STREAK` : "--",
-			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}S` : "NO RECORD"
+			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}s` : "NO RECORD"
 		},
 		{
 			mode: "BLITZ",
