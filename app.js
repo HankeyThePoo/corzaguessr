@@ -105,10 +105,14 @@ var MODE_RULES = {
 	survival: {
 		initialTimeMs: 3e4,
 		description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT"
+	},
+	speedrun: {
+		initialTimeMs: 3e4,
+		description: "SPEEDRUN: GUESS EVERY TRACK BEFORE TIME RUNS OUT"
 	}
 };
 function isTimedMode(mode) {
-	return mode === "blitz" || mode === "survival";
+	return mode === "blitz" || mode === "survival" || mode === "speedrun";
 }
 function snippetSeconds(attempt) {
 	return SNIPPET_SECONDS[Math.max(0, Math.min(SNIPPET_SECONDS.length - 1, attempt))];
@@ -198,6 +202,27 @@ function updateTimedBest(bests, mode, score, runAccuracy) {
 		newPersonalBest: true
 	};
 }
+function updateSpeedrunBest(bests, won, elapsedMs, trackCount) {
+	if (!won || trackCount <= 0) return {
+		changed: false,
+		newPersonalBest: false
+	};
+	const current = bests.speedrun;
+	const largerCatalog = trackCount > current.trackCount;
+	const fasterCurrentCatalog = trackCount === current.trackCount && (current.trackCount === 0 || elapsedMs < current.timeMs);
+	if (!largerCatalog && !fasterCurrentCatalog) return {
+		changed: false,
+		newPersonalBest: false
+	};
+	bests.speedrun = {
+		timeMs: elapsedMs,
+		trackCount
+	};
+	return {
+		changed: true,
+		newPersonalBest: true
+	};
+}
 //#endregion
 //#region src/domain/game-session.ts
 var GameSession = class {
@@ -213,6 +238,7 @@ var GameSession = class {
 	historyState = [];
 	previousTrackIdState = null;
 	guessedTrackIdsState = /* @__PURE__ */ new Set();
+	speedrunCorrectTrackIdsState = /* @__PURE__ */ new Set();
 	resultState = null;
 	playbackRequestedState = false;
 	nextSlotId = 0;
@@ -230,6 +256,7 @@ var GameSession = class {
 			history: this.historyState.map((slot) => ({ ...slot })),
 			previousTrackId: this.previousTrackIdState,
 			guessedTrackIds: new Set(this.guessedTrackIdsState),
+			speedrunCorrectTrackIds: new Set(this.speedrunCorrectTrackIdsState),
 			result: this.resultState ? { ...this.resultState } : null,
 			playbackRequested: this.playbackRequestedState
 		};
@@ -252,6 +279,7 @@ var GameSession = class {
 		this.historyState = seed.history.map((slot) => ({ ...slot }));
 		this.guessedTrackIdsState.clear();
 		for (const trackId of seed.guessedTrackIds) this.guessedTrackIdsState.add(trackId);
+		this.speedrunCorrectTrackIdsState.clear();
 		this.nextSlotId = Math.max(this.nextSlotId, seed.currentSlot?.id ?? 0, ...this.historyState.map((slot) => slot.id));
 		this.resultState = null;
 		this.playbackRequestedState = false;
@@ -293,7 +321,7 @@ var GameSession = class {
 			id: this.currentSlotState.id,
 			text: message,
 			tone: "blink technical",
-			newDiscovery: false
+			speedrunMilestone: false
 		};
 	}
 	markRoundStopped() {
@@ -312,8 +340,8 @@ var GameSession = class {
 		this.guessedTrackIdsState.add(trackNumber);
 		return true;
 	}
-	resolveSixTry(outcome, guessedTitle, newDiscovery = false) {
-		const slot = this.createAttemptSlot(outcome, guessedTitle, newDiscovery);
+	resolveSixTry(outcome, guessedTitle) {
+		const slot = this.createAttemptSlot(outcome, guessedTitle, false);
 		const finished = outcome === "correct" || this.attemptState === 5;
 		if (finished) this.currentSlotState = slot;
 		else this.archive(slot);
@@ -323,8 +351,10 @@ var GameSession = class {
 		}
 		return { finished };
 	}
-	resolveTimed(outcome, guessedTitle, newDiscovery = false) {
-		this.archive(this.createAttemptSlot(outcome, guessedTitle, newDiscovery));
+	resolveTimed(outcome, guessedTitle) {
+		const speedrunMilestone = !!(outcome === "correct" && this.modeState === "speedrun" && this.roundState && !this.speedrunCorrectTrackIdsState.has(this.roundState.track.dailyNumber));
+		if (outcome === "correct" && this.modeState === "speedrun" && this.roundState) this.speedrunCorrectTrackIdsState.add(this.roundState.track.dailyNumber);
+		this.archive(this.createAttemptSlot(outcome, guessedTitle, speedrunMilestone));
 		if (outcome !== "skip") this.guessesState += 1;
 		if (outcome === "correct") this.correctState += 1;
 		this.roundNumberState += 1;
@@ -338,12 +368,15 @@ var GameSession = class {
 		this.phaseState = "result";
 		this.playbackRequestedState = false;
 		this.roundHeardState = false;
-		if (isTimedMode(this.modeState)) this.currentSlotState = {
-			id: ++this.nextSlotId,
-			text: "TIME'S UP",
-			tone: "",
-			newDiscovery: false
-		};
+		if (isTimedMode(this.modeState)) {
+			const speedrunWon = result.mode === "speedrun" && result.won;
+			this.currentSlotState = {
+				id: ++this.nextSlotId,
+				text: speedrunWon ? "SPEEDRUN COMPLETE" : "TIME'S UP",
+				tone: "",
+				speedrunMilestone: false
+			};
+		}
 		this.resultState = { ...result };
 	}
 	dismissResult() {
@@ -359,10 +392,10 @@ var GameSession = class {
 		return {
 			id: ++this.nextSlotId,
 			...prompt,
-			newDiscovery: false
+			speedrunMilestone: false
 		};
 	}
-	createAttemptSlot(outcome, title, newDiscovery) {
+	createAttemptSlot(outcome, title, speedrunMilestone) {
 		let text = title;
 		if (outcome === "skip") if (isTimedMode(this.modeState)) text = "SKIPPED";
 		else {
@@ -374,7 +407,7 @@ var GameSession = class {
 			id: ++this.nextSlotId,
 			text,
 			tone: outcome,
-			newDiscovery: outcome === "correct" && newDiscovery
+			speedrunMilestone: outcome === "correct" && speedrunMilestone
 		};
 	}
 	archive(slot) {
@@ -763,6 +796,15 @@ var GameController = class {
 			this.render();
 		});
 	}
+	startSpeedrun() {
+		if (this.overlay !== "discovery" || !this.speedrunUnlocked()) return;
+		this.dailyBoundary.stop();
+		this.view.closeDiscovery("play", () => {
+			this.overlay = null;
+			this.resetForMode("speedrun");
+			this.view.announce(MODE_RULES.speedrun.description);
+		});
+	}
 	resetProgress() {
 		if (this.overlay !== "discovery") return;
 		if (!this.progress.resetProgress()) {
@@ -971,12 +1013,17 @@ var GameController = class {
 			}
 		}
 		this.view.clearAttemptEntry();
-		const newDiscovery = outcome === "correct" && this.progress.recordDiscovery(round.track.dailyNumber) === "new";
+		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
 		if (isTimedMode(mode)) {
 			this.playback.pause();
-			this.session.resolveTimed(outcome, guessed?.title ?? "", newDiscovery);
-			this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
-			if (mode === "survival") {
+			this.session.resolveTimed(outcome, guessed?.title ?? "");
+			const speedrunComplete = mode === "speedrun" && outcome === "correct" && this.session.snapshot.speedrunCorrectTrackIds.size === this.tracks.length;
+			this.view.announce(speedrunComplete ? "CORRECT. SPEEDRUN COMPLETE." : outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
+			if (speedrunComplete) {
+				this.finishGame(true, round);
+				return;
+			}
+			if (mode === "survival" || mode === "speedrun") {
 				const adjustment = survivalAdjustment(outcome);
 				this.view.flashSurvivalChange(adjustment / 1e3);
 				const snapshot = this.clock.adjust(adjustment);
@@ -989,7 +1036,7 @@ var GameController = class {
 			return;
 		}
 		const clockWasRunning = state.playbackRequested && this.clock.snapshot().running;
-		const resolution = this.session.resolveSixTry(outcome, guessed?.title ?? "", newDiscovery);
+		const resolution = this.session.resolveSixTry(outcome, guessed?.title ?? "");
 		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
 			this.finishGame(outcome === "correct");
@@ -1030,7 +1077,9 @@ var GameController = class {
 			elapsedMs: clock.elapsedMs,
 			dailyDate: this.dailyDate,
 			currentSlot: state.currentSlot,
-			history: state.history
+			history: state.history,
+			speedrunCorrectTrackCount: state.speedrunCorrectTrackIds.size,
+			catalogTrackCount: this.tracks.length
 		});
 		this.session.finish(result);
 		this.overlay = "result";
@@ -1054,7 +1103,7 @@ var GameController = class {
 			initialMs: milliseconds,
 			limitMs: milliseconds
 		} : {
-			kind: mode === "survival" ? "survival" : "blitz",
+			kind: mode === "survival" || mode === "speedrun" ? "survival" : "blitz",
 			initialMs: milliseconds
 		});
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid), previousTrackId);
@@ -1088,6 +1137,11 @@ var GameController = class {
 	}
 	dailyCatalogPending() {
 		return dailyCatalogPending(this.session.snapshot.mode, this.tracks, this.dailyDate, this.progress.daily);
+	}
+	speedrunUnlocked() {
+		if (!this.tracks.length) return false;
+		const discoveries = this.progress.discoveries;
+		return this.tracks.every((track) => discoveries.has(track.dailyNumber));
 	}
 	render() {
 		const session = this.session.snapshot;
@@ -1138,6 +1192,10 @@ function emptyPersonalBests() {
 		survival: {
 			score: 0,
 			accuracy: null
+		},
+		speedrun: {
+			timeMs: 0,
+			trackCount: 0
 		}
 	};
 }
@@ -1217,14 +1275,14 @@ var ProgressService = class {
 		return true;
 	}
 	recordDiscovery(trackNumber) {
-		if (this.discoveriesState.has(trackNumber)) return "known";
+		if (this.discoveriesState.has(trackNumber)) return true;
 		const next = new Set(this.discoveriesState).add(trackNumber);
 		if (!this.repository.saveDiscoveries(next)) {
 			this.persistenceFailed("record-discovery");
-			return "failed";
+			return false;
 		}
 		this.discoveriesState = next;
-		return "new";
+		return true;
 	}
 	resetProgress() {
 		if (!this.repository.clearProgress()) return this.persistenceFailed("reset-progress");
@@ -1298,6 +1356,26 @@ var ProgressService = class {
 				bestAccuracy: this.bestsState.blitz.accuracy
 			};
 		}
+		if (run.mode === "speedrun") {
+			const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
+			const completedTracks = run.speedrunCorrectTrackCount ?? 0;
+			const catalogTrackCount = run.catalogTrackCount ?? 0;
+			const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
+			const nextBests = cloneBests(this.bestsState);
+			const update = updateSpeedrunBest(nextBests, completed, elapsedMs, catalogTrackCount);
+			const bestPersisted = !update.changed || this.saveBests(nextBests);
+			if (update.changed && bestPersisted) this.bestsState = nextBests;
+			return {
+				mode: "speedrun",
+				won: completed,
+				newPersonalBest: update.newPersonalBest && bestPersisted,
+				elapsedMs,
+				completedTracks,
+				catalogTrackCount,
+				bestElapsedMs: this.bestsState.speedrun.timeMs,
+				bestTrackCount: this.bestsState.speedrun.trackCount
+			};
+		}
 		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
 		const nextBests = cloneBests(this.bestsState);
 		const update = updateTimedBest(nextBests, "survival", elapsedMs, runAccuracy);
@@ -1332,7 +1410,8 @@ function cloneBests(bests) {
 		classic: { ...bests.classic },
 		daily: { ...bests.daily },
 		blitz: { ...bests.blitz },
-		survival: { ...bests.survival }
+		survival: { ...bests.survival },
+		speedrun: { ...bests.speedrun }
 	};
 }
 //#endregion
@@ -1678,16 +1757,16 @@ function parseDailyProgress(value) {
 			"id",
 			"text",
 			"tone",
-			"newDiscovery"
+			"speedrunMilestone"
 		])) return emptyDailyProgress();
 		const expectedId = value.completed ? value.step + 1 - index : value.step - index;
 		const validTone = value.completed && index === 0 ? value.won && candidate.tone === "correct" || !value.won && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
-		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || typeof candidate.newDiscovery !== "boolean" || candidate.newDiscovery && candidate.tone !== "correct" || !validTone) return emptyDailyProgress();
+		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || typeof candidate.speedrunMilestone !== "boolean" || candidate.speedrunMilestone || !validTone) return emptyDailyProgress();
 		history.push({
 			id: candidate.id,
 			text: candidate.text,
 			tone: candidate.tone,
-			newDiscovery: candidate.newDiscovery
+			speedrunMilestone: false
 		});
 	}
 	return {
@@ -1705,15 +1784,16 @@ function parsePersonalBests(value) {
 		"classic",
 		"daily",
 		"blitz",
-		"survival"
+		"survival",
+		"speedrun"
 	])) return emptyPersonalBests();
-	const { classic, daily, blitz, survival } = value;
+	const { classic, daily, blitz, survival, speedrun } = value;
 	if (!isRecord(classic) || !hasExactKeys(classic, [
 		"current",
 		"best",
 		"snippetTotal",
 		"bestSnippetTotal"
-	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validDailyBest(daily) || !validScoreBest(blitz, false) || !validScoreBest(survival, true)) return emptyPersonalBests();
+	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validDailyBest(daily) || !validScoreBest(blitz, false) || !validScoreBest(survival, true) || !validSpeedrunBest(speedrun)) return emptyPersonalBests();
 	return {
 		classic: {
 			current: classic.current,
@@ -1732,8 +1812,16 @@ function parsePersonalBests(value) {
 		survival: {
 			score: survival.score,
 			accuracy: survival.accuracy
+		},
+		speedrun: {
+			timeMs: speedrun.timeMs,
+			trackCount: speedrun.trackCount
 		}
 	};
+}
+function validSpeedrunBest(value) {
+	if (!isRecord(value) || !hasExactKeys(value, ["timeMs", "trackCount"]) || !isNonNegativeInteger(value.timeMs) || value.timeMs % 1e3 !== 0 || !isNonNegativeInteger(value.trackCount)) return false;
+	return value.trackCount === 0 ? value.timeMs === 0 : true;
 }
 function validDailyBest(value) {
 	if (!isRecord(value) || !hasExactKeys(value, ["attempts", "date"]) || !isIntegerBetween(value.attempts, 0, 6) || typeof value.date !== "string") return false;
@@ -2822,11 +2910,11 @@ var AttemptHistoryView = class {
 			key: `${sessionKey}:${entry.id}`,
 			text: entry.text,
 			tone: entry.tone,
-			newDiscovery: entry.newDiscovery
+			speedrunMilestone: entry.speedrunMilestone
 		}));
 		if (rendered.length === this.renderedHistory.length && rendered.every((entry, index) => {
 			const previous = this.renderedHistory[index];
-			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone && previous.newDiscovery === entry.newDiscovery;
+			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone && previous.speedrunMilestone === entry.speedrunMilestone;
 		})) return;
 		this.renderedHistory = rendered;
 		this.renderGeneration += 1;
@@ -2853,7 +2941,7 @@ var AttemptHistoryView = class {
 			const previousTone = element.dataset.tone ?? "";
 			this.applyTone(element, previousTone, entry.tone);
 			element.textContent = entry.text;
-			this.applyDiscovery(element, entry.newDiscovery, entry.text);
+			this.applySpeedrunMilestone(element, entry.speedrunMilestone, entry.text);
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
 			if (isNew) fadeNodes.push(element);
 			return element;
@@ -2865,7 +2953,7 @@ var AttemptHistoryView = class {
 		for (const element of wiggleNodes) this.startWiggle(element);
 	}
 	renderCurrent(slot, sessionKey) {
-		const signature = slot ? `${sessionKey}:${slot.id}|${slot.text}|${slot.tone}|${Number(slot.newDiscovery)}` : "";
+		const signature = slot ? `${sessionKey}:${slot.id}|${slot.text}|${slot.tone}|${Number(slot.speedrunMilestone)}` : "";
 		if (signature === this.currentSignature) return;
 		this.currentSignature = signature;
 		const element = this.elements.current;
@@ -2877,13 +2965,13 @@ var AttemptHistoryView = class {
 			element.classList.remove("fade");
 			element.dataset.currentKey = "";
 			element.textContent = "";
-			this.applyDiscovery(element, false, "");
+			this.applySpeedrunMilestone(element, false, "");
 			element.hidden = true;
 			return;
 		}
 		element.dataset.currentKey = `${sessionKey}:${slot.id}`;
 		element.textContent = slot.text;
-		this.applyDiscovery(element, slot.newDiscovery, slot.text);
+		this.applySpeedrunMilestone(element, slot.speedrunMilestone, slot.text);
 		element.hidden = false;
 		this.fadeIn(element);
 	}
@@ -2973,7 +3061,7 @@ var AttemptHistoryView = class {
 		for (const child of this.elements.history.children) this.cancelWiggle(child);
 		this.applyTone(this.elements.current, this.elements.current.dataset.tone ?? "", "");
 		this.elements.current.classList.remove("fade", "wiggle");
-		this.applyDiscovery(this.elements.current, false, "");
+		this.applySpeedrunMilestone(this.elements.current, false, "");
 		this.elements.current.dataset.currentKey = "";
 		this.elements.current.textContent = "";
 		this.elements.current.hidden = true;
@@ -2987,9 +3075,9 @@ var AttemptHistoryView = class {
 		if (next) element.classList.add(...next.split(/\s+/).filter(Boolean));
 		element.dataset.tone = next;
 	}
-	applyDiscovery(element, newDiscovery, text) {
-		element.classList.toggle("new-discovery", newDiscovery);
-		if (newDiscovery) element.setAttribute("aria-label", `${text}. New discovery.`);
+	applySpeedrunMilestone(element, speedrunMilestone, text) {
+		element.classList.toggle("speedrun-milestone", speedrunMilestone);
+		if (speedrunMilestone) element.setAttribute("aria-label", `${text}. Counts toward Speedrun completion.`);
 		else element.removeAttribute("aria-label");
 	}
 	fadeIn(element) {
@@ -3222,6 +3310,7 @@ var DiscoveryListView = class {
 	coverUrl;
 	expandedTrackId = null;
 	openSpotify = null;
+	startSpeedrun = null;
 	tracks = null;
 	discoveriesSignature = "";
 	constructor(count, items, coverUrl) {
@@ -3229,8 +3318,9 @@ var DiscoveryListView = class {
 		this.items = items;
 		this.coverUrl = coverUrl;
 	}
-	bind(openSpotify) {
+	bind(openSpotify, startSpeedrun) {
 		this.openSpotify = openSpotify;
+		this.startSpeedrun = startSpeedrun;
 	}
 	render(tracks, discoveries) {
 		const signature = [...discoveries].sort((a, b) => a - b).join(",");
@@ -3241,7 +3331,16 @@ var DiscoveryListView = class {
 		const discovered = ordered.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
 		const percentage = ordered.length ? Math.round(discovered * 100 / ordered.length) : 0;
 		const complete = ordered.length > 0 && discovered === ordered.length;
-		this.count.textContent = `${discovered} / ${ordered.length} (${percentage}%)${complete ? " ✦" : ""}`;
+		this.count.replaceChildren(document.createTextNode(`${discovered} / ${ordered.length} (${percentage}%)${complete ? " " : ""}`));
+		if (complete) {
+			const speedrun = document.createElement("button");
+			speedrun.type = "button";
+			speedrun.className = "discovery-speedrun";
+			speedrun.textContent = "✦";
+			speedrun.setAttribute("aria-label", "START SPEEDRUN");
+			speedrun.addEventListener("click", () => this.startSpeedrun?.());
+			this.count.append(speedrun);
+		}
 		this.count.setAttribute("aria-label", `${discovered} of ${ordered.length}, ${percentage} percent${complete ? ", Discovery complete" : ""}`);
 		if (this.expandedTrackId !== null && !discoveries.has(this.expandedTrackId)) this.expandedTrackId = null;
 		this.items.replaceChildren(...ordered.map((track) => discoveries.has(track.dailyNumber) ? this.createDiscoveredItem(track) : this.createUndiscoveredItem(track)));
@@ -3415,7 +3514,8 @@ function nextPrimaryFocus(state, key) {
 function recommendedMode(state) {
 	if (state.completedDaily && state.enabled.has("classic")) return "classic";
 	if (!state.selectedMode && state.enabled.has("daily")) return "daily";
-	const selectedIndex = state.selectedMode ? MODES.indexOf(state.selectedMode) : -1;
+	const selectedIndex = state.selectedMode ? MODES.findIndex((mode) => mode === state.selectedMode) : -1;
+	if (selectedIndex < 0) return MODES.find((mode) => state.enabled.has(mode)) ?? null;
 	for (let distance = 1; distance < MODES.length; distance += 1) {
 		const right = MODES[selectedIndex + distance];
 		if (right && state.enabled.has(right)) return right;
@@ -3673,10 +3773,14 @@ function resultRows(result) {
 		[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}`]
 	];
 	if (result.mode === "blitz") return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
+	if (result.mode === "speedrun") {
+		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
+		return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+	}
 	return [["RUN:", `TIME SURVIVED: ${formatClock(result.elapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `TIME SURVIVED: ${formatClock(result.bestElapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
 }
 function resultAnnouncement(result, rows = resultRows(result)) {
-	return `${result.mode === "blitz" || result.mode === "survival" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+	return `${result.mode === "speedrun" ? result.won ? "SPEEDRUN COMPLETE." : "TIME IS UP." : result.mode === "blitz" || result.mode === "survival" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
 }
 function createResultModule(row, newPersonalBest) {
 	const module = document.createElement("div");
@@ -4011,7 +4115,7 @@ var GameView = class {
 	bind(handlers) {
 		this.handlers = handlers;
 		this.volume.bind(handlers.setVolume);
-		this.discovery.bind(handlers.openDiscoverySpotify);
+		this.discovery.bind(handlers.openDiscoverySpotify, handlers.startSpeedrun);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.skip.addEventListener("click", handlers.skip);
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
@@ -4083,7 +4187,7 @@ var GameView = class {
 		let progress = 0;
 		if (!mode) this.elements.endtime.textContent = "0:01";
 		else if (isTimedMode(mode)) {
-			const survival = mode === "survival";
+			const survival = mode === "survival" || mode === "speedrun";
 			const initial = MODE_RULES[mode].initialTimeMs;
 			this.elements.endtime.textContent = formatClock(survival ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3);
 			display = formatClock((survival ? clock.elapsedMs : clock.remainingMs) / 1e3);
@@ -4193,9 +4297,9 @@ var GameView = class {
 			this.elements.resultSecondary.hidden = true;
 			return;
 		}
-		const timed = result.mode === "blitz" || result.mode === "survival";
+		const timedOut = result.mode === "blitz" || result.mode === "survival" || result.mode === "speedrun" && !result.won;
 		this.elements.resultAction.textContent = result.mode === "daily" ? "CLOSE" : "NEW GAME";
-		this.elements.resultTitle.innerHTML = timed ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`;
+		this.elements.resultTitle.innerHTML = result.mode === "speedrun" && result.won ? "&#127937; <span class=\"end\">SPEEDRUN COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`;
 		const rows = resultRows(result);
 		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultModule(row, result.newPersonalBest)));
 		this.elements.resultMeta.dataset.announcement = resultAnnouncement(result, rows);
@@ -4206,7 +4310,7 @@ var GameView = class {
 	}
 	bindPreview(element, preview) {
 		element.addEventListener("pointerenter", () => {
-			if (this.previewAllowed()) {
+			if (this.finePointer.matches && this.previewAllowed()) {
 				this.preview = preview;
 				this.renderRules();
 			}
@@ -4513,6 +4617,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		openSpotify: () => controller.openSpotify(),
 		shareDaily: () => controller.shareDaily(),
 		openDiscoverySpotify: (dailyNumber) => controller.openDiscoverySpotify(dailyNumber),
+		startSpeedrun: () => controller.startSpeedrun(),
 		setVolume: (volume, committed) => {
 			audio.setVolume(volume / 100);
 			if (!committed) return;
