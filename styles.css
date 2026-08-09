@@ -1283,27 +1283,139 @@
   }
 
   #corzaguessr .discovery-panel {
-    height: auto;
-    max-height: min(78dvh, calc(100dvh - 16px));
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    gap: 0.45rem;
+  }
+
+  #corzaguessr .discovery-items {
+    max-height: none;
+  }
+
+  #corzaguessr .progress-summary {
+    gap: 0.45rem;
+    margin-top: 0;
+    padding-top: 0.5rem;
+  }
+
+  #corzaguessr .discovery-panel > .actions {
+    margin-top: 0;
+    padding-top: 0.5rem;
   }
 
   #corzaguessr .progress-bests {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
   }
 
   #corzaguessr .progress-bests.has-speedrun-best {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  #corzaguessr .progress-bests.has-speedrun-best .progress-best {
+    grid-column: span 2;
+  }
+
+  #corzaguessr .progress-bests.has-speedrun-best .progress-best:nth-child(4) {
+    grid-column: 2 / span 2;
   }
 
   #corzaguessr .progress-best-speedrun {
-    grid-column: 1 / -1;
-    width: calc(50% - 0.225rem);
-    justify-self: center;
+    width: auto;
+    justify-self: stretch;
   }
 
   #corzaguessr .progress-best {
-    min-height: 62px;
-    padding-block: 0.4rem;
+    gap: 0.05rem;
+    min-height: 50px;
+    padding: 0.2rem 0.15rem;
+  }
+
+  #corzaguessr .progress-best-mode {
+    font-size: 0.62rem;
+  }
+
+  #corzaguessr .progress-best strong {
+    font-size: 0.8rem;
+  }
+
+  #corzaguessr .progress-best small {
+    font-size: 0.58rem;
+  }
+
+  #corzaguessr .discovery-item-known,
+  #corzaguessr .discovery-item-known.expanded {
+    height: auto;
+    min-height: var(--discovery-row-height);
+    transition: background 180ms ease;
+  }
+
+  #corzaguessr .discovery-item-known.expanded {
+    padding-bottom: 12px;
+  }
+
+  #corzaguessr .discovery-item-toggle {
+    height: auto;
+    min-height: var(--discovery-row-height);
+    overflow: visible;
+  }
+
+  #corzaguessr .discovery-item-known.expanded .discovery-item-toggle {
+    padding: 0;
+  }
+
+  #corzaguessr .discovery-track-details {
+    position: static;
+    display: none;
+    grid-template-columns: 116px minmax(0, 1fr);
+    min-height: 140px;
+    padding: 12px;
+    opacity: 1;
+    visibility: visible;
+    transition: none;
+  }
+
+  #corzaguessr .discovery-item-known.expanded .discovery-item-compact {
+    display: none;
+  }
+
+  #corzaguessr .discovery-item-known.expanded .discovery-track-details {
+    display: grid;
+  }
+
+  #corzaguessr .discovery-track-metadata {
+    padding: 0;
+  }
+
+  #corzaguessr .discovery-artist {
+    display: block;
+    overflow: visible;
+    font-size: 0.75rem;
+    -webkit-line-clamp: unset;
+  }
+
+  #corzaguessr .discovery-song-title {
+    display: block;
+    overflow: visible;
+    font-size: 0.95rem;
+    -webkit-line-clamp: unset;
+  }
+
+  #corzaguessr .discovery-release-date {
+    font-size: 0.66rem;
+  }
+
+  #corzaguessr .discovery-track-spotify {
+    position: static;
+    display: none;
+    margin: 0 12px 0 auto;
+    opacity: 1;
+    visibility: visible;
+    transition: filter 140ms ease;
+  }
+
+  #corzaguessr .discovery-item-known.expanded .discovery-track-spotify {
+    display: block;
   }
 }
 
@@ -1337,32 +1449,30 @@
   }
 
   #corzaguessr .discovery-track-details {
-    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-columns: 104px minmax(0, 1fr);
     gap: 0.65rem;
   }
 
   #corzaguessr .discovery-cover {
-    width: 96px;
-    height: 96px;
+    width: 104px;
+    height: 104px;
     align-self: center;
   }
 
   #corzaguessr .discovery-track-metadata {
-    padding: 0.1rem 0 3rem;
+    padding: 0;
   }
 
   #corzaguessr .discovery-artist {
-    font-size: 0.7rem;
-    -webkit-line-clamp: 1;
+    font-size: 0.75rem;
   }
 
   #corzaguessr .discovery-song-title {
-    font-size: 0.86rem;
-    -webkit-line-clamp: 2;
+    font-size: 0.95rem;
   }
 
   #corzaguessr .discovery-release-date {
-    font-size: 0.62rem;
+    font-size: 0.66rem;
   }
 }
 
