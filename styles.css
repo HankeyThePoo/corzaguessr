@@ -1037,6 +1037,7 @@
 
 #corzaguessr .discovery-item-known {
   position: relative;
+  isolation: isolate;
   display: block;
   height: var(--discovery-row-height);
   min-height: 0;
@@ -1045,6 +1046,46 @@
   transition:
     height 250ms ease,
     background 180ms ease;
+}
+
+#corzaguessr .discovery-item-known::before,
+#corzaguessr .discovery-item-known::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#corzaguessr .discovery-item-known::before {
+  inset: -32px;
+  background-position: center;
+  background-size: cover;
+  filter: blur(30px) saturate(1.15) brightness(0.55);
+  transform: scale(1.18);
+  transition: opacity 250ms ease;
+}
+
+#corzaguessr .discovery-item-known::after {
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(8, 10, 14, 0.74), rgba(8, 10, 14, 0.58)),
+    linear-gradient(180deg, rgba(8, 10, 14, 0.1), rgba(8, 10, 14, 0.48));
+  transition: opacity 180ms ease;
+}
+
+#corzaguessr .discovery-item-known.expanded::before {
+  background-image: var(--discovery-artwork);
+  opacity: 0.8;
+}
+
+#corzaguessr .discovery-item-known.expanded::after {
+  opacity: 1;
+}
+
+#corzaguessr .discovery-item-known > .discovery-item-toggle,
+#corzaguessr .discovery-item-known > .discovery-track-spotify {
+  z-index: 1;
 }
 
 #corzaguessr .discovery-item-known.expanded {
@@ -1134,6 +1175,9 @@
   place-items: center;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 #corzaguessr .discovery-cover.missing::after {
@@ -1159,6 +1203,10 @@
   align-items: flex-start;
   justify-content: center;
   line-height: 1.2;
+}
+
+#corzaguessr .discovery-item-known.expanded .discovery-track-metadata {
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
 }
 
 #corzaguessr .discovery-artist,
@@ -1406,8 +1454,10 @@
   }
 
   #corzaguessr .discovery-track-spotify {
-    position: static;
+    position: relative;
     display: none;
+    right: auto;
+    bottom: auto;
     margin: 0 12px 0 auto;
     opacity: 1;
     visibility: visible;
@@ -1565,6 +1615,11 @@
 }
 
 @media (forced-colors: active) {
+  #corzaguessr .discovery-item-known::before,
+  #corzaguessr .discovery-item-known::after {
+    display: none;
+  }
+
   #corzaguessr .volume-bar {
     border: 1px solid GrayText;
     background: Canvas;
