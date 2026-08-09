@@ -1283,8 +1283,8 @@
   }
 
   #corzaguessr .discovery-panel {
-    height: calc(100dvh - 16px);
-    max-height: calc(100dvh - 16px);
+    height: 80dvh;
+    max-height: 80dvh;
     gap: 0.45rem;
   }
 
