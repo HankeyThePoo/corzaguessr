@@ -4218,6 +4218,7 @@ var GameView = class {
 	resultSignature = "";
 	resultCopyFeedbackTimer = 0;
 	resultCopyFeedbackGeneration = 0;
+	resetConfirmationOpen = false;
 	rulesSignature = "";
 	announcementFrame = 0;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
@@ -4282,8 +4283,12 @@ var GameView = class {
 		});
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
-		this.elements.discoveryReset.addEventListener("click", () => {
-			if (window.confirm("RESET ALL PROGRESS? THIS ERASES DISCOVERY, DAILY PROGRESS, AND RECORDS.")) handlers.resetProgress();
+		this.elements.discoveryReset.addEventListener("click", () => this.showResetConfirmation());
+		this.elements.resetCancel.addEventListener("click", () => this.hideResetConfirmation(true));
+		this.elements.resetConfirm.addEventListener("click", () => {
+			this.hideResetConfirmation(false);
+			handlers.resetProgress();
+			this.elements.discoveryClose.focus({ preventScroll: true });
 		});
 		this.elements.discoveryModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
@@ -4414,10 +4419,12 @@ var GameView = class {
 		this.modal.close("result", this.elements.play, beforeClose, afterClose, target);
 	}
 	openDiscovery() {
+		this.hideResetConfirmation(false);
 		this.discovery.collapseAll();
 		this.modal.openDiscovery();
 	}
 	closeDiscovery(returnFocus, afterClose) {
+		this.hideResetConfirmation(false);
 		const target = returnFocus === "play" ? this.elements.play : this.elements.discoveryButton;
 		this.modal.close("discovery", this.elements.discoveryButton, () => {}, afterClose, target);
 	}
@@ -4439,6 +4446,20 @@ var GameView = class {
 	}
 	renderDiscovery(state) {
 		this.discovery.render(state.tracks, state.discoveries);
+	}
+	showResetConfirmation() {
+		if (this.resetConfirmationOpen) return;
+		this.resetConfirmationOpen = true;
+		this.elements.discoveryActions.hidden = true;
+		this.elements.resetConfirmation.hidden = false;
+		this.elements.resetCancel.focus({ preventScroll: true });
+	}
+	hideResetConfirmation(returnFocus) {
+		if (!this.resetConfirmationOpen) return;
+		this.resetConfirmationOpen = false;
+		this.elements.resetConfirmation.hidden = true;
+		this.elements.discoveryActions.hidden = false;
+		if (returnFocus) this.elements.discoveryReset.focus({ preventScroll: true });
 	}
 	renderResult(result) {
 		const signature = result ? JSON.stringify(result) : "";
@@ -4526,7 +4547,8 @@ var GameView = class {
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.resultAction();
+				if (this.state.overlay === "discovery" && this.resetConfirmationOpen) this.hideResetConfirmation(true);
+				else this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.resultAction();
 				return;
 			}
 			if (this.state.overlay === "result" && event.key === "Enter" && document.activeElement !== this.elements.resultSecondary) {
@@ -4564,7 +4586,7 @@ var GameView = class {
 		return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight";
 	}
 	moveModalFocus(overlay, key, pointerAnchor) {
-		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : [this.elements.discoveryClose, this.elements.discoveryReset];
+		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : this.resetConfirmationOpen ? [this.elements.resetCancel, this.elements.resetConfirm] : [this.elements.discoveryClose, this.elements.discoveryReset];
 		this.cycleFocus(candidates, key, candidates[0], pointerAnchor);
 	}
 	movePrimaryFocus(key, pointerAnchor) {
@@ -4687,6 +4709,10 @@ var GameView = class {
 			discoveryPanel: this.required(".discovery-panel"),
 			discoveryClose: this.required(".discovery-close"),
 			discoveryReset: this.required(".discovery-reset"),
+			discoveryActions: this.required(".discovery-actions"),
+			resetConfirmation: this.required(".reset-confirmation"),
+			resetCancel: this.required(".reset-cancel"),
+			resetConfirm: this.required(".reset-confirm"),
 			discoveryCount: this.required(".discovery-title small"),
 			discoveryItems: this.required(".discovery-items"),
 			progressBests: this.required(".progress-bests"),
@@ -4701,7 +4727,7 @@ function duration(styles, name) {
 	return value.endsWith("ms") ? Number.parseFloat(value) || 0 : value.endsWith("s") ? (Number.parseFloat(value) || 0) * 1e3 : 0;
 }
 function markup() {
-	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
+	return `<div class="wrap"><h1>CORZAGUESSR&#10022;</h1><div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div><div class="card glass"><div class="stack"><div class="board"><div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div><div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div><div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:100%"></i></div><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div><div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div><div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions discovery-actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div><section class="reset-confirmation" role="group" aria-labelledby="corzaguessr-reset-title" aria-describedby="corzaguessr-reset-warning" hidden><strong id="corzaguessr-reset-title">RESET ALL PROGRESS?</strong><span id="corzaguessr-reset-warning">THIS ERASES DISCOVERY, DAILY PROGRESS, AND RECORDS.</span><div class="actions"><button type="button" class="button reset-cancel">CANCEL</button><button type="button" class="button reset-confirm">RESET</button></div></section></div></div></div></div><p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p></div><p class="sr-only status" aria-live="polite"></p><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio><audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`;
 }
 //#endregion
 //#region src/main.ts
