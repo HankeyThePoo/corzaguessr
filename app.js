@@ -31,12 +31,14 @@
 //#endregion
 //#region src/application/catalog-loader.ts
 var RETRY_DELAY_MS = 5e3;
+var LOADING_GRACE_MS = 2e3;
 var RetryingCatalogLoader = class {
 	repository;
 	scheduler;
 	retryDelayMs;
 	generation = 0;
 	retryTimer = 0;
+	loadingTimer = 0;
 	abortController = null;
 	constructor(repository, scheduler, retryDelayMs = RETRY_DELAY_MS) {
 		this.repository = repository;
@@ -52,20 +54,27 @@ var RetryingCatalogLoader = class {
 		this.generation += 1;
 		if (this.retryTimer) this.scheduler.clearTimeout(this.retryTimer);
 		this.retryTimer = 0;
+		this.clearLoadingTimer();
 		this.abortController?.abort();
 		this.abortController = null;
 	}
 	attempt(date, callbacks, generation) {
 		if (generation !== this.generation) return;
-		callbacks.onLoading();
 		const controller = new AbortController();
 		this.abortController = controller;
-		this.repository.load(date, controller.signal).then((tracks) => {
+		const request = this.repository.load(date, controller.signal);
+		this.loadingTimer = this.scheduler.setTimeout(() => {
+			this.loadingTimer = 0;
+			if (generation === this.generation && !controller.signal.aborted) callbacks.onLoading();
+		}, LOADING_GRACE_MS);
+		request.then((tracks) => {
 			if (generation !== this.generation || controller.signal.aborted) return;
+			this.clearLoadingTimer();
 			this.abortController = null;
 			callbacks.onLoaded(tracks);
 		}, (error) => {
 			if (generation !== this.generation || controller.signal.aborted || error instanceof DOMException && error.name === "AbortError") return;
+			this.clearLoadingTimer();
 			this.abortController = null;
 			callbacks.onError(error);
 			if (!isRetryable(error)) return;
@@ -74,6 +83,10 @@ var RetryingCatalogLoader = class {
 				this.attempt(date, callbacks, generation);
 			}, this.retryDelayMs);
 		});
+	}
+	clearLoadingTimer() {
+		if (this.loadingTimer) this.scheduler.clearTimeout(this.loadingTimer);
+		this.loadingTimer = 0;
 	}
 };
 function isRetryable(error) {
@@ -636,7 +649,7 @@ function rulesText(input) {
 		const attempts = dailyProgress.step + 1;
 		return `${dailyProgress.won ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK IN ${formatDailyCountdown(input.dailyCountdownMs)}`;
 	}
-	if (input.appStatus === "loading") return COPY.loadingCatalog;
+	if (input.appStatus === "loading") return input.catalogLoadingVisible ? COPY.loadingCatalog : COPY.modePrompt;
 	if (input.appStatus === "error") return COPY.catalogError;
 	if (!session.mode) return COPY.modePrompt;
 	if (session.phase === "retry") return COPY.trackError;
@@ -727,6 +740,7 @@ var GameController = class {
 	random;
 	session = new GameSession();
 	appStatus = "loading";
+	catalogLoadingVisible = false;
 	tracks = [];
 	budapestDate = "1970-01-01";
 	dailyDate = "1970-01-01";
@@ -753,10 +767,12 @@ var GameController = class {
 		this.render();
 		this.catalog.load(date, {
 			onLoading: () => {
+				this.catalogLoadingVisible = true;
 				if (!this.tracks.length) this.appStatus = "loading";
 				this.render();
 			},
 			onLoaded: (tracks) => {
+				this.catalogLoadingVisible = false;
 				this.tracks = tracks;
 				this.appStatus = this.session.snapshot.mode ? "ready" : "awaiting-mode";
 				this.prime();
@@ -764,6 +780,7 @@ var GameController = class {
 				this.session.snapshot.mode ? this.view.focusPlay() : this.view.focusMode("daily");
 			},
 			onError: () => {
+				this.catalogLoadingVisible = false;
 				if (this.tracks.length) return;
 				this.appStatus = "error";
 				this.view.announce(COPY.catalogError);
@@ -1215,6 +1232,7 @@ var GameController = class {
 		const session = this.session.snapshot;
 		const viewModel = composeGameViewModel({
 			appStatus: this.appStatus,
+			catalogLoadingVisible: this.catalogLoadingVisible,
 			session,
 			transport: this.playback.snapshot,
 			clock: this.clock.snapshot(),
@@ -3482,6 +3500,12 @@ var DiscoveryListView = class {
 		this.openSpotify = openSpotify;
 		this.startSpeedrun = startSpeedrun;
 	}
+	collapseAll() {
+		if (this.expandedTrackId === null) return;
+		const expandedTrackId = this.expandedTrackId;
+		this.expandedTrackId = null;
+		this.updateItem(expandedTrackId, false);
+	}
 	render(tracks, discoveries) {
 		const signature = [...discoveries].sort((a, b) => a - b).join(",");
 		if (tracks === this.tracks && signature === this.discoveriesSignature) return;
@@ -4386,6 +4410,7 @@ var GameView = class {
 		this.modal.close("result", this.elements.play, beforeClose, afterClose, target);
 	}
 	openDiscovery() {
+		this.discovery.collapseAll();
 		this.modal.openDiscovery();
 	}
 	closeDiscovery(returnFocus, afterClose) {
