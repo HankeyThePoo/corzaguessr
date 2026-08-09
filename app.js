@@ -3535,6 +3535,8 @@ var DiscoveryListView = class {
 		item.className = "discovery-item discovery-item-known";
 		item.dataset.trackId = String(track.dailyNumber);
 		item.setAttribute("role", "listitem");
+		const coverUrl = this.coverUrl(track.dailyNumber);
+		item.style.setProperty("--discovery-artwork", `url(${JSON.stringify(coverUrl)})`);
 		const detailsId = `corzaguessr-discovery-track-${track.dailyNumber}`;
 		const toggle = document.createElement("button");
 		toggle.type = "button";
@@ -3549,7 +3551,7 @@ var DiscoveryListView = class {
 		const cover = document.createElement("span");
 		cover.className = "discovery-cover";
 		const image = document.createElement("img");
-		image.src = this.coverUrl(track.dailyNumber);
+		image.src = coverUrl;
 		image.alt = "";
 		image.width = 200;
 		image.height = 200;
