@@ -1061,7 +1061,7 @@
   inset: -32px;
   background-position: center;
   background-size: cover;
-  filter: blur(24px) saturate(1.55) brightness(0.9);
+  filter: blur(24px) saturate(1.3) brightness(0.9);
   transform: scale(1.14);
   transition: opacity 250ms ease;
 }
