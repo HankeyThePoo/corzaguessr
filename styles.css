@@ -1005,6 +1005,35 @@
   border-top: 1px solid var(--line);
 }
 
+#corzaguessr .reset-confirmation {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+#corzaguessr .reset-confirmation[hidden] {
+  display: none;
+}
+
+#corzaguessr .reset-confirmation strong {
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+}
+
+#corzaguessr .reset-confirmation > span {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+#corzaguessr .reset-confirmation .actions {
+  margin-top: 0.25rem;
+}
+
 #corzaguessr .discovery-items {
   --discovery-row-height: 42px;
   --discovery-row-gap: 0.5rem;
