@@ -1061,22 +1061,22 @@
   inset: -32px;
   background-position: center;
   background-size: cover;
-  filter: blur(30px) saturate(1.15) brightness(0.55);
-  transform: scale(1.18);
+  filter: blur(24px) saturate(1.55) brightness(0.9);
+  transform: scale(1.14);
   transition: opacity 250ms ease;
 }
 
 #corzaguessr .discovery-item-known::after {
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(8, 10, 14, 0.74), rgba(8, 10, 14, 0.58)),
-    linear-gradient(180deg, rgba(8, 10, 14, 0.1), rgba(8, 10, 14, 0.48));
+    linear-gradient(90deg, rgba(8, 10, 14, 0.5), rgba(8, 10, 14, 0.32)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(5, 7, 10, 0.28));
   transition: opacity 180ms ease;
 }
 
 #corzaguessr .discovery-item-known.expanded::before {
   background-image: var(--discovery-artwork);
-  opacity: 0.8;
+  opacity: 1;
 }
 
 #corzaguessr .discovery-item-known.expanded::after {
