@@ -3961,6 +3961,8 @@ function createResultModule(row, newPersonalBest) {
 }
 //#endregion
 //#region src/ui/progress-summary.ts
+var EMPTY_RECORD_VALUE = "---";
+var EMPTY_RECORD_DETAIL = "NO RECORD";
 var ProgressSummaryView = class {
 	container;
 	signature = "";
@@ -3995,23 +3997,23 @@ function rows(bests, daily, dailyDate) {
 	const standard = [
 		{
 			mode: "DAILY",
-			value: dailyComplete ? daily.won ? `${daily.step + 1}/6` : "FAILED" : "",
-			detail: dailyComplete ? formatOrdinalDate(daily.date) : ""
+			value: dailyComplete ? daily.won ? `${daily.step + 1}/6` : "FAILED" : EMPTY_RECORD_VALUE,
+			detail: dailyComplete ? formatOrdinalDate(daily.date) : EMPTY_RECORD_DETAIL
 		},
 		{
 			mode: "CLASSIC",
-			value: bests.classic.best ? `${bests.classic.best}-GAME STREAK` : "--",
-			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}s` : "NO RECORD"
+			value: bests.classic.best ? `${bests.classic.best}-GAME STREAK` : EMPTY_RECORD_VALUE,
+			detail: bests.classic.best ? `AVERAGE ${formatDecimal(classicAverage)}s` : EMPTY_RECORD_DETAIL
 		},
 		{
 			mode: "BLITZ",
-			value: bests.blitz.score ? `${bests.blitz.score} CORRECT` : "--",
-			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% ACCURACY` : "NO RECORD"
+			value: bests.blitz.score ? `${bests.blitz.score} CORRECT` : EMPTY_RECORD_VALUE,
+			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% ACCURACY` : EMPTY_RECORD_DETAIL
 		},
 		{
 			mode: "SURVIVAL",
-			value: bests.survival.score ? `${formatClock(bests.survival.score / 1e3)} SURVIVED` : "--",
-			detail: bests.survival.score ? `${bests.survival.accuracy ?? 0}% ACCURACY` : "NO RECORD"
+			value: bests.survival.score ? `${formatClock(bests.survival.score / 1e3)} SURVIVED` : EMPTY_RECORD_VALUE,
+			detail: bests.survival.score ? `${bests.survival.accuracy ?? 0}% ACCURACY` : EMPTY_RECORD_DETAIL
 		}
 	];
 	if (bests.speedrun.trackCount > 0) standard.push({
