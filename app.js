@@ -29,19 +29,19 @@
 	}
 })();
 //#endregion
-//#region src/application/catalog-loader.ts
+//#region src/application/catalog.ts
 var RETRY_DELAY_MS = 5e3;
 var LOADING_GRACE_MS = 2e3;
-var RetryingCatalogLoader = class {
-	repository;
+var Catalog = class {
+	source;
 	scheduler;
 	retryDelayMs;
 	generation = 0;
 	retryTimer = 0;
 	loadingTimer = 0;
 	abortController = null;
-	constructor(repository, scheduler, retryDelayMs = RETRY_DELAY_MS) {
-		this.repository = repository;
+	constructor(source, scheduler, retryDelayMs = RETRY_DELAY_MS) {
+		this.source = source;
 		this.scheduler = scheduler;
 		this.retryDelayMs = retryDelayMs;
 	}
@@ -62,7 +62,7 @@ var RetryingCatalogLoader = class {
 		if (generation !== this.generation) return;
 		const controller = new AbortController();
 		this.abortController = controller;
-		const request = this.repository.load(date, controller.signal);
+		const request = this.source.load(date, controller.signal);
 		this.loadingTimer = this.scheduler.setTimeout(() => {
 			this.loadingTimer = 0;
 			if (generation === this.generation && !controller.signal.aborted) callbacks.onLoading();
@@ -106,8 +106,8 @@ var MODE_RULES = {
 	classic: {
 		initialTimeMs: null,
 		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
-		roundStyle: "six-try",
-		clockKind: "classic",
+		roundStyle: "puzzle",
+		clockKind: "puzzle",
 		clockDisplay: "snippet",
 		adjustsTime: false,
 		failurePolicy: "heard-fixed"
@@ -115,8 +115,8 @@ var MODE_RULES = {
 	daily: {
 		initialTimeMs: null,
 		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
-		roundStyle: "six-try",
-		clockKind: "classic",
+		roundStyle: "puzzle",
+		clockKind: "puzzle",
 		clockDisplay: "snippet",
 		adjustsTime: false,
 		failurePolicy: "fixed"
@@ -152,6 +152,9 @@ var MODE_RULES = {
 function isTimedMode(mode) {
 	return mode !== null && MODE_RULES[mode].roundStyle === "timed";
 }
+function isPuzzleMode(mode) {
+	return mode !== null && MODE_RULES[mode].roundStyle === "puzzle";
+}
 function snippetSeconds(attempt) {
 	return SNIPPET_SECONDS[Math.max(0, Math.min(SNIPPET_SECONDS.length - 1, attempt))];
 }
@@ -160,7 +163,7 @@ function skipLabel(mode, attempt) {
 	if (attempt >= SNIPPET_SECONDS.length - 1) return "GIVE UP";
 	return `ADD ${SNIPPET_SECONDS[attempt + 1] - SNIPPET_SECONDS[attempt]}S`;
 }
-function sixTryPrompt(attempt) {
+function puzzlePrompt(attempt) {
 	const finalAttempt = attempt === SNIPPET_SECONDS.length - 1;
 	return {
 		text: finalAttempt ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${SNIPPET_SECONDS.length}`,
@@ -249,12 +252,8 @@ function updateSpeedrunBest(bests, won, elapsedMs, trackCount) {
 }
 //#endregion
 //#region src/domain/game-session.ts
-function acceptsAttempt(phase, roundHeard) {
-	return phase === "playing" || (phase === "paused" || phase === "preparing" || phase === "buffering") && roundHeard;
-}
 var GameSession = class {
 	modeState = null;
-	phaseState = "idle";
 	roundState = null;
 	roundHeardState = false;
 	attemptState = 0;
@@ -266,12 +265,10 @@ var GameSession = class {
 	guessedTrackIdsState = /* @__PURE__ */ new Set();
 	speedrunCorrectTrackIdsState = /* @__PURE__ */ new Set();
 	resultState = null;
-	playbackRequestedState = false;
 	nextSlotId = 0;
 	get snapshot() {
 		return {
 			mode: this.modeState,
-			phase: this.phaseState,
 			round: this.roundState ? this.copyRound(this.roundState) : null,
 			roundHeard: this.roundHeardState,
 			attempt: this.attemptState,
@@ -281,8 +278,7 @@ var GameSession = class {
 			history: this.historyState.map((slot) => ({ ...slot })),
 			guessedTrackIds: new Set(this.guessedTrackIdsState),
 			speedrunCorrectTrackIds: new Set(this.speedrunCorrectTrackIdsState),
-			result: this.resultState ? { ...this.resultState } : null,
-			playbackRequested: this.playbackRequestedState
+			result: this.resultState ? { ...this.resultState } : null
 		};
 	}
 	reset(mode, seed = {
@@ -292,7 +288,6 @@ var GameSession = class {
 		currentSlot: null
 	}) {
 		this.modeState = mode;
-		this.phaseState = "idle";
 		this.roundState = null;
 		this.roundHeardState = false;
 		this.attemptState = seed.attempt;
@@ -306,38 +301,22 @@ var GameSession = class {
 		this.speedrunCorrectTrackIdsState.clear();
 		this.nextSlotId = Math.max(this.nextSlotId, seed.currentSlot?.id ?? 0, ...this.historyState.map((slot) => slot.id));
 		this.resultState = null;
-		this.playbackRequestedState = false;
 	}
 	beginPreparing(round) {
-		const restorePrompt = this.phaseState === "retry";
 		if (this.roundNumberState === 0) this.roundNumberState = 1;
 		this.roundState = this.copyRound(round);
 		this.roundHeardState = false;
-		this.phaseState = "preparing";
-		this.playbackRequestedState = true;
-		if (!this.currentSlotState || restorePrompt) this.currentSlotState = this.prompt();
+		if (!this.currentSlotState || this.currentSlotState.tone === "technical") this.currentSlotState = this.prompt();
 	}
 	beginPlaying(round) {
 		this.roundState = this.copyRound(round);
 		this.roundHeardState = true;
-		this.phaseState = "playing";
-		this.playbackRequestedState = true;
 		if (isTimedMode(this.modeState)) this.guessedTrackIdsState.clear();
 		if (!this.currentSlotState) this.currentSlotState = this.prompt();
 	}
 	resumePlaying(round) {
 		if (this.roundState?.id !== round.id) return;
 		this.roundHeardState = true;
-		this.phaseState = "playing";
-		this.playbackRequestedState = true;
-	}
-	setPlaybackState(phase, requested) {
-		this.phaseState = phase;
-		this.playbackRequestedState = requested;
-	}
-	setRetry() {
-		this.phaseState = "retry";
-		this.playbackRequestedState = false;
 	}
 	showTrackError(message) {
 		if (this.currentSlotState) this.currentSlotState = {
@@ -349,21 +328,17 @@ var GameSession = class {
 	markRoundStopped() {
 		this.roundHeardState = false;
 	}
-	setIdle(clearRound = false) {
-		this.phaseState = "idle";
-		this.playbackRequestedState = false;
-		if (clearRound) {
-			this.roundState = null;
-			this.roundHeardState = false;
-		}
+	clearRound() {
+		this.roundState = null;
+		this.roundHeardState = false;
 	}
 	recordGuess(trackNumber) {
 		if (this.guessedTrackIdsState.has(trackNumber)) return false;
 		this.guessedTrackIdsState.add(trackNumber);
 		return true;
 	}
-	resolveSixTry(outcome, guessedTitle) {
-		if (this.modeState !== "classic" && this.modeState !== "daily") throw new Error("Six-try attempts require Classic or Daily mode.");
+	resolvePuzzleAttempt(outcome, guessedTitle) {
+		if (!isPuzzleMode(this.modeState)) throw new Error("Puzzle attempts require Daily or Classic mode.");
 		const slot = this.createAttemptSlot(outcome, guessedTitle, false);
 		const finished = outcome === "correct" || this.attemptState === 5;
 		if (finished) this.currentSlotState = slot;
@@ -385,13 +360,9 @@ var GameSession = class {
 		this.currentSlotState = this.prompt();
 		this.roundState = null;
 		this.roundHeardState = false;
-		this.phaseState = "idle";
-		this.playbackRequestedState = false;
 	}
 	finish(result) {
 		if (!this.modeState || result.mode !== this.modeState) throw new Error("Game result mode must match the active session mode.");
-		this.phaseState = "result";
-		this.playbackRequestedState = false;
 		this.roundHeardState = false;
 		if (isTimedMode(this.modeState)) {
 			const speedrunWon = result.mode === "speedrun" && result.won;
@@ -404,15 +375,13 @@ var GameSession = class {
 		this.resultState = { ...result };
 	}
 	dismissResult() {
-		if (this.phaseState !== "result") return;
-		this.phaseState = "idle";
+		if (!this.resultState) return;
 		this.roundState = null;
 		this.roundHeardState = false;
-		this.playbackRequestedState = false;
 		this.resultState = null;
 	}
 	prompt() {
-		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : sixTryPrompt(this.attemptState);
+		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : puzzlePrompt(this.attemptState);
 		return {
 			id: ++this.nextSlotId,
 			...prompt
@@ -620,6 +589,30 @@ function formatShareDate(value) {
 }
 //#endregion
 //#region src/application/game-view-model.ts
+function presentationPhase(session, transport) {
+	if (session.result) return "result";
+	if (transport.status === "retry") return "retry";
+	const round = session.round;
+	if (!round) return "idle";
+	switch (transport.status) {
+		case "playing": return "playing";
+		case "waiting": return "buffering";
+		case "starting": return transport.pendingRoundId === round.id ? "preparing" : "paused";
+		case "paused":
+		case "ended": return "paused";
+		case "blocked":
+		case "suspended":
+		case "empty":
+		case "prepared": return session.roundHeard ? "paused" : "preparing";
+	}
+}
+function playbackRequested(transport) {
+	return transport.status === "starting" || transport.status === "playing" || transport.status === "waiting";
+}
+function acceptsAttempt(session, transport) {
+	const phase = presentationPhase(session, transport);
+	return phase === "playing" || (phase === "paused" || phase === "preparing" || phase === "buffering") && session.roundHeard;
+}
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
 	if (progress.date === dailyDate && progress.started && !progress.completed && progress.dailyNumber !== null) return !isDailyTrackAvailable(tracks, dailyDate, progress.dailyNumber);
@@ -640,7 +633,7 @@ function rulesText(input) {
 	if (input.appStatus === "loading") return input.catalogLoadingVisible ? COPY.loadingCatalog : COPY.modePrompt;
 	if (input.appStatus === "error") return COPY.catalogError;
 	if (!session.mode) return COPY.modePrompt;
-	if (session.phase === "retry") return COPY.trackError;
+	if (presentationPhase(session, input.transport) === "retry") return COPY.trackError;
 	if (session.mode === "daily") {
 		if (dailyCatalogPending(session.mode, input.tracks, dailyDate, dailyProgress)) return COPY.trackUnavailable;
 		if (dailyInProgress(dailyProgress, dailyDate)) return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${dailyProgress.step + 1}`;
@@ -657,6 +650,8 @@ function formatDailyCountdown(milliseconds) {
 }
 function composeGameViewModel(input) {
 	const { session, transport } = input;
+	const phase = presentationPhase(session, transport);
+	const requested = playbackRequested(transport);
 	const speedrunTracksLeft = Math.max(0, input.tracks.length - session.speedrunCorrectTrackIds.size);
 	const currentSlot = session.mode === "speedrun" && session.currentSlot?.tone === "prompt" ? {
 		...session.currentSlot,
@@ -670,24 +665,24 @@ function composeGameViewModel(input) {
 		"paused",
 		"buffering",
 		"retry"
-	].includes(session.phase) || session.phase === "preparing" && transport.pendingRoundId !== null && !session.playbackRequested;
+	].includes(phase) || phase === "preparing" && transport.pendingRoundId !== null && !requested;
 	const inputVisible = !!session.round && ![
 		"idle",
 		"retry",
 		"result"
-	].includes(session.phase);
-	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && !["retry", "result"].includes(session.phase));
+	].includes(phase);
+	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && !["retry", "result"].includes(phase));
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
-		phase: session.phase,
+		phase,
 		rulesText: rulesText(input),
 		transportText: transport.loading.visible ? COPY.loadingTrack : "",
 		inputVisible,
 		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
 		guessEnabled,
-		skipEnabled: !!(guessEnabled && session.round && acceptsAttempt(session.phase, session.roundHeard)),
-		playbackIcon: session.playbackRequested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
+		skipEnabled: !!(guessEnabled && session.round && acceptsAttempt(session, transport)),
+		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: snippetSeconds(session.attempt),
 		skipText: skipLabel(session.mode, session.attempt),
 		currentSlot,
@@ -705,24 +700,21 @@ function composeGameViewModel(input) {
 }
 //#endregion
 //#region src/application/game-controller.ts
-function requestsPlayback(phase) {
-	return phase === "preparing" || phase === "playing" || phase === "buffering";
-}
 var GameController = class {
 	catalog;
 	progress;
 	clock;
 	playback;
 	view;
-	dailyBoundary;
-	navigator;
-	resultClipboard;
+	dailySchedule;
+	spotifyLink;
+	shareClipboard;
 	random;
 	session = new GameSession();
 	appStatus = "loading";
 	catalogLoadingVisible = false;
 	tracks = [];
-	budapestDate = "1970-01-01";
+	latestDailyDate = "1970-01-01";
 	dailyDate = "1970-01-01";
 	dailyCountdownMs = 0;
 	overlay = null;
@@ -730,19 +722,19 @@ var GameController = class {
 	nextRoundId = 0;
 	finishing = false;
 	persistenceFailureQueued = false;
-	constructor(catalog, progress, clock, playback, view, dailyBoundary, navigator, resultClipboard, random = Math.random) {
+	constructor(catalog, progress, clock, playback, view, dailySchedule, spotifyLink, shareClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
 		this.clock = clock;
 		this.playback = playback;
 		this.view = view;
-		this.dailyBoundary = dailyBoundary;
-		this.navigator = navigator;
-		this.resultClipboard = resultClipboard;
+		this.dailySchedule = dailySchedule;
+		this.spotifyLink = spotifyLink;
+		this.shareClipboard = shareClipboard;
 		this.random = random;
 	}
 	bootstrap(date) {
-		this.budapestDate = date;
+		this.latestDailyDate = date;
 		this.dailyDate = date;
 		this.render();
 		this.catalog.load(date, {
@@ -757,7 +749,7 @@ var GameController = class {
 				this.appStatus = this.session.snapshot.mode ? "ready" : "awaiting-mode";
 				this.prime();
 				this.render();
-				this.session.snapshot.mode ? this.view.focusPlay() : this.view.focusMode("daily");
+				this.view.present({ type: "catalog-ready" });
 			},
 			onError: () => {
 				this.catalogLoadingVisible = false;
@@ -772,16 +764,14 @@ var GameController = class {
 		const state = this.session.snapshot;
 		if (this.overlay || this.appStatus === "error" || state.mode === mode) return;
 		if (mode === "daily") {
-			const date = this.dailyBoundary.start();
-			this.budapestDate = date;
+			const date = this.dailySchedule.start();
+			this.latestDailyDate = date;
 			this.dailyDate = date;
-		} else this.dailyBoundary.stop();
+		} else this.dailySchedule.stop();
 		this.resetForMode(mode);
 		this.view.announce(MODE_RULES[mode].description);
-		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) {
-			this.startDailyCountdown();
-			this.view.focusMode("classic");
-		} else this.view.focusPlay();
+		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.startDailyCountdown();
+		this.view.present({ type: "mode-selected" });
 	}
 	play() {
 		this.handlePlay(false);
@@ -795,7 +785,7 @@ var GameController = class {
 	guess(dailyNumber) {
 		const state = this.session.snapshot;
 		const round = state.round;
-		if (!round || !acceptsAttempt(state.phase, state.roundHeard) || this.overlay || state.guessedTrackIds.has(dailyNumber)) return;
+		if (!round || !acceptsAttempt(state, this.playback.snapshot) || this.overlay || state.guessedTrackIds.has(dailyNumber)) return;
 		const guessed = this.tracks.find((track) => track.dailyNumber === dailyNumber);
 		if (!guessed || isTimedMode(state.mode) && !state.roundHeard) return;
 		if (!this.session.recordGuess(dailyNumber)) return;
@@ -805,23 +795,19 @@ var GameController = class {
 		const mode = this.session.snapshot.mode;
 		if (!mode) return;
 		if (this.overlay === "result") {
-			if (mode === "daily" && this.progress.dailyDone(this.budapestDate)) {
-				this.view.closeResult("classic", () => {}, () => {
-					this.startDailyCountdown();
-					this.overlay = null;
-					this.session.dismissResult();
-					this.render();
+			if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
+				this.view.beginOverlayClose({
+					overlay: "result",
+					outcome: "completed-daily"
 				});
 				return;
 			}
-			this.view.closeResult("play", () => {
-				if (mode === "daily" && this.budapestDate) this.dailyDate = this.budapestDate;
-				this.resetForMode(mode);
-			}, () => {
-				this.overlay = null;
-				this.prime();
-				this.render();
-			});
+			if (!this.view.beginOverlayClose({
+				overlay: "result",
+				outcome: "restart"
+			})) return;
+			if (mode === "daily" && this.latestDailyDate) this.dailyDate = this.latestDailyDate;
+			this.resetForMode(mode);
 			return;
 		}
 		this.resetForMode(mode);
@@ -831,35 +817,48 @@ var GameController = class {
 			this.closeDiscovery();
 			return;
 		}
-		if (this.overlay || this.session.snapshot.phase === "result") return;
+		if (this.overlay || this.session.snapshot.result) return;
 		if (this.playback.ownedRound) {
 			this.clock.pause();
 			this.playback.suspend();
-			if (requestsPlayback(this.session.snapshot.phase)) this.session.setPlaybackState(this.session.snapshot.roundHeard ? "paused" : "preparing", false);
 		}
 		this.overlay = "discovery";
-		this.view.resetTransientUi();
 		this.render();
-		this.view.openDiscovery();
 	}
 	closeDiscovery() {
 		if (this.overlay !== "discovery") return;
-		const returnFocus = this.session.snapshot.mode ? "play" : "discovery";
-		this.view.closeDiscovery(returnFocus, () => {
-			this.overlay = null;
-			if (this.playback.ownedRound) this.playback.restore();
-			this.prime();
-			this.render();
+		this.view.beginOverlayClose({
+			overlay: "discovery",
+			outcome: "resume"
 		});
 	}
 	startSpeedrun() {
 		if (this.overlay !== "discovery" || !this.speedrunUnlocked()) return;
-		this.dailyBoundary.stop();
-		this.view.closeDiscovery("play", () => {
-			this.overlay = null;
+		if (!this.view.beginOverlayClose({
+			overlay: "discovery",
+			outcome: "start-speedrun"
+		})) return;
+		this.dailySchedule.stop();
+	}
+	onOverlayClosed(request) {
+		if (this.overlay !== request.overlay) return;
+		this.overlay = null;
+		if (request.overlay === "result") {
+			if (request.outcome === "completed-daily") {
+				this.startDailyCountdown();
+				this.session.dismissResult();
+			} else this.prime();
+			this.render();
+			return;
+		}
+		if (request.outcome === "start-speedrun") {
 			this.resetForMode("speedrun");
 			this.view.announce(MODE_RULES.speedrun.description);
-		});
+			return;
+		}
+		if (this.playback.ownedRound) this.playback.restore();
+		this.prime();
+		this.render();
 	}
 	resetProgress() {
 		if (this.overlay !== "discovery") return;
@@ -873,7 +872,7 @@ var GameController = class {
 	openSpotify() {
 		const result = this.session.snapshot.result;
 		const spotify = result && (result.mode === "classic" || result.mode === "daily") ? result.spotify : "";
-		if (spotify) this.navigator.openSpotify(spotify);
+		if (spotify) this.spotifyLink.openSpotify(spotify);
 	}
 	shareDaily() {
 		const result = this.session.snapshot.result;
@@ -883,10 +882,10 @@ var GameController = class {
 		const stillCurrent = () => {
 			return this.sessionNumber === sessionNumber && this.dailyDate === dailyDate && this.overlay === "result" && this.session.snapshot.result?.mode === "daily";
 		};
-		this.resultClipboard.copy(formatDailyShare(dailyDate, result)).then((copied) => {
+		this.shareClipboard.copy(formatDailyShare(dailyDate, result)).then((copied) => {
 			if (!stillCurrent()) return;
 			if (copied) {
-				this.view.showDailyShareCopied();
+				this.view.present({ type: "daily-share-copied" });
 				this.view.announce("RESULT COPIED TO CLIPBOARD.");
 			} else this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER.");
 		}, () => {
@@ -896,31 +895,29 @@ var GameController = class {
 	openDiscoverySpotify(dailyNumber) {
 		if (this.overlay !== "discovery" || !this.progress.discoveries.has(dailyNumber)) return;
 		const spotify = this.tracks.find((track) => track.dailyNumber === dailyNumber)?.spotify ?? "";
-		if (spotify) this.navigator.openSpotify(spotify);
+		if (spotify) this.spotifyLink.openSpotify(spotify);
 	}
-	handleDateChanged(date) {
-		if (this.session.snapshot.mode !== "daily" || date === this.budapestDate) return;
-		this.budapestDate = date;
-		this.dailyBoundary.stopCountdown();
+	handleDailyDateChanged(date) {
+		if (this.session.snapshot.mode !== "daily" || date === this.latestDailyDate) return;
+		this.latestDailyDate = date;
+		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
-		if (this.session.snapshot.phase !== "result") {
+		if (!this.session.snapshot.result) {
 			this.dailyDate = date;
 			this.resetForMode("daily");
 		}
 	}
 	handleVisibilityVisible() {
 		if (this.playback.ownedRound && !this.overlay) this.playback.restore();
-		if (this.session.snapshot.mode === "daily") this.dailyBoundary.reconcile();
+		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
 	}
 	handleVisibilityHidden() {
 		const state = this.session.snapshot;
-		if (!this.playback.ownedRound || state.phase === "result") return;
+		if (!this.playback.ownedRound || state.result) return;
+		const wasRequested = playbackRequested(this.playback.snapshot);
 		this.clock.pause();
 		this.playback.suspend();
-		if (requestsPlayback(state.phase)) {
-			this.session.setPlaybackState(state.roundHeard ? "paused" : "preparing", false);
-			this.render();
-		}
+		if (wasRequested) this.render();
 	}
 	onPending(round) {
 		this.session.beginPreparing(round);
@@ -930,10 +927,10 @@ var GameController = class {
 	onAudioPlaying(round, startedNewRound) {
 		if (startedNewRound) {
 			this.session.beginPlaying(round);
-			if (!isTimedMode(this.session.snapshot.mode)) this.clock.restartClassic(snippetSeconds(this.session.snapshot.attempt) * 1e3);
+			if (!isTimedMode(this.session.snapshot.mode)) this.clock.restartPuzzle(snippetSeconds(this.session.snapshot.attempt) * 1e3);
 			this.clock.start();
 			this.render();
-			this.view.focusGuess();
+			this.view.present({ type: "gameplay-ready" });
 			return;
 		}
 		if (this.session.snapshot.round?.id === round.id) {
@@ -945,36 +942,32 @@ var GameController = class {
 	onAudioWaiting(round) {
 		if (this.playback.ownedRound?.id !== round.id) return;
 		this.clock.pause();
-		this.session.setPlaybackState("buffering", true);
 		this.render();
 	}
 	onAudioBlocked(round) {
 		if (this.playback.ownedRound?.id !== round.id) return;
 		this.clock.pause();
-		this.session.setPlaybackState(this.session.snapshot.roundHeard ? "paused" : "preparing", false);
 		this.view.announce("PRESS PLAY TO START THE AUDIO.");
 		this.render();
 	}
 	onAudioEnded(round) {
 		const state = this.session.snapshot;
-		if (state.round?.id !== round.id || !state.roundHeard || state.phase === "result") return;
+		if (state.round?.id !== round.id || !state.roundHeard || state.result) return;
 		this.clock.pause();
-		this.session.setPlaybackState("paused", false);
 		if (isTimedMode(state.mode)) this.resolveAttempt("skip", null);
 		else this.render();
 	}
 	onAudioRecovery(kind) {
 		this.clock.pause();
 		if (kind === "automatic-replacement") {
-			this.session.setIdle(true);
+			this.session.clearRound();
 			this.view.announce(COPY.selectedTrackReplacing);
 			return;
 		}
-		this.session.setRetry();
 		this.session.showTrackError(COPY.trackError);
 		this.view.announce(kind === "selected-track-retry" ? COPY.selectedTrackRetry : COPY.trackError);
 		this.render();
-		this.view.focusPlay();
+		this.view.present({ type: "recovery-needed" });
 	}
 	onLoading() {
 		this.render();
@@ -992,24 +985,25 @@ var GameController = class {
 	}
 	onClockExpired() {
 		const state = this.session.snapshot;
-		if (this.finishing || state.phase === "result" || !state.round) return;
+		if (this.finishing || state.result || !state.round) return;
 		if (isTimedMode(state.mode)) this.finishGame(false);
 		else {
 			this.playback.pause();
-			this.session.setPlaybackState("paused", false);
 			this.render();
 		}
 	}
 	handlePlay(shortcut) {
-		if (this.session.snapshot.mode === "daily") this.dailyBoundary.reconcile();
+		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
 		const state = this.session.snapshot;
+		const transport = this.playback.snapshot;
+		const phase = presentationPhase(state, transport);
+		const requested = playbackRequested(transport);
 		if (this.appStatus !== "ready" || !state.mode || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
-		if (state.phase === "idle" || state.phase === "retry") {
-			this.playback.start({ manualRetry: state.phase === "retry" });
+		if (phase === "idle" || phase === "retry") {
+			this.playback.start({ manualRetry: phase === "retry" });
 			return;
 		}
-		if (state.phase === "preparing" && state.round && this.playback.snapshot.pendingRoundId === state.round.id && !state.playbackRequested) {
-			this.session.setPlaybackState("preparing", true);
+		if (phase === "preparing" && state.round && transport.pendingRoundId === state.round.id && !requested) {
 			this.playback.replay(state.round, false);
 			this.render();
 			return;
@@ -1019,56 +1013,50 @@ var GameController = class {
 			"playing",
 			"paused",
 			"buffering"
-		].includes(state.phase)) return;
+		].includes(phase)) return;
 		if (isTimedMode(state.mode)) {
-			if (state.playbackRequested) {
+			if (requested) {
 				this.clock.pause();
 				this.playback.pause();
-				this.session.setPlaybackState("paused", false);
 				this.render();
-				this.view.focusGuess();
 			} else {
-				this.session.setPlaybackState("paused", true);
 				this.playback.replay(round, false);
 				this.render();
-				this.view.focusGuess();
 			}
+			this.view.present({ type: "gameplay-ready" });
 			return;
 		}
 		if (shortcut) {
 			const snapshot = this.clock.pause();
 			this.playback.pause();
 			this.session.markRoundStopped();
-			this.session.setPlaybackState("paused", true);
 			this.playback.replay(round, snapshot.elapsedMs > 0);
-			if (snapshot.elapsedMs > 0) this.view.beginProgressReset(true);
-			this.clock.restartClassic(snippetSeconds(state.attempt) * 1e3);
+			this.view.present({ type: "playback-restarted" });
+			this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
 			this.render();
-			this.view.focusGuess();
-		} else if (state.playbackRequested) {
+			this.view.present({ type: "gameplay-ready" });
+		} else if (requested) {
 			this.clock.pause();
 			this.playback.pause();
-			this.view.beginProgressReset(true);
-			this.clock.restartClassic(snippetSeconds(state.attempt) * 1e3);
-			this.session.setPlaybackState("paused", false);
+			this.view.present({ type: "playback-restarted" });
+			this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
 			this.render();
-			this.view.focusGuess();
+			this.view.present({ type: "gameplay-ready" });
 		} else {
 			const elapsed = this.clock.snapshot().elapsedMs;
 			this.session.markRoundStopped();
-			this.session.setPlaybackState("paused", true);
 			this.playback.replay(round, elapsed > 0);
-			if (elapsed > 0) this.view.beginProgressReset(true);
-			this.clock.restartClassic(snippetSeconds(state.attempt) * 1e3);
+			this.view.present({ type: "playback-restarted" });
+			this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
 			this.render();
-			this.view.focusGuess();
+			this.view.present({ type: "gameplay-ready" });
 		}
 	}
 	resolveAttempt(outcome, guessed) {
 		const state = this.session.snapshot;
 		const round = state.round;
 		const mode = state.mode;
-		if (!round || !mode || !acceptsAttempt(state.phase, state.roundHeard) || this.overlay || this.finishing) return;
+		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.overlay || this.finishing) return;
 		if (isTimedMode(mode)) {
 			const snapshot = this.clock.pause();
 			if (snapshot.expired || snapshot.remainingMs <= 0) {
@@ -1076,7 +1064,7 @@ var GameController = class {
 				return;
 			}
 		}
-		this.view.clearAttemptEntry();
+		this.view.present({ type: "attempt-submitted" });
 		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
 		if (isTimedMode(mode)) {
 			this.playback.pause();
@@ -1089,7 +1077,10 @@ var GameController = class {
 			}
 			if (MODE_RULES[mode].adjustsTime) {
 				const adjustment = survivalAdjustment(outcome);
-				this.view.flashSurvivalChange(adjustment / 1e3);
+				this.view.present({
+					type: "survival-adjusted",
+					seconds: adjustment / 1e3
+				});
 				const snapshot = this.clock.adjust(adjustment);
 				if (snapshot.expired || snapshot.remainingMs <= 0) {
 					this.finishGame(false, round);
@@ -1099,8 +1090,8 @@ var GameController = class {
 			this.playback.start();
 			return;
 		}
-		const clockWasRunning = state.playbackRequested && this.clock.snapshot().running;
-		const resolution = this.session.resolveSixTry(outcome, guessed?.title ?? "");
+		const clockWasRunning = playbackRequested(this.playback.snapshot) && this.clock.snapshot().running;
+		const resolution = this.session.resolvePuzzleAttempt(outcome, guessed?.title ?? "");
 		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
 			this.finishGame(outcome === "correct");
@@ -1111,36 +1102,32 @@ var GameController = class {
 			this.progress.updateDailyAttempt(updated.attempt, updated.history);
 		}
 		const limit = snippetSeconds(this.session.snapshot.attempt) * 1e3;
-		if (clockWasRunning) this.clock.extendClassic(limit);
+		if (clockWasRunning) this.clock.extendPuzzle(limit);
 		else {
-			const elapsed = this.clock.snapshot().elapsedMs;
 			this.session.markRoundStopped();
-			this.session.setPlaybackState("paused", true);
 			this.playback.replay(round, true);
-			if (elapsed > 0) this.view.beginProgressReset(true);
-			this.clock.restartClassic(limit);
+			this.view.present({ type: "playback-restarted" });
+			this.clock.restartPuzzle(limit);
 		}
 		this.render();
-		this.view.focusGuess();
+		this.view.present({ type: "gameplay-ready" });
 	}
 	finishGame(won, fallbackRound = null) {
 		const state = this.session.snapshot;
 		const round = state.round ?? fallbackRound;
 		const mode = state.mode;
-		if (!round || !mode || state.phase === "result" || this.finishing) return;
+		if (!round || !mode || state.result || this.finishing) return;
 		this.finishing = true;
 		const clock = this.clock.pause();
 		this.playback.stop();
 		const result = this.progress.finish(finishedRun(mode, won, round, state, clock, this.dailyDate, this.tracks.length));
 		this.session.finish(result);
 		this.overlay = "result";
-		this.view.resetTransientUi();
 		this.render();
-		this.view.openResult();
 		this.finishing = false;
 	}
 	resetForMode(mode) {
-		this.dailyBoundary.stopCountdown();
+		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
 		this.sessionNumber += 1;
 		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
@@ -1149,9 +1136,8 @@ var GameController = class {
 		const rule = MODE_RULES[mode];
 		const initial = rule.initialTimeMs;
 		const milliseconds = initial ?? snippetSeconds(resumed) * 1e3;
-		this.view.beginProgressReset();
 		this.clock.configure(initial === null ? {
-			kind: "classic",
+			kind: "puzzle",
 			initialMs: milliseconds,
 			limitMs: milliseconds
 		} : {
@@ -1160,23 +1146,20 @@ var GameController = class {
 		});
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.appStatus = this.tracks.length ? "ready" : this.appStatus;
-		this.view.resetTransientUi();
 		this.prime();
 		this.render();
 	}
 	resetToModeSelection() {
-		this.dailyBoundary.stop();
+		this.dailySchedule.stop();
 		this.sessionNumber += 1;
 		this.playback.reset();
 		this.session.reset(null);
-		this.view.beginProgressReset();
 		this.clock.configure({
-			kind: "classic",
+			kind: "puzzle",
 			initialMs: 1e3,
 			limitMs: 1e3
 		});
 		if (this.tracks.length) this.appStatus = "awaiting-mode";
-		this.view.resetTransientUi();
 		this.render();
 	}
 	createRound(mode, failed, avoid) {
@@ -1227,7 +1210,7 @@ var GameController = class {
 		this.view.render(viewModel, String(this.sessionNumber));
 	}
 	startDailyCountdown() {
-		this.dailyBoundary.startCountdown((remainingMs) => {
+		this.dailySchedule.startCountdown((remainingMs) => {
 			this.dailyCountdownMs = remainingMs;
 			if (!this.overlay && this.session.snapshot.mode === "daily") this.render();
 		});
@@ -1306,17 +1289,17 @@ function emptyPersonalBests() {
 	};
 }
 //#endregion
-//#region src/application/progress-service.ts
-var ProgressService = class {
-	repository;
+//#region src/application/progress.ts
+var Progress = class {
+	storage;
 	options;
 	discoveriesState = /* @__PURE__ */ new Set();
 	dailyState;
 	bestsState;
-	constructor(repository, options = {}) {
-		this.repository = repository;
+	constructor(storage, options = {}) {
+		this.storage = storage;
 		this.options = options;
-		const loaded = repository.load();
+		const loaded = storage.load();
 		this.discoveriesState = new Set(loaded.discoveries);
 		this.dailyState = cloneDaily(loaded.daily);
 		this.bestsState = cloneBests(loaded.personalBests);
@@ -1365,7 +1348,7 @@ var ProgressService = class {
 			step: attempt,
 			history: []
 		};
-		if (!this.repository.saveDaily(next)) return this.persistenceFailed("start-daily");
+		if (!this.storage.saveDaily(next)) return this.persistenceFailed("start-daily");
 		this.dailyState = next;
 		return true;
 	}
@@ -1376,14 +1359,14 @@ var ProgressService = class {
 			step,
 			history: history.map((slot) => ({ ...slot }))
 		};
-		if (!this.repository.saveDaily(next)) return this.persistenceFailed("advance-daily");
+		if (!this.storage.saveDaily(next)) return this.persistenceFailed("advance-daily");
 		this.dailyState = next;
 		return true;
 	}
 	recordDiscovery(trackNumber) {
 		if (this.discoveriesState.has(trackNumber)) return true;
 		const next = new Set(this.discoveriesState).add(trackNumber);
-		if (!this.repository.saveDiscoveries(next)) {
+		if (!this.storage.saveDiscoveries(next)) {
 			this.persistenceFailed("record-discovery");
 			return false;
 		}
@@ -1391,7 +1374,7 @@ var ProgressService = class {
 		return true;
 	}
 	resetProgress() {
-		if (!this.repository.clearProgress()) return this.persistenceFailed("reset-progress");
+		if (!this.storage.clearProgress()) return this.persistenceFailed("reset-progress");
 		this.discoveriesState.clear();
 		this.dailyState = emptyDailyProgress();
 		this.bestsState = emptyPersonalBests();
@@ -1412,7 +1395,7 @@ var ProgressService = class {
 				step: run.attempt,
 				history: completedHistory
 			};
-			if (this.repository.saveDaily(nextDaily)) this.dailyState = nextDaily;
+			if (this.storage.saveDaily(nextDaily)) this.dailyState = nextDaily;
 			else this.persistenceFailed("complete-daily");
 			return {
 				mode: "daily",
@@ -1491,7 +1474,7 @@ var ProgressService = class {
 		};
 	}
 	saveBests(next) {
-		if (this.repository.savePersonalBests(next)) return true;
+		if (this.storage.savePersonalBests(next)) return true;
 		return this.persistenceFailed("save-personal-bests");
 	}
 	persistenceFailed(operation) {
@@ -1519,130 +1502,7 @@ function trackAssetNumber(dailyNumber) {
 	return String(dailyNumber).padStart(2, "0");
 }
 //#endregion
-//#region src/platform/browser-external-navigator.ts
-var BrowserExternalNavigator = class {
-	openSpotify(trackId) {
-		window.open(`https://open.spotify.com/track/${trackId}`, "_blank", "noopener,noreferrer");
-	}
-};
-//#endregion
-//#region src/platform/browser-result-clipboard.ts
-var BrowserResultClipboard = class {
-	target;
-	constructor(target = navigator) {
-		this.target = target;
-	}
-	async copy(text) {
-		try {
-			if (!this.target.clipboard) return false;
-			await this.target.clipboard.writeText(text);
-			return true;
-		} catch {
-			return false;
-		}
-	}
-};
-//#endregion
-//#region src/platform/budapest-date-boundary.ts
-var BUDAPEST_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
-	timeZone: "Europe/Budapest",
-	year: "numeric",
-	month: "2-digit",
-	day: "2-digit"
-});
-function budapestDate(date = /* @__PURE__ */ new Date()) {
-	const parts = Object.fromEntries(BUDAPEST_DATE_FORMATTER.formatToParts(date).map(({ type, value }) => [type, value]));
-	return `${parts.year}-${parts.month}-${parts.day}`;
-}
-var browserRuntime = {
-	now: () => Date.now(),
-	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
-	clearTimeout: (handle) => window.clearTimeout(handle)
-};
-var BudapestDateBoundary = class {
-	onDateChanged;
-	runtime;
-	boundaryTimer = 0;
-	countdownTimer = 0;
-	nextBoundaryAt = 0;
-	countdownTick = null;
-	currentDate = "";
-	active = false;
-	constructor(onDateChanged, runtime = browserRuntime) {
-		this.onDateChanged = onDateChanged;
-		this.runtime = runtime;
-	}
-	current() {
-		const date = budapestDate(new Date(this.runtime.now()));
-		if (!this.currentDate) this.currentDate = date;
-		return date;
-	}
-	start() {
-		this.active = true;
-		this.currentDate = budapestDate(new Date(this.runtime.now()));
-		this.scheduleNextBoundary();
-		return this.currentDate;
-	}
-	startCountdown(onTick) {
-		this.countdownTick = onTick;
-		if (!this.active) return;
-		if (!this.nextBoundaryAt) this.scheduleNextBoundary();
-		this.emitCountdown();
-	}
-	stopCountdown() {
-		this.countdownTick = null;
-		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
-		this.countdownTimer = 0;
-	}
-	reconcile() {
-		const date = budapestDate(new Date(this.runtime.now()));
-		if (date !== this.currentDate) {
-			this.currentDate = date;
-			this.onDateChanged(date);
-		}
-		if (this.active) {
-			this.scheduleNextBoundary();
-			if (this.countdownTick) this.emitCountdown();
-		}
-		return date;
-	}
-	stop() {
-		this.active = false;
-		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
-		this.boundaryTimer = 0;
-		this.nextBoundaryAt = 0;
-		this.stopCountdown();
-	}
-	scheduleNextBoundary() {
-		if (!this.active) return;
-		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
-		this.boundaryTimer = 0;
-		const now = this.runtime.now();
-		const today = budapestDate(new Date(now));
-		let lower = now;
-		let upper = now + 1800 * 60 * 1e3;
-		while (budapestDate(new Date(upper)) === today) upper += 360 * 60 * 1e3;
-		while (upper - lower > 1) {
-			const middle = Math.floor((lower + upper) / 2);
-			if (budapestDate(new Date(middle)) === today) lower = middle;
-			else upper = middle;
-		}
-		this.nextBoundaryAt = upper;
-		this.boundaryTimer = this.runtime.setTimeout(() => this.reconcile(), Math.max(1, upper - now));
-	}
-	emitCountdown() {
-		if (!this.active || !this.countdownTick) return;
-		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
-		this.countdownTimer = 0;
-		const remainingMs = Math.max(0, this.nextBoundaryAt - this.runtime.now());
-		this.countdownTick(remainingMs);
-		if (!remainingMs) return;
-		const untilNextSecond = remainingMs % 1e3 || 1e3;
-		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
-	}
-};
-//#endregion
-//#region src/platform/catalog-repository.ts
+//#region src/platform/catalog-source.ts
 var CatalogLoadError = class extends Error {
 	kind;
 	retryable;
@@ -1653,7 +1513,7 @@ var CatalogLoadError = class extends Error {
 		this.retryable = kind !== "invalid-date";
 	}
 };
-var FetchTrackCatalogRepository = class {
+var CatalogSource = class {
 	url;
 	fetchCatalog;
 	constructor(url, fetchCatalog = (input, init) => fetch(input, init)) {
@@ -1691,6 +1551,105 @@ var FetchTrackCatalogRepository = class {
 	}
 };
 //#endregion
+//#region src/platform/daily-schedule.ts
+var DAILY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+	timeZone: "Europe/Budapest",
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit"
+});
+function dailyDate(date = /* @__PURE__ */ new Date()) {
+	const parts = Object.fromEntries(DAILY_DATE_FORMATTER.formatToParts(date).map(({ type, value }) => [type, value]));
+	return `${parts.year}-${parts.month}-${parts.day}`;
+}
+var browserRuntime = {
+	now: () => Date.now(),
+	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+	clearTimeout: (handle) => window.clearTimeout(handle)
+};
+var DailySchedule = class {
+	onDateChanged;
+	runtime;
+	boundaryTimer = 0;
+	countdownTimer = 0;
+	nextBoundaryAt = 0;
+	countdownTick = null;
+	currentDate = "";
+	active = false;
+	constructor(onDateChanged, runtime = browserRuntime) {
+		this.onDateChanged = onDateChanged;
+		this.runtime = runtime;
+	}
+	current() {
+		const date = dailyDate(new Date(this.runtime.now()));
+		if (!this.currentDate) this.currentDate = date;
+		return date;
+	}
+	start() {
+		this.active = true;
+		this.currentDate = dailyDate(new Date(this.runtime.now()));
+		this.scheduleNextBoundary();
+		return this.currentDate;
+	}
+	startCountdown(onTick) {
+		this.countdownTick = onTick;
+		if (!this.active) return;
+		if (!this.nextBoundaryAt) this.scheduleNextBoundary();
+		this.emitCountdown();
+	}
+	stopCountdown() {
+		this.countdownTick = null;
+		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
+		this.countdownTimer = 0;
+	}
+	reconcile() {
+		const date = dailyDate(new Date(this.runtime.now()));
+		if (date !== this.currentDate) {
+			this.currentDate = date;
+			this.onDateChanged(date);
+		}
+		if (this.active) {
+			this.scheduleNextBoundary();
+			if (this.countdownTick) this.emitCountdown();
+		}
+		return date;
+	}
+	stop() {
+		this.active = false;
+		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
+		this.boundaryTimer = 0;
+		this.nextBoundaryAt = 0;
+		this.stopCountdown();
+	}
+	scheduleNextBoundary() {
+		if (!this.active) return;
+		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
+		this.boundaryTimer = 0;
+		const now = this.runtime.now();
+		const today = dailyDate(new Date(now));
+		let lower = now;
+		let upper = now + 1800 * 60 * 1e3;
+		while (dailyDate(new Date(upper)) === today) upper += 360 * 60 * 1e3;
+		while (upper - lower > 1) {
+			const middle = Math.floor((lower + upper) / 2);
+			if (dailyDate(new Date(middle)) === today) lower = middle;
+			else upper = middle;
+		}
+		this.nextBoundaryAt = upper;
+		this.boundaryTimer = this.runtime.setTimeout(() => this.reconcile(), Math.max(1, upper - now));
+	}
+	emitCountdown() {
+		if (!this.active || !this.countdownTick) return;
+		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
+		this.countdownTimer = 0;
+		const remainingMs = Math.max(0, this.nextBoundaryAt - this.runtime.now());
+		this.countdownTick(remainingMs);
+		if (!remainingMs) return;
+		const untilNextSecond = remainingMs % 1e3 || 1e3;
+		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
+	}
+};
+//#endregion
 //#region src/platform/game-clock.ts
 var browserScheduler$1 = {
 	requestFrame: (callback) => requestAnimationFrame(callback),
@@ -1703,7 +1662,7 @@ var GameClock = class {
 	now;
 	scheduler;
 	config = {
-		kind: "classic",
+		kind: "puzzle",
 		initialMs: 1e3,
 		limitMs: 1e3
 	};
@@ -1752,10 +1711,10 @@ var GameClock = class {
 		this.callbacks.onTick(snapshot);
 		return snapshot;
 	}
-	restartClassic(milliseconds) {
+	restartPuzzle(milliseconds) {
 		this.cancelScheduled();
 		this.config = {
-			kind: "classic",
+			kind: "puzzle",
 			initialMs: milliseconds,
 			limitMs: milliseconds
 		};
@@ -1768,11 +1727,11 @@ var GameClock = class {
 		this.generation += 1;
 		this.callbacks.onTick(this.snapshot());
 	}
-	extendClassic(milliseconds) {
+	extendPuzzle(milliseconds) {
 		const wasRunning = this.running;
 		this.commit();
 		this.config = {
-			kind: "classic",
+			kind: "puzzle",
 			initialMs: milliseconds,
 			limitMs: milliseconds
 		};
@@ -1825,7 +1784,7 @@ var GameClock = class {
 		const delta = Math.max(0, at - this.anchorMs);
 		return {
 			elapsedMs: this.elapsedMs + delta,
-			remainingMs: this.config.kind === "classic" ? Math.max(0, this.config.limitMs - (this.elapsedMs + delta)) : Math.max(0, this.remainingMs - delta)
+			remainingMs: this.config.kind === "puzzle" ? Math.max(0, this.config.limitMs - (this.elapsedMs + delta)) : Math.max(0, this.remainingMs - delta)
 		};
 	}
 	commit() {
@@ -1867,7 +1826,7 @@ var GameClock = class {
 	}
 };
 //#endregion
-//#region src/platform/progress-repository.ts
+//#region src/platform/progress-storage.ts
 var STORAGE_KEYS = {
 	discoveries: "corzaguessr:discoveries",
 	daily: "corzaguessr:daily",
@@ -1990,7 +1949,7 @@ function browserStorage$1() {
 		return null;
 	}
 }
-var LocalStorageProgressRepository = class {
+var ProgressStorage = class {
 	storage;
 	constructor(storage = browserStorage$1()) {
 		this.storage = storage;
@@ -2050,9 +2009,33 @@ var LocalStorageProgressRepository = class {
 	}
 };
 //#endregion
-//#region src/platform/volume-settings-repository.ts
+//#region src/platform/share-clipboard.ts
+var ShareClipboard = class {
+	target;
+	constructor(target = navigator) {
+		this.target = target;
+	}
+	async copy(text) {
+		try {
+			if (!this.target.clipboard) return false;
+			await this.target.clipboard.writeText(text);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+};
+//#endregion
+//#region src/platform/spotify-link.ts
+var SpotifyLink = class {
+	openSpotify(trackId) {
+		window.open(`https://open.spotify.com/track/${trackId}`, "_blank", "noopener,noreferrer");
+	}
+};
+//#endregion
+//#region src/platform/volume-settings.ts
 var VOLUME_STORAGE_KEY = "corzaguessr:volume";
-var LocalStorageVolumeSettingsRepository = class {
+var VolumeSettings = class {
 	storage;
 	constructor(storage = browserStorage()) {
 		this.storage = storage;
@@ -2090,7 +2073,7 @@ function browserStorage() {
 	}
 }
 //#endregion
-//#region src/playback/dual-slot-audio-player.ts
+//#region src/playback/audio-player.ts
 var browserTiming = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimeout: (handle) => window.clearTimeout(handle)
@@ -2099,7 +2082,7 @@ var browserTiming = {
 * The only module that touches HTMLAudioElement. Slot and play generations make
 * callbacks from released sources and superseded play promises harmless.
 */
-var DualSlotAudioPlayer = class {
+var AudioPlayer = class {
 	sourceForRound;
 	callbacks;
 	timing;
@@ -2540,7 +2523,7 @@ function samePlaybackOperation(left, right) {
 	return Boolean(left && left.slotId === right.slotId && left.slotGeneration === right.slotGeneration && left.roundId === right.roundId && left.playGeneration === right.playGeneration);
 }
 //#endregion
-//#region src/playback/playback-coordinator.ts
+//#region src/playback/playback.ts
 var browserScheduler = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimeout: (handle) => window.clearTimeout(handle),
@@ -2552,7 +2535,7 @@ var MAXIMUM_STANDBY_RECOVERIES = 2;
 * Owns round transport, grace notices, prefetch, and recovery. It deliberately
 * leaves HTMLMediaElement details to AudioPlayer and game state to GameSession.
 */
-var PlaybackCoordinator = class {
+var Playback = class {
 	audio;
 	callbacks;
 	scheduler;
@@ -2567,7 +2550,7 @@ var PlaybackCoordinator = class {
 	factory = null;
 	previousTrackId = null;
 	failedTrackIds = /* @__PURE__ */ new Set();
-	heardClassicRoundId = null;
+	heardPuzzleRoundId = null;
 	activeRecoveryAttempts = 0;
 	standbyRecoveryAttempts = 0;
 	automaticRecoveryBlocked = false;
@@ -2614,7 +2597,7 @@ var PlaybackCoordinator = class {
 		this.factory = factory;
 		if (changingMode) this.previousTrackId = null;
 		this.failedTrackIds.clear();
-		this.heardClassicRoundId = null;
+		this.heardPuzzleRoundId = null;
 		this.resetRecoveryCircuits();
 	}
 	prime() {
@@ -2751,7 +2734,7 @@ var PlaybackCoordinator = class {
 		this.factory = null;
 		this.previousTrackId = null;
 		this.failedTrackIds.clear();
-		this.heardClassicRoundId = null;
+		this.heardPuzzleRoundId = null;
 		this.resetRecoveryCircuits();
 	}
 	handleReady(event) {
@@ -2773,7 +2756,7 @@ var PlaybackCoordinator = class {
 			this.active = round;
 			this.retryRound = null;
 			this.status = "playing";
-			if (this.mode === "classic") this.heardClassicRoundId = round.id;
+			if (this.mode === "classic") this.heardPuzzleRoundId = round.id;
 			this.previousTrackId = this.mode === "daily" ? this.previousTrackId : round.track.dailyNumber;
 			if (this.mode === "speedrun") this.failedTrackIds.clear();
 			this.resetActiveRecovery();
@@ -2784,7 +2767,7 @@ var PlaybackCoordinator = class {
 		}
 		if (this.active?.id === round.id) {
 			this.status = "playing";
-			if (this.mode === "classic") this.heardClassicRoundId = round.id;
+			if (this.mode === "classic") this.heardPuzzleRoundId = round.id;
 			this.resetActiveRecovery();
 			this.clearLoading();
 			this.callbacks.onPlaying(round, false);
@@ -2841,7 +2824,7 @@ var PlaybackCoordinator = class {
 			"waiting"
 		].includes(this.status);
 		const failurePolicy = this.mode ? MODE_RULES[this.mode].failurePolicy : "replace";
-		const preserveIdentity = failurePolicy === "fixed" || failurePolicy === "heard-fixed" && this.heardClassicRoundId === round.id;
+		const preserveIdentity = failurePolicy === "fixed" || failurePolicy === "heard-fixed" && this.heardPuzzleRoundId === round.id;
 		this.operationGeneration += 1;
 		this.clearLoading();
 		if (failurePolicy !== "fixed") this.failedTrackIds.add(round.track.dailyNumber);
@@ -3738,7 +3721,7 @@ var ModalController = class {
 		}
 	}
 	close(kind, fallbackFocus, onStart, onClosed, focusOverride = null) {
-		if (this.closing || this.kind !== kind) return;
+		if (this.closing || this.kind !== kind) return false;
 		this.closing = true;
 		const generation = ++this.transitionGeneration;
 		this.scheduler.cancelFrame(this.openFrame);
@@ -3780,7 +3763,7 @@ var ModalController = class {
 		};
 		if (duration <= 0) {
 			finish();
-			return;
+			return true;
 		}
 		const transitionTarget = kind === "result" ? this.elements.result : this.elements.discoveryShell;
 		const transitionProperty = kind === "result" ? "background-color" : "height";
@@ -3790,6 +3773,7 @@ var ModalController = class {
 		};
 		transitionTarget.addEventListener("transitionend", this.closeListener);
 		this.closeTimer = this.scheduler.setTimer(finish, duration);
+		return true;
 	}
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
@@ -3897,7 +3881,7 @@ function resultRows(result) {
 function resultAnnouncement(result, rows = resultRows(result)) {
 	return `${result.mode === "speedrun" ? result.won ? "SPEEDRUN COMPLETE." : "TIME IS UP." : result.mode === "blitz" || result.mode === "survival" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
 }
-function createResultModule(row, newPersonalBest) {
+function createResultRow(row, newPersonalBest) {
 	const module = document.createElement("div");
 	module.className = "result-module";
 	module.replaceChildren(...row.map((value, index) => {
@@ -4162,6 +4146,7 @@ var GameView = class {
 	durations;
 	handlers = null;
 	state = null;
+	sessionKey = null;
 	inputModality;
 	hoveredButton = null;
 	preview = null;
@@ -4256,7 +4241,13 @@ var GameView = class {
 		});
 	}
 	render(state, sessionKey) {
+		const previousOverlay = this.state?.overlay ?? null;
+		const sessionChanged = this.sessionKey !== null && this.sessionKey !== sessionKey;
+		const openingOverlay = state.overlay !== previousOverlay ? state.overlay : null;
 		this.state = state;
+		this.sessionKey = sessionKey;
+		if (sessionChanged) this.timeline.beginReset();
+		if (sessionChanged || openingOverlay) this.resetTransientUi();
 		this.root.dataset.appStatus = state.appStatus;
 		this.root.dataset.sessionStatus = state.phase;
 		const transportVisible = state.transportText !== "";
@@ -4292,6 +4283,12 @@ var GameView = class {
 		}
 		this.renderResult(state.result);
 		this.renderClock(state.clock);
+		if (openingOverlay === "result") this.modal.openResult();
+		else if (openingOverlay === "discovery") {
+			this.hideResetConfirmation(false);
+			this.discovery.collapseAll();
+			this.modal.openDiscovery();
+		}
 	}
 	renderClock(clock) {
 		const state = this.state;
@@ -4325,14 +4322,42 @@ var GameView = class {
 			this.elements.status.textContent = message;
 		});
 	}
-	flashSurvivalChange(seconds) {
-		this.timeline.flashSurvivalChange(seconds);
+	present(event) {
+		switch (event.type) {
+			case "catalog-ready":
+				this.state?.mode ? this.focusPlay() : this.focusMode("daily");
+				return;
+			case "mode-selected":
+				if (this.state?.mode === "daily" && this.state.dailyProgress.date === this.state.dailyDate && this.state.dailyProgress.completed) this.focusMode("classic");
+				else this.focusPlay();
+				return;
+			case "gameplay-ready":
+				this.focusGuess();
+				return;
+			case "playback-restarted":
+				this.timeline.beginReset(true);
+				return;
+			case "attempt-submitted":
+				this.autocomplete.reset();
+				return;
+			case "survival-adjusted":
+				this.timeline.flashSurvivalChange(event.seconds);
+				return;
+			case "recovery-needed":
+				this.focusPlay();
+				return;
+			case "daily-share-copied":
+				this.showDailyShareCopied();
+				return;
+		}
 	}
-	beginProgressReset(animate = false) {
-		this.timeline.beginReset(animate);
-	}
-	clearAttemptEntry() {
-		this.autocomplete.reset();
+	beginOverlayClose(request) {
+		const kind = request.overlay;
+		const fallback = kind === "result" ? this.elements.play : this.elements.discoveryButton;
+		return this.modal.close(kind, fallback, () => {}, () => queueMicrotask(() => {
+			this.handlers?.overlayClosed(request);
+			this.focusAfterOverlayClose(request);
+		}));
 	}
 	showDailyShareCopied() {
 		if (this.state?.overlay !== "result" || this.state.result?.mode !== "daily") return;
@@ -4350,7 +4375,7 @@ var GameView = class {
 		this.elements.status.textContent = "";
 		this.timeline.clearSurvivalFeedback();
 		this.preview = null;
-		this.clearAttemptEntry();
+		this.autocomplete.reset();
 		this.renderRules();
 	}
 	focusPlay() {
@@ -4363,22 +4388,13 @@ var GameView = class {
 	focusGuess() {
 		if (this.inputModality !== "pointer-coarse" && !this.elements.guess.disabled && !this.elements.guess.closest("[inert]")) queueMicrotask(() => this.elements.guess.focus({ preventScroll: true }));
 	}
-	openResult() {
-		this.modal.openResult();
-	}
-	closeResult(returnFocus, beforeClose, afterClose) {
-		const target = returnFocus === "classic" ? this.modeButtons.classic : this.elements.play;
-		this.modal.close("result", this.elements.play, beforeClose, afterClose, target);
-	}
-	openDiscovery() {
-		this.hideResetConfirmation(false);
-		this.discovery.collapseAll();
-		this.modal.openDiscovery();
-	}
-	closeDiscovery(returnFocus, afterClose) {
-		this.hideResetConfirmation(false);
-		const target = returnFocus === "play" ? this.elements.play : this.elements.discoveryButton;
-		this.modal.close("discovery", this.elements.discoveryButton, () => {}, afterClose, target);
+	focusAfterOverlayClose(request) {
+		if (request.overlay === "result") {
+			request.outcome === "completed-daily" ? this.focusMode("classic") : this.focusPlay();
+			return;
+		}
+		if (request.outcome === "start-speedrun" || this.state?.mode) this.focusPlay();
+		else this.focusIfAvailable(this.elements.discoveryButton);
 	}
 	renderRules() {
 		if (!this.state) return;
@@ -4434,7 +4450,7 @@ var GameView = class {
 		this.elements.resultTitle.innerHTML = result.mode === "speedrun" && result.won ? "&#127937; <span class=\"end\">SPEEDRUN COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`;
 		const rows = resultRows(result);
 		const newPersonalBest = result.mode !== "daily" && result.newPersonalBest;
-		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultModule(row, newPersonalBest)));
+		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultRow(row, newPersonalBest)));
 		this.elements.resultMeta.dataset.announcement = resultAnnouncement(result, rows);
 		const daily = result.mode === "daily";
 		this.elements.resultSecondaryLabel.textContent = daily ? "SHARE" : "SPOTIFY";
@@ -4711,7 +4727,7 @@ function markup() {
 var JSDELIVR_REPOSITORY_BASE_URL = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/");
 var root = document.querySelector("#corzaguessr");
 if (root && !root.dataset.corzaguessrReady) {
-	const volumeSettings = new LocalStorageVolumeSettingsRepository();
+	const volumeSettings = new VolumeSettings();
 	const initialVolume = volumeSettings.load();
 	let volumePersistenceFailureAnnounced = false;
 	const moduleUrl = new URL(import.meta.url);
@@ -4724,16 +4740,16 @@ if (root && !root.dataset.corzaguessrReady) {
 	catalogUrl.search = moduleUrl.search;
 	let controller;
 	let playback;
-	const catalog = new RetryingCatalogLoader(new FetchTrackCatalogRepository(catalogUrl), {
+	const catalog = new Catalog(new CatalogSource(catalogUrl), {
 		setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 		clearTimeout: (handle) => window.clearTimeout(handle)
 	});
-	const progress = new ProgressService(new LocalStorageProgressRepository(), { onPersistenceFailure: (failure) => controller?.onProgressPersistenceFailure(failure) });
+	const progress = new Progress(new ProgressStorage(), { onPersistenceFailure: (failure) => controller?.onProgressPersistenceFailure(failure) });
 	const clock = new GameClock({
 		onTick: (snapshot) => controller?.onClockTick(snapshot),
 		onExpired: () => controller?.onClockExpired()
 	});
-	const audio = new DualSlotAudioPlayer(view.audioElements, (round) => {
+	const audio = new AudioPlayer(view.audioElements, (round) => {
 		const url = new URL(`${trackAssetNumber(round.track.dailyNumber)}.mp3`, audioBaseUrl);
 		url.hash = `t=${round.clipStart}`;
 		return url.href;
@@ -4746,7 +4762,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onFailure: (failure) => playback?.handleFailure(failure)
 	});
 	audio.setVolume(initialVolume / 100);
-	playback = new PlaybackCoordinator(audio, {
+	playback = new Playback(audio, {
 		onPending: (round) => controller?.onPending(round),
 		onPlaying: (round, startedNewRound) => {
 			controller?.onAudioPlaying(round, startedNewRound);
@@ -4757,8 +4773,8 @@ if (root && !root.dataset.corzaguessrReady) {
 		onRecovery: (kind) => controller?.onAudioRecovery(kind),
 		onLoading: () => controller?.onLoading()
 	});
-	const dailyBoundary = new BudapestDateBoundary((date) => controller?.handleDateChanged(date));
-	controller = new GameController(catalog, progress, clock, playback, view, dailyBoundary, new BrowserExternalNavigator(), new BrowserResultClipboard());
+	const dailySchedule = new DailySchedule((date) => controller?.handleDailyDateChanged(date));
+	controller = new GameController(catalog, progress, clock, playback, view, dailySchedule, new SpotifyLink(), new ShareClipboard());
 	view.bind({
 		selectMode: (mode) => controller.selectMode(mode),
 		play: () => controller.play(),
@@ -4773,6 +4789,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		shareDaily: () => controller.shareDaily(),
 		openDiscoverySpotify: (dailyNumber) => controller.openDiscoverySpotify(dailyNumber),
 		startSpeedrun: () => controller.startSpeedrun(),
+		overlayClosed: (request) => controller.onOverlayClosed(request),
 		setVolume: (volume, committed) => {
 			audio.setVolume(volume / 100);
 			if (!committed) return;
@@ -4782,7 +4799,7 @@ if (root && !root.dataset.corzaguessrReady) {
 			}
 		}
 	});
-	controller.bootstrap(dailyBoundary.current());
+	controller.bootstrap(dailySchedule.current());
 	document.addEventListener("visibilitychange", () => {
 		if (document.hidden) controller.handleVisibilityHidden();
 		else controller.handleVisibilityVisible();
