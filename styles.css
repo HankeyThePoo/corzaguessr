@@ -1360,9 +1360,11 @@
   }
 
   #corzaguessr .discovery-panel {
+    --progress-section-spacing: 0.5rem;
     height: 80dvh;
     max-height: 80dvh;
-    gap: 0.45rem;
+    gap: var(--progress-section-spacing);
+    padding-top: var(--progress-section-spacing);
   }
 
   #corzaguessr .discovery-items {
@@ -1370,14 +1372,18 @@
   }
 
   #corzaguessr .progress-summary {
-    gap: 0.45rem;
+    gap: var(--progress-section-spacing);
     margin-top: 0;
-    padding-top: 0.5rem;
+    padding-top: var(--progress-section-spacing);
+  }
+
+  #corzaguessr .discovery-title {
+    margin-bottom: 0;
   }
 
   #corzaguessr .discovery-panel > .actions {
     margin-top: 0;
-    padding-top: 0.5rem;
+    padding-top: var(--progress-section-spacing);
   }
 
   #corzaguessr .progress-bests {
