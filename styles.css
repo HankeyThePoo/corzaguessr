@@ -18,7 +18,7 @@
   --duration-progress: 300ms;
   --duration-rewind: 200ms;
   --slot-motion-duration: var(--duration-slot);
-  color: #FBFBFB;
+  color: #F7F7F7;
   padding: 1rem 12px 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
   scrollbar-width: none;
@@ -475,7 +475,7 @@
 
 #corzaguessr .time-change span {
   opacity: 0;
-  color: #FBFBFB;
+  color: #F7F7F7;
   font-size: 1.3rem;
   font-weight: 800;
   line-height: 1;
@@ -582,7 +582,7 @@
   border-radius: 14px;
   outline: 0;
   background: rgba(0, 0, 0, 0.4);
-  color: #FBFBFB;
+  color: #F7F7F7;
   font: inherit;
   font-size: 0.9rem;
   line-height: 18px;
@@ -677,7 +677,7 @@
   width: 100%;
   padding: 0.75rem 0.9rem;
   background: none;
-  color: #FBFBFB;
+  color: #F7F7F7;
   text-align: center;
   text-transform: uppercase;
   cursor: pointer;
