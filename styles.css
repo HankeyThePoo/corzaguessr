@@ -18,7 +18,7 @@
   --duration-progress: 300ms;
   --duration-rewind: 200ms;
   --slot-motion-duration: var(--duration-slot);
-  color: white;
+  color: #FBFBFB;
   padding: 1rem 12px 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
   scrollbar-width: none;
@@ -200,7 +200,7 @@
   justify-content: center;
   border-radius: 14px;
   background: var(--gradient);
-  color: #32323a;
+  color: #171717;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 800;
@@ -255,7 +255,7 @@
 #corzaguessr .play svg {
   width: 34px;
   height: 34px;
-  fill: #32323a;
+  fill: #171717;
 }
 
 #corzaguessr .volume-control {
@@ -475,7 +475,7 @@
 
 #corzaguessr .time-change span {
   opacity: 0;
-  color: white;
+  color: #FBFBFB;
   font-size: 1.3rem;
   font-weight: 800;
   line-height: 1;
@@ -582,7 +582,7 @@
   border-radius: 14px;
   outline: 0;
   background: rgba(0, 0, 0, 0.4);
-  color: white;
+  color: #FBFBFB;
   font: inherit;
   font-size: 0.9rem;
   line-height: 18px;
@@ -677,7 +677,7 @@
   width: 100%;
   padding: 0.75rem 0.9rem;
   background: none;
-  color: white;
+  color: #FBFBFB;
   text-align: center;
   text-transform: uppercase;
   cursor: pointer;
@@ -689,7 +689,7 @@
 
 #corzaguessr .suggest button:focus-visible {
   background: var(--gradient);
-  color: #32323a;
+  color: #171717;
 }
 
 #corzaguessr .slot {
