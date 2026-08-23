@@ -200,7 +200,7 @@
   justify-content: center;
   border-radius: 14px;
   background: var(--gradient);
-  color: #171717;
+  color: #101010;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 800;
@@ -255,7 +255,7 @@
 #corzaguessr .play svg {
   width: 34px;
   height: 34px;
-  fill: #171717;
+  fill: #101010;
 }
 
 #corzaguessr .volume-control {
@@ -689,7 +689,7 @@
 
 #corzaguessr .suggest button:focus-visible {
   background: var(--gradient);
-  color: #171717;
+  color: #101010;
 }
 
 #corzaguessr .slot {
