@@ -7,6 +7,7 @@
     rgba(141, 100, 245, 0.12)
   );
   --line: rgba(255, 255, 255, 0.1);
+  --opaque-glass: #1E1E1E;
   --reward-gold-strong: rgba(255, 218, 94, 0.95);
   --reward-gold-soft: rgba(255, 190, 64, 0.24);
   --reward-gold-shadow: rgba(255, 196, 58, 0.46);
@@ -103,7 +104,7 @@
   margin: 0 auto 1.5rem;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #101010;
+  background: var(--opaque-glass);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
   gap: 0;
 }
@@ -132,6 +133,7 @@
 
 #corzaguessr .card {
   padding: 16px;
+  border-radius: 2px;
 }
 
 #corzaguessr .stack,
@@ -243,6 +245,7 @@
 #corzaguessr .discovery-button {
   width: calc((720px - 2.25rem) / 4);
   max-width: calc((100% - 2.25rem) / 4);
+  height: 40px;
   margin: -1rem auto 1rem;
   padding: 0 14px;
   background: #F7F7F7;
@@ -256,7 +259,7 @@
   padding: 0 10px;
   border-right: 1px solid var(--line);
   border-radius: 0;
-  background: #101010;
+  background: var(--opaque-glass);
   color: #F7F7F7;
   box-shadow: none;
 }
@@ -277,7 +280,7 @@
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
-  background: var(--gradient-background-soft), #101010;
+  background: var(--gradient-background-soft), var(--opaque-glass);
   cursor: default;
   opacity: 1;
 }
@@ -1563,30 +1566,31 @@
   #corzaguessr .mode-navigation .mode {
     height: 42px;
     border: 0;
-    border-radius: 14px;
-    background: var(--gradient);
-    color: #101010;
+    border-radius: 4px;
+    background: var(--opaque-glass);
+    color: #F7F7F7;
   }
 
   #corzaguessr .discovery-button {
     width: min(136px, 100%);
     max-width: none;
+    height: 42px;
     margin-bottom: 12px;
   }
 
   #corzaguessr .mode-navigation .mode::after {
-    inset: -4px;
-    padding: 2px;
-    border-radius: 18px;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
   }
 
   #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
-    background: var(--gradient);
-    opacity: 0.55;
+    background: var(--gradient-background-soft), var(--opaque-glass);
+    opacity: 1;
   }
 
   #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after {
-    opacity: 0;
+    opacity: 1;
   }
 
   #corzaguessr .volume-control {
