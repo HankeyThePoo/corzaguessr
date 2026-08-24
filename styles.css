@@ -120,9 +120,9 @@
   z-index: 0;
   border: 1px solid var(--line);
   border-radius: inherit;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(16, 16, 16, 0.72);
   backdrop-filter: blur(16px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.34);
 }
 
 #corzaguessr .glass > * {
