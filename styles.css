@@ -103,7 +103,7 @@
   margin: 0 auto 1.5rem;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: rgba(16, 16, 16, 0.58);
+  background: #101010;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
   gap: 0;
 }
@@ -120,9 +120,9 @@
   z-index: 0;
   border: 1px solid var(--line);
   border-radius: inherit;
-  background: rgba(16, 16, 16, 0.72);
+  background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(16px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 }
 
 #corzaguessr .glass > * {
@@ -245,6 +245,7 @@
   max-width: calc((100% - 2.25rem) / 4);
   margin: -1rem auto 1rem;
   padding: 0 14px;
+  background: #F7F7F7;
 }
 
 #corzaguessr .mode-navigation .mode {
@@ -255,7 +256,7 @@
   padding: 0 10px;
   border-right: 1px solid var(--line);
   border-radius: 0;
-  background: transparent;
+  background: #101010;
   color: #F7F7F7;
   box-shadow: none;
 }
@@ -276,7 +277,7 @@
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
-  background: var(--gradient-background-soft);
+  background: var(--gradient-background-soft), #101010;
   cursor: default;
   opacity: 1;
 }
