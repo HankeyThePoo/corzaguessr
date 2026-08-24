@@ -251,6 +251,12 @@
   background: #F7F7F7;
 }
 
+#corzaguessr .discovery-button::after {
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+}
+
 #corzaguessr .mode-navigation .mode {
   width: 100%;
   min-width: 0;
@@ -1079,6 +1085,15 @@
 
 #corzaguessr .reset-confirmation .actions {
   margin-top: 0.25rem;
+}
+
+#corzaguessr .discovery-close,
+#corzaguessr .discovery-reset,
+#corzaguessr .reset-cancel,
+#corzaguessr .reset-confirm,
+#corzaguessr .discovery-track-spotify {
+  background: #F7F7F7;
+  color: #101010;
 }
 
 #corzaguessr .discovery-items {
