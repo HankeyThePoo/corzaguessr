@@ -157,8 +157,16 @@
   transition: height var(--slot-motion-duration) ease;
 }
 
+#corzaguessr .history:has(> .current-slot[hidden]):has(> .slots:empty) {
+  display: none;
+}
+
 #corzaguessr .board {
   position: relative;
+}
+
+#corzaguessr .board > .row:last-child {
+  margin-top: 4px;
 }
 
 #corzaguessr .current-slot:not([hidden]) + .slots:not(:empty) {
