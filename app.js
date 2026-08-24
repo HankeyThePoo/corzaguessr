@@ -4699,7 +4699,8 @@ function markup() {
 	return [
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
-		`<div class="mode-navigation"><button type="button" class="button discovery-button header-action" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button><div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div></div>`,
+		`<div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div>
+    <div class="modes mode-navigation" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
