@@ -138,8 +138,10 @@
 }
 
 #corzaguessr .mode-navigation {
-  width: 100%;
-  margin: 0;
+  position: relative;
+  z-index: 2;
+  width: min(100%, 720px);
+  margin: 0 auto -1px;
   border: 1px solid var(--line);
   border-radius: var(--radius) var(--radius) 0 0;
   background: var(--surface-glass);
@@ -173,14 +175,6 @@
 #corzaguessr .card {
   padding: var(--space-4);
   border-radius: var(--radius);
-}
-
-#corzaguessr .mode-navigation + .card {
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-
-#corzaguessr .mode-navigation + .card.glass::before {
-  border-top: 0;
 }
 
 #corzaguessr .stack,
@@ -1625,9 +1619,9 @@
   #corzaguessr .mode-navigation {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
+    width: min(100%, 280px);
     gap: 0;
-    margin: 0;
+    margin: 0 auto -1px;
   }
 
   #corzaguessr .mode {
