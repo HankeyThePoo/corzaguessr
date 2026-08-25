@@ -331,15 +331,22 @@
   border-radius: inherit;
 }
 
-#corzaguessr .mode-navigation .mode[aria-pressed="true"] {
-  z-index: 1;
+#corzaguessr .mode-navigation .mode[aria-pressed="true"],
+#corzaguessr .play:not(:disabled),
+#corzaguessr .skip:not(:disabled) {
   background: var(--gradient-background-soft), var(--surface-dark);
   box-shadow: none;
+}
+
+#corzaguessr .mode-navigation .mode[aria-pressed="true"] {
+  z-index: 1;
   cursor: default;
   opacity: 1;
 }
 
-#corzaguessr .mode-navigation .mode[aria-pressed="true"]::after {
+#corzaguessr .mode-navigation .mode[aria-pressed="true"]::after,
+#corzaguessr .play:not(:disabled)::after,
+#corzaguessr .skip:not(:disabled)::after {
   opacity: 1;
 }
 
@@ -354,20 +361,10 @@
   height: var(--play-size);
 }
 
-#corzaguessr .play:not(:disabled),
-#corzaguessr .skip:not(:disabled) {
-  background: var(--gradient);
-  color: var(--near-black);
-}
-
 #corzaguessr .play svg {
   width: 34px;
   height: 34px;
   fill: var(--off-white);
-}
-
-#corzaguessr .play:not(:disabled) svg {
-  fill: var(--near-black);
 }
 
 #corzaguessr .volume-control {
@@ -1437,11 +1434,6 @@
   #corzaguessr:not(.keyboard-input) .skip:not(:disabled):hover,
   #corzaguessr:not(.keyboard-input) .play:not(:disabled):hover {
     filter: brightness(1.16);
-  }
-
-  #corzaguessr:not(.keyboard-input) .skip:not(:disabled):hover::after,
-  #corzaguessr:not(.keyboard-input) .play:not(:disabled):hover::after {
-    opacity: 0;
   }
 
   #corzaguessr .volume-control:hover {
