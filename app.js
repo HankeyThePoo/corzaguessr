@@ -3270,6 +3270,7 @@ function tokenPositions(titleTokens, queryTokens, matches) {
 }
 //#endregion
 //#region src/ui/autocomplete.ts
+var MAX_SUGGESTIONS = 5;
 var Autocomplete = class {
 	input;
 	list;
@@ -3318,7 +3319,7 @@ var Autocomplete = class {
 		this.render();
 	}
 	update(selectedId = null) {
-		this.suggestions = searchTrackIndex(this.searchIndex, this.input.value, this.unavailable);
+		this.suggestions = searchTrackIndex(this.searchIndex, this.input.value, this.unavailable, MAX_SUGGESTIONS);
 		const preserved = selectedId === null ? -1 : this.suggestions.findIndex((track) => track.dailyNumber === selectedId);
 		this.selectedIndex = preserved >= 0 ? preserved : this.suggestions.length ? 0 : -1;
 		this.render();
