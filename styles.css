@@ -547,11 +547,16 @@
 }
 
 #corzaguessr .snippet {
+  display: none;
   z-index: 1;
   width: 3.125%;
   background: var(--timeline-progress);
   opacity: 20%;
   transition: width var(--duration-snippet);
+}
+
+#corzaguessr:not(.timed):has(.mode[aria-pressed="true"]) .snippet {
+  display: block;
 }
 
 #corzaguessr .fill {
