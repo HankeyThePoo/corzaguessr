@@ -333,7 +333,7 @@
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"],
 #corzaguessr .play:not(:disabled),
-#corzaguessr .skip:not(:disabled) {
+#corzaguessr button.skip:not(:disabled) {
   background: var(--gradient-background-soft), var(--surface-dark);
   box-shadow: none;
 }
@@ -346,7 +346,7 @@
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after,
 #corzaguessr .play:not(:disabled)::after,
-#corzaguessr .skip:not(:disabled)::after {
+#corzaguessr button.skip:not(:disabled)::after {
   opacity: 1;
 }
 
@@ -1431,7 +1431,7 @@
     opacity: 1;
   }
 
-  #corzaguessr:not(.keyboard-input) .skip:not(:disabled):hover,
+  #corzaguessr:not(.keyboard-input) button.skip:not(:disabled):hover,
   #corzaguessr:not(.keyboard-input) .play:not(:disabled):hover {
     filter: brightness(1.16);
   }
