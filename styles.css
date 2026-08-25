@@ -187,6 +187,10 @@
   gap: var(--space-3);
 }
 
+#corzaguessr .stack {
+  isolation: isolate;
+}
+
 #corzaguessr .slots {
   --slot-motion-duration: var(--duration-slot);
   display: grid;
@@ -209,7 +213,6 @@
 
 #corzaguessr .board {
   position: relative;
-  isolation: isolate;
 }
 
 #corzaguessr .board > .row:last-child {
