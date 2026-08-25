@@ -479,10 +479,6 @@
   filter: brightness(1.16);
 }
 
-#corzaguessr .skip {
-  height: 40px;
-}
-
 #corzaguessr .timeline {
   --timeline-border: var(--line);
   --timeline-progress: var(--off-white);
@@ -770,7 +766,7 @@
 
 #corzaguessr input::placeholder {
   color: var(--off-white);
-  opacity: var(--opacity-muted);
+  opacity: 1;
 }
 
 #corzaguessr .ruleset {
@@ -796,7 +792,7 @@
   display: flex;
   justify-content: center;
   min-width: 100%;
-  opacity: var(--opacity-muted);
+  opacity: 1;
   white-space: nowrap;
 }
 
@@ -893,6 +889,10 @@
   text-transform: uppercase;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+#corzaguessr .current-slot {
+  background: var(--surface-dark);
 }
 
 #corzaguessr .slot.fade,
