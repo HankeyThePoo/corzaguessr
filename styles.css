@@ -142,11 +142,11 @@
   z-index: 2;
   width: min(100%, 720px);
   margin: 0 auto -1px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius) var(--radius) 0 0;
   background: var(--surface-glass);
   backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-surface);
+  box-shadow: inset 0 0 0 1px var(--line);
   gap: 0;
 }
 
@@ -221,25 +221,23 @@
 
 #corzaguessr .controls {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 3.2ch auto 3.2ch;
   align-items: center;
+  justify-content: center;
   gap: var(--space-4);
+  font-size: var(--text-clock);
+  font-weight: 800;
 }
 
 #corzaguessr .time {
-  font-size: var(--text-clock);
-  font-weight: 800;
   line-height: 24px;
   white-space: nowrap;
 }
 
-#corzaguessr .time:first-child {
-  text-align: right;
-}
-
+#corzaguessr .time:first-child,
 #corzaguessr .time:last-child {
   align-self: center;
-  text-align: left;
+  text-align: center;
 }
 
 #corzaguessr .time span {
@@ -294,6 +292,7 @@
 
 #corzaguessr .discovery-button {
   width: min(180px, 25%);
+  min-height: 0;
   max-width: none;
   margin: calc(-1 * var(--space-4)) auto var(--space-4);
   padding: 0 var(--space-3);
