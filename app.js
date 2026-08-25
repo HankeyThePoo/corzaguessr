@@ -1693,7 +1693,6 @@ var GameClock = class {
 		this.maxRemainingMs = configuration.initialMs;
 		this.expired = false;
 		this.generation += 1;
-		this.callbacks.onTick(this.snapshot());
 	}
 	start() {
 		if (this.running || this.expired) return;
@@ -4172,7 +4171,7 @@ var GameView = class {
 		const styles = getComputedStyle(root);
 		this.durations = {
 			feedback: duration(styles, "--duration-feedback"),
-			wiggle: duration(styles, "--duration-wiggle"),
+			wiggle: duration(styles, "--duration-gameplay-motion"),
 			slot: duration(styles, "--duration-slot"),
 			result: duration(styles, "--duration-result"),
 			discovery: duration(styles, "--duration-discovery"),
