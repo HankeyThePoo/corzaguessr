@@ -197,23 +197,23 @@
   transition: height var(--slot-motion-duration) ease;
 }
 
+#corzaguessr .attempt-area,
 #corzaguessr .history {
   display: grid;
-  gap: 0;
+  gap: var(--space-4);
+}
+
+#corzaguessr .attempt-area {
   overflow: hidden;
   transition: height var(--slot-motion-duration) ease;
 }
 
-#corzaguessr .history:has(> .current-slot[hidden]):has(> .slots:empty) {
+#corzaguessr .attempt-area:has(.current-slot[hidden]):has(.slots:empty) {
   display: none;
 }
 
 #corzaguessr .board {
   position: relative;
-}
-
-#corzaguessr .current-slot:not([hidden]) + .slots:not(:empty) {
-  margin-top: var(--space-4);
 }
 
 #corzaguessr .slots:empty {
@@ -869,6 +869,14 @@
   color: var(--near-black);
 }
 
+#corzaguessr .slot,
+#corzaguessr .skip-row {
+  transition:
+    opacity var(--slot-motion-duration) ease,
+    translate var(--slot-motion-duration) ease;
+  translate: 0 0;
+}
+
 #corzaguessr .slot {
   position: relative;
   display: flex;
@@ -885,13 +893,10 @@
   text-transform: uppercase;
   overflow-wrap: anywhere;
   white-space: normal;
-  transition:
-    opacity var(--slot-motion-duration) ease,
-    translate var(--slot-motion-duration) ease;
-  translate: 0 0;
 }
 
-#corzaguessr .slot.fade {
+#corzaguessr .slot.fade,
+#corzaguessr .skip-row.fade {
   opacity: 0;
   translate: 0 -8px;
 }
