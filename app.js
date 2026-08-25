@@ -4190,6 +4190,7 @@ var GameView = class {
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
+		this.elements.skipRow.hidden = state.currentSlot === null;
 		this.elements.skip.disabled = !state.skipEnabled;
 		this.elements.guess.disabled = !state.guessEnabled || transportVisible;
 		const blockedBoard = awaiting || state.appStatus === "loading";
@@ -4583,6 +4584,7 @@ var GameView = class {
 			slots: this.required(".slots"),
 			card: this.required(".card"),
 			play: this.required(".play"),
+			skipRow: this.required(".skip-row"),
 			skip: this.required(".skip"),
 			guess: this.required(".guess"),
 			suggest: this.required(".suggest"),
@@ -4642,7 +4644,7 @@ function markup() {
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
 		`<div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i></div>`,
 		`<div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div>`,
-		`<div class="row"><button type="button" class="button skip" disabled>ADD 1S</button></div>`,
+		`<div class="row skip-row" hidden><button type="button" class="button skip" disabled>ADD 1S</button></div>`,
 		`</div>`,
 		`<div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div>`,
 		`</div>`,
