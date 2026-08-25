@@ -272,6 +272,7 @@
 #corzaguessr .button,
 #corzaguessr .mode {
   height: 40px;
+  min-height: 40px;
   padding: 0 var(--space-4);
 }
 
@@ -294,7 +295,6 @@
 
 #corzaguessr .discovery-button {
   width: min(180px, 25%);
-  min-height: 0;
   max-width: none;
   margin: 0 auto;
   padding: 0 var(--space-3);
