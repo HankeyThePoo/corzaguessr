@@ -2927,12 +2927,16 @@ var AttemptHistoryView = class {
 			this.collapseAttempts();
 			return;
 		}
-		this.applySnapshot(snapshot);
+		this.applySnapshot(snapshot, !this.hasRenderedAttempts() && this.snapshotHasAttempts(snapshot));
 	}
-	applySnapshot(snapshot) {
+	applySnapshot(snapshot, reveal = false) {
 		this.sessionKey = snapshot.sessionKey;
 		this.renderCurrent(snapshot.current, snapshot.sessionKey);
 		this.renderHistory(snapshot.history, snapshot.sessionKey);
+		if (reveal) this.revealAttempts();
+	}
+	snapshotHasAttempts(snapshot) {
+		return snapshot.current !== null || snapshot.history.length > 0;
 	}
 	renderHistory(entries, sessionKey) {
 		const rendered = entries.map((entry) => ({
@@ -3008,13 +3012,45 @@ var AttemptHistoryView = class {
 		return !this.elements.current.hidden || this.elements.history.children.length > 0;
 	}
 	collapseAttempts() {
-		const fading = [...!this.elements.current.hidden ? [this.elements.current] : [], ...[...this.elements.history.children]];
+		const fading = [
+			this.elements.action,
+			...!this.elements.current.hidden ? [this.elements.current] : [],
+			...[...this.elements.history.children]
+		];
 		this.startCollapse(this.elements.container, fading, this.durations.collapse(), () => {
 			const pending = this.pendingSnapshot;
 			this.pendingSnapshot = null;
 			this.clearRenderedAttempts();
-			if (pending) this.applySnapshot(pending);
+			if (pending) this.applySnapshot(pending, this.snapshotHasAttempts(pending));
 		});
+	}
+	revealAttempts() {
+		const container = this.elements.container;
+		const duration = this.durations.collapse();
+		this.cancelCollapse();
+		if (this.reducedMotion.matches || duration <= 0) {
+			container.style.height = "";
+			this.elements.action.classList.remove("fade");
+			return;
+		}
+		const targetHeight = container.offsetHeight;
+		container.style.height = "0px";
+		this.fadeIn(this.elements.action);
+		container.offsetHeight;
+		container.style.height = `${targetHeight}px`;
+		const generation = ++this.renderGeneration;
+		const finish = () => {
+			if (generation !== this.renderGeneration) return;
+			this.cancelCollapse(false);
+			container.style.height = "";
+		};
+		this.collapseTarget = container;
+		this.collapseListener = (event) => {
+			const transition = event;
+			if (event.target === container && (!transition.propertyName || transition.propertyName === "height")) finish();
+		};
+		container.addEventListener("transitionend", this.collapseListener);
+		this.collapseTimer = this.scheduler.setTimer(finish, duration);
 	}
 	collapseHistory() {
 		const container = this.elements.history;
@@ -3094,6 +3130,8 @@ var AttemptHistoryView = class {
 		this.elements.current.dataset.currentKey = "";
 		this.elements.current.textContent = "";
 		this.elements.current.hidden = true;
+		this.elements.action.classList.remove("fade");
+		this.elements.action.style.transition = "";
 		this.elements.container.style.height = "";
 		this.elements.history.replaceChildren();
 		this.elements.history.style.height = "";
@@ -4112,7 +4150,8 @@ var GameView = class {
 		}, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
-			container: this.elements.currentSlot.parentElement,
+			container: this.required(".attempt-area"),
+			action: this.elements.skipRow,
 			current: this.elements.currentSlot,
 			history: this.elements.slots
 		}, {
@@ -4190,7 +4229,6 @@ var GameView = class {
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
-		this.elements.skipRow.hidden = state.currentSlot === null;
 		this.elements.skip.disabled = !state.skipEnabled;
 		this.elements.guess.disabled = !state.guessEnabled || transportVisible;
 		const blockedBoard = awaiting || state.appStatus === "loading";
@@ -4644,9 +4682,8 @@ function markup() {
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
 		`<div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i></div>`,
 		`<div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div>`,
-		`<div class="row skip-row" hidden><button type="button" class="button skip" disabled>ADD 1S</button></div>`,
 		`</div>`,
-		`<div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div>`,
+		`<div class="attempt-area"><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions discovery-actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div><section class="reset-confirmation" role="group" aria-labelledby="corzaguessr-reset-title" aria-describedby="corzaguessr-reset-warning" hidden><strong id="corzaguessr-reset-title">RESET ALL PROGRESS?</strong><span id="corzaguessr-reset-warning">THIS ERASES DISCOVERY, DAILY PROGRESS, AND RECORDS.</span><div class="actions"><button type="button" class="button reset-cancel">CANCEL</button><button type="button" class="button reset-confirm">RESET</button></div></section></div></div></div>`,
