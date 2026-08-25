@@ -4708,8 +4708,8 @@ function markup() {
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
 		`<div class="row header-action"><button type="button" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
-    <div class="game-surface glass"><div class="modes mode-navigation" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div>`,
-		`<div class="card">`,
+    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div>`,
+		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
