@@ -15,6 +15,7 @@
   --line: rgb(255 255 255 / 10%);
   --scrim: rgb(0 0 0 / 50%);
   --control-glow: rgb(247 247 247 / 15%);
+  --glass-blur: 16px;
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
   --success-border: rgb(16 185 129 / 50%);
@@ -137,19 +138,6 @@
   gap: var(--space-3);
 }
 
-#corzaguessr .mode-navigation {
-  position: relative;
-  z-index: 2;
-  width: min(100%, 720px);
-  margin: 0 auto -1px;
-  border: 0;
-  border-radius: var(--radius) var(--radius) 0 0;
-  background: var(--surface-glass);
-  backdrop-filter: blur(16px);
-  box-shadow: inset 0 0 0 1px var(--line);
-  gap: 0;
-}
-
 #corzaguessr .glass {
   position: relative;
   border-radius: var(--radius);
@@ -163,13 +151,27 @@
   border: 1px solid var(--line);
   border-radius: inherit;
   background: var(--surface-glass);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow-surface);
+  pointer-events: none;
 }
 
 #corzaguessr .glass > * {
   position: relative;
   z-index: 1;
+}
+
+#corzaguessr .mode-navigation {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 720px);
+  margin: 0 auto -1px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  gap: 0;
+}
+
+#corzaguessr .mode-navigation::before {
+  box-shadow: none;
 }
 
 #corzaguessr .card {
@@ -296,10 +298,7 @@
   max-width: none;
   margin: calc(-1 * var(--space-4)) auto var(--space-4);
   padding: 0 var(--space-3);
-  border: 1px solid var(--line);
-  background: var(--surface-glass);
-  backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-surface);
+  background: transparent;
   color: var(--off-white);
 }
 
@@ -309,7 +308,7 @@
   border-radius: inherit;
 }
 
-#corzaguessr .discovery-button[aria-expanded="true"] {
+#corzaguessr .discovery-button[aria-expanded="true"]::before {
   background: var(--gradient-background-soft), var(--surface-opaque);
 }
 
