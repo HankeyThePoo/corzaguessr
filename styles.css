@@ -13,7 +13,8 @@
   --surface-interactive: rgb(255 255 255 / 20%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
-  --line-width: 1px;
+  --line-width: 2px;
+  --mode-divider-width: 3px;
   --scrim: rgb(0 0 0 / 50%);
   --control-glow: rgb(247 247 247 / 15%);
   --glass-blur: 16px;
@@ -321,7 +322,7 @@
   border-radius: 0;
   background: var(--surface-glass);
   color: var(--off-white);
-  box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
+  box-shadow: inset calc(-1 * var(--mode-divider-width)) 0 var(--line);
 }
 
 #corzaguessr .mode-navigation .mode:first-child {
@@ -1613,8 +1614,8 @@
     background: transparent;
     color: var(--off-white);
     box-shadow:
-      inset calc(-1 * var(--line-width)) 0 var(--line),
-      inset 0 calc(-1 * var(--line-width)) var(--line);
+      inset calc(-1 * var(--mode-divider-width)) 0 var(--line),
+      inset 0 calc(-1 * var(--mode-divider-width)) var(--line);
   }
 
   #corzaguessr .mode-navigation .mode:first-child {
@@ -1623,11 +1624,11 @@
 
   #corzaguessr .mode-navigation .mode:nth-child(2) {
     border-radius: 0 var(--radius) 0 0;
-    box-shadow: inset 0 calc(-1 * var(--line-width)) var(--line);
+    box-shadow: inset 0 calc(-1 * var(--mode-divider-width)) var(--line);
   }
 
   #corzaguessr .mode-navigation .mode:nth-child(n + 3) {
-    box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
+    box-shadow: inset calc(-1 * var(--mode-divider-width)) 0 var(--line);
   }
 
   #corzaguessr .mode-navigation .mode:nth-child(3) {
