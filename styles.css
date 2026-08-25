@@ -9,11 +9,11 @@
     rgb(123 176 247 / 12%) 50%,
     rgb(141 100 245 / 12%)
   );
-  --surface-glass: rgb(255 255 255 / 10%);
+  --surface-glass: rgb(255 255 255 / 2%);
   --surface-interactive: rgb(255 255 255 / 20%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
-  --scrim: rgb(0 0 0 / 60%);
+  --scrim: rgb(0 0 0 / 40%);
   --control-glow: rgb(247 247 247 / 14%);
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
