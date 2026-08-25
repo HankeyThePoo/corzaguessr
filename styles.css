@@ -164,6 +164,8 @@
 #corzaguessr .game-surface {
   --mode-cap-half-width: min(50%, 360px);
   --mode-cap-height: 40px;
+  --active-mode-left: 0px;
+  --mode-width: 0px;
 }
 
 #corzaguessr .game-surface::before {
@@ -180,6 +182,40 @@
     0 var(--mode-cap-height),
     calc(50% - var(--mode-cap-half-width)) var(--mode-cap-height)
   );
+}
+
+#corzaguessr .game-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: var(--radius);
+  background: var(--gradient);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) ease;
+  -webkit-mask:
+    linear-gradient(#000 0 0) var(--active-mode-left) 0 / var(--mode-width) 2px no-repeat,
+    linear-gradient(#000 0 0) var(--active-mode-left) 0 / 2px var(--mode-cap-height) no-repeat,
+    linear-gradient(#000 0 0) calc(var(--active-mode-left) + var(--mode-width) - 2px) 0 / 2px var(--mode-cap-height) no-repeat,
+    linear-gradient(#000 0 0) 0 var(--mode-cap-height) / var(--active-mode-left) 2px no-repeat,
+    linear-gradient(#000 0 0) 100% var(--mode-cap-height) / calc(100% - var(--active-mode-left) - var(--mode-width)) 2px no-repeat,
+    linear-gradient(#000 0 0) 0 var(--mode-cap-height) / 2px calc(100% - var(--mode-cap-height)) no-repeat,
+    linear-gradient(#000 0 0) 100% var(--mode-cap-height) / 2px calc(100% - var(--mode-cap-height)) no-repeat,
+    linear-gradient(#000 0 0) 0 100% / 100% 2px no-repeat;
+  mask:
+    linear-gradient(#000 0 0) var(--active-mode-left) 0 / var(--mode-width) 2px no-repeat,
+    linear-gradient(#000 0 0) var(--active-mode-left) 0 / 2px var(--mode-cap-height) no-repeat,
+    linear-gradient(#000 0 0) calc(var(--active-mode-left) + var(--mode-width) - 2px) 0 / 2px var(--mode-cap-height) no-repeat,
+    linear-gradient(#000 0 0) 0 var(--mode-cap-height) / var(--active-mode-left) 2px no-repeat,
+    linear-gradient(#000 0 0) 100% var(--mode-cap-height) / calc(100% - var(--active-mode-left) - var(--mode-width)) 2px no-repeat,
+    linear-gradient(#000 0 0) 0 var(--mode-cap-height) / 2px calc(100% - var(--mode-cap-height)) no-repeat,
+    linear-gradient(#000 0 0) 100% var(--mode-cap-height) / 2px calc(100% - var(--mode-cap-height)) no-repeat,
+    linear-gradient(#000 0 0) 0 100% / 100% 2px no-repeat;
+}
+
+#corzaguessr .game-surface:has(.mode[aria-pressed="true"])::after {
+  opacity: 1;
 }
 
 #corzaguessr .mode-navigation {
@@ -200,6 +236,14 @@
   border-radius: var(--radius);
   box-shadow:
     inset 0 0 0 1px var(--line),
+    var(--shadow-surface);
+}
+
+#corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .card {
+  box-shadow:
+    inset 1px 0 var(--line),
+    inset -1px 0 var(--line),
+    inset 0 -1px var(--line),
     var(--shadow-surface);
 }
 
@@ -370,14 +414,14 @@
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
   z-index: 1;
   border-right-color: transparent;
-  background: var(--gradient-background-soft), var(--surface-opaque);
+  background: transparent;
   cursor: default;
   opacity: 1;
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after {
   inset: -1px;
-  opacity: 1;
+  opacity: 0;
 }
 
 #corzaguessr .play {
@@ -1644,6 +1688,16 @@
     --mode-cap-height: 80px;
   }
 
+  #corzaguessr .game-surface::after {
+    display: none;
+  }
+
+  #corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .card {
+    box-shadow:
+      inset 0 0 0 1px var(--line),
+      var(--shadow-surface);
+  }
+
   #corzaguessr .mode-navigation {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1683,6 +1737,10 @@
   #corzaguessr .mode-navigation .mode:last-child {
     border-right: 0;
     border-radius: 0;
+  }
+
+  #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after {
+    opacity: 1;
   }
 
   #corzaguessr .discovery-button {
