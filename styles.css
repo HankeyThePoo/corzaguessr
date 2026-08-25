@@ -34,8 +34,6 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
   --text-display: 2rem;
   --text-clock: 1.35rem;
   --text-feedback: 1.35rem;
@@ -1600,7 +1598,7 @@
   #corzaguessr .mode {
     width: 100%;
     min-width: 0;
-    padding: 0 8px;
+    padding: 0 10px;
   }
 
   #corzaguessr .mode-navigation .mode {
