@@ -83,15 +83,17 @@
 
 /* App shell */
 #corzaguessr .wrap {
+  display: grid;
+  gap: var(--space-4);
   max-width: 980px;
   margin: auto;
 }
 
 #corzaguessr h1 {
-  margin: var(--space-4) 0 var(--space-6);
+  margin: var(--space-4) 0 0;
   text-align: center;
   font-size: var(--text-display);
-  line-height: 1.33;
+  line-height: 1;
 }
 
 #corzaguessr button {
@@ -172,7 +174,7 @@
 
 #corzaguessr .game-surface {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 #corzaguessr .mode-navigation {
@@ -190,7 +192,7 @@
 #corzaguessr .stack,
 #corzaguessr .board {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
 #corzaguessr .stack {
@@ -199,7 +201,7 @@
 
 #corzaguessr .slots {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
   overflow: hidden;
   transition: height var(--slot-motion-duration) ease;
 }
@@ -219,12 +221,8 @@
   position: relative;
 }
 
-#corzaguessr .board > .row:last-child {
-  margin-top: var(--space-1);
-}
-
 #corzaguessr .current-slot:not([hidden]) + .slots:not(:empty) {
-  margin-top: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 #corzaguessr .slots:empty {
@@ -308,7 +306,7 @@
   width: min(180px, 25%);
   min-height: 0;
   max-width: none;
-  margin: calc(-1 * var(--space-4)) auto var(--space-4);
+  margin: 0 auto;
   padding: 0 var(--space-3);
 }
 
@@ -1672,7 +1670,6 @@
   #corzaguessr .discovery-button {
     width: min(136px, 100%);
     max-width: none;
-    margin-bottom: var(--space-3);
   }
 
   #corzaguessr .volume-control {
@@ -1701,10 +1698,6 @@
     --play-size: 64px;
     --volume-height: 28px;
     padding-inline: var(--space-2);
-  }
-
-  #corzaguessr .card {
-    padding: var(--space-3);
   }
 
   #corzaguessr .controls {
