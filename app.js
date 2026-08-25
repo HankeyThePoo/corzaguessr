@@ -1,3 +1,4 @@
+//#region \0vite/modulepreload-polyfill.js
 (function polyfill() {
 	const relList = document.createElement("link").relList;
 	if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -27,6 +28,8 @@
 		fetch(link.href, fetchOpts);
 	}
 })();
+//#endregion
+//#region src/application/catalog.ts
 var RETRY_DELAY_MS = 5e3;
 var LOADING_GRACE_MS = 2e3;
 var Catalog = class {
@@ -89,6 +92,8 @@ var Catalog = class {
 function isRetryable(error) {
 	return !(typeof error === "object" && error !== null && "retryable" in error && error.retryable === false);
 }
+//#endregion
+//#region src/domain/mode-rules.ts
 var SNIPPET_SECONDS = [
 	1,
 	2,
@@ -245,6 +250,8 @@ function updateSpeedrunBest(bests, won, elapsedMs, trackCount) {
 		newPersonalBest: true
 	};
 }
+//#endregion
+//#region src/domain/game-session.ts
 var GameSession = class {
 	modeState = null;
 	roundState = null;
@@ -414,6 +421,8 @@ var GameSession = class {
 		};
 	}
 };
+//#endregion
+//#region src/domain/track-catalog.ts
 function summarizeDiscovery(tracks, discoveries) {
 	const discovered = tracks.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
 	const total = tracks.length;
@@ -537,6 +546,8 @@ function clampRandom(value) {
 function isReleasedBy(track, date) {
 	return track.releaseDate !== null && track.releaseDate <= date;
 }
+//#endregion
+//#region src/application/copy.ts
 var COPY = {
 	modePrompt: "SELECT A MODE TO BEGIN",
 	loadingCatalog: "LOADING TRACKLIST...",
@@ -548,6 +559,8 @@ var COPY = {
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
 };
+//#endregion
+//#region src/application/daily-share.ts
 var SHARE_URL = "https://stolenvalorhq.com/corzaguessr";
 var MONTHS$1 = [
 	"January",
@@ -574,6 +587,8 @@ function formatShareDate(value) {
 	const monthName = month ? MONTHS$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
+//#endregion
+//#region src/application/game-view-model.ts
 function presentationPhase(session, transport) {
 	if (session.result) return "result";
 	if (transport.status === "retry") return "retry";
@@ -683,6 +698,8 @@ function composeGameViewModel(input) {
 		overlay: input.overlay
 	};
 }
+//#endregion
+//#region src/application/game-controller.ts
 var GameController = class {
 	catalog;
 	progress;
@@ -1236,6 +1253,8 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 		};
 	}
 }
+//#endregion
+//#region src/domain/progress-defaults.ts
 function emptyDailyProgress() {
 	return {
 		date: "",
@@ -1269,6 +1288,8 @@ function emptyPersonalBests() {
 		}
 	};
 }
+//#endregion
+//#region src/application/progress.ts
 var Progress = class {
 	storage;
 	options;
@@ -1475,9 +1496,13 @@ function cloneBests(bests) {
 		speedrun: { ...bests.speedrun }
 	};
 }
+//#endregion
+//#region src/application/track-assets.ts
 function trackAssetNumber(dailyNumber) {
 	return String(dailyNumber).padStart(2, "0");
 }
+//#endregion
+//#region src/platform/catalog-source.ts
 var CatalogLoadError = class extends Error {
 	kind;
 	retryable;
@@ -1525,6 +1550,8 @@ var CatalogSource = class {
 		}
 	}
 };
+//#endregion
+//#region src/platform/daily-schedule.ts
 var DAILY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
 	timeZone: "Europe/Budapest",
 	year: "numeric",
@@ -1622,6 +1649,8 @@ var DailySchedule = class {
 		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
 	}
 };
+//#endregion
+//#region src/platform/game-clock.ts
 var browserScheduler$1 = {
 	requestFrame: (callback) => requestAnimationFrame(callback),
 	cancelFrame: (handle) => cancelAnimationFrame(handle),
@@ -1664,6 +1693,7 @@ var GameClock = class {
 		this.maxRemainingMs = configuration.initialMs;
 		this.expired = false;
 		this.generation += 1;
+		this.callbacks.onTick(this.snapshot());
 	}
 	start() {
 		if (this.running || this.expired) return;
@@ -1795,6 +1825,8 @@ var GameClock = class {
 		this.timer = 0;
 	}
 };
+//#endregion
+//#region src/platform/progress-storage.ts
 var STORAGE_KEYS = {
 	discoveries: "corzaguessr:discoveries",
 	daily: "corzaguessr:daily",
@@ -1976,6 +2008,8 @@ var ProgressStorage = class {
 		}
 	}
 };
+//#endregion
+//#region src/platform/share-clipboard.ts
 var ShareClipboard = class {
 	target;
 	constructor(target = navigator) {
@@ -1991,11 +2025,15 @@ var ShareClipboard = class {
 		}
 	}
 };
+//#endregion
+//#region src/platform/spotify-link.ts
 var SpotifyLink = class {
 	openSpotify(trackId) {
 		window.open(`https://open.spotify.com/track/${trackId}`, "_blank", "noopener,noreferrer");
 	}
 };
+//#endregion
+//#region src/platform/volume-settings.ts
 var VOLUME_STORAGE_KEY = "corzaguessr:volume";
 var VolumeSettings = class {
 	storage;
@@ -2034,10 +2072,16 @@ function browserStorage() {
 		return null;
 	}
 }
+//#endregion
+//#region src/playback/audio-player.ts
 var browserTiming = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimeout: (handle) => window.clearTimeout(handle)
 };
+/**
+* The only module that touches HTMLAudioElement. Slot and play generations make
+* callbacks from released sources and superseded play promises harmless.
+*/
 var AudioPlayer = class {
 	sourceForRound;
 	callbacks;
@@ -2478,6 +2522,8 @@ function isNamedError(error, name) {
 function samePlaybackOperation(left, right) {
 	return Boolean(left && left.slotId === right.slotId && left.slotGeneration === right.slotGeneration && left.roundId === right.roundId && left.playGeneration === right.playGeneration);
 }
+//#endregion
+//#region src/playback/playback.ts
 var browserScheduler = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimeout: (handle) => window.clearTimeout(handle),
@@ -2485,6 +2531,10 @@ var browserScheduler = {
 };
 var MAXIMUM_AUTOMATIC_RECOVERIES = 2;
 var MAXIMUM_STANDBY_RECOVERIES = 2;
+/**
+* Owns round transport, grace notices, prefetch, and recovery. It deliberately
+* leaves HTMLMediaElement details to AudioPlayer and game state to GameSession.
+*/
 var Playback = class {
 	audio;
 	callbacks;
@@ -2884,12 +2934,16 @@ var Playback = class {
 		};
 	}
 };
+//#endregion
+//#region src/ui/motion-scheduler.ts
 var browserUiScheduler = {
 	requestFrame: (callback) => window.requestAnimationFrame(callback),
 	cancelFrame: (handle) => window.cancelAnimationFrame(handle),
 	setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimer: (handle) => window.clearTimeout(handle)
 };
+//#endregion
+//#region src/ui/attempt-history-view.ts
 var AttemptHistoryView = class {
 	elements;
 	durations;
@@ -3163,6 +3217,8 @@ function toneClasses(tone) {
 	if (tone === "final-prompt" || tone === "technical") return ["blink"];
 	return [];
 }
+//#endregion
+//#region src/ui/track-search.ts
 var TOKEN_ALIASES = {
 	featuring: "feat",
 	feat: "feat",
@@ -3213,7 +3269,8 @@ function tokenPositions(titleTokens, queryTokens, matches) {
 	}
 	return positionTotal;
 }
-var MAX_SUGGESTIONS = 5;
+//#endregion
+//#region src/ui/autocomplete.ts
 var Autocomplete = class {
 	input;
 	list;
@@ -3262,7 +3319,7 @@ var Autocomplete = class {
 		this.render();
 	}
 	update(selectedId = null) {
-		this.suggestions = searchTrackIndex(this.searchIndex, this.input.value, this.unavailable, MAX_SUGGESTIONS);
+		this.suggestions = searchTrackIndex(this.searchIndex, this.input.value, this.unavailable);
 		const preserved = selectedId === null ? -1 : this.suggestions.findIndex((track) => track.dailyNumber === selectedId);
 		this.selectedIndex = preserved >= 0 ? preserved : this.suggestions.length ? 0 : -1;
 		this.render();
@@ -3333,6 +3390,8 @@ var Autocomplete = class {
 		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
+//#endregion
+//#region src/ui/date-format.ts
 var MONTHS = [
 	"JANUARY",
 	"FEBRUARY",
@@ -3355,6 +3414,8 @@ function formatOrdinalDate(value) {
 	const remainder = numericDay % 100;
 	return `${monthName} ${numericDay}${remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH"}, ${year}`;
 }
+//#endregion
+//#region src/ui/discovery-list-view.ts
 function formatReleaseDate(value) {
 	return value === null ? "TBA" : formatOrdinalDate(value);
 }
@@ -3527,6 +3588,8 @@ function splitTrackTitle(value) {
 	const separator = value.indexOf(" - ");
 	return separator < 0 ? ["", value] : [value.slice(0, separator), value.slice(separator + 3)];
 }
+//#endregion
+//#region src/ui/focus-navigation.ts
 var MODES = [
 	"daily",
 	"classic",
@@ -3576,6 +3639,8 @@ function available(state, target) {
 function isMode(target) {
 	return target === "daily" || target === "blitz" || target === "classic" || target === "survival";
 }
+//#endregion
+//#region src/ui/modal-controller.ts
 var ModalController = class {
 	root;
 	elements;
@@ -3663,7 +3728,7 @@ var ModalController = class {
 		this.openFrame = 0;
 		this.cancelCloseWait();
 		if (kind === "result") {
-			this.elements.card.classList.add("result-teardown");
+			this.elements.card.classList.add("modal-closing");
 			this.elements.card.classList.remove("modal-visible");
 		} else {
 			this.root.classList.remove("discovery-visible");
@@ -3678,7 +3743,7 @@ var ModalController = class {
 			if (this.kind !== kind || this.transitionGeneration !== generation) return;
 			this.cancelCloseWait();
 			if (kind === "result") {
-				this.elements.card.classList.remove("modal-open", "modal-visible", "result-teardown");
+				this.elements.card.classList.remove("modal-open", "modal-visible", "modal-closing");
 				this.elements.result.setAttribute("aria-hidden", "true");
 			} else {
 				this.root.classList.remove("discovery-open", "discovery-visible");
@@ -3782,6 +3847,8 @@ var ModalController = class {
 		this.closeListener = null;
 	}
 };
+//#endregion
+//#region src/ui/result-presenter.ts
 function formatClock(seconds) {
 	const safe = Math.max(0, seconds);
 	return `${Math.floor(safe / 60)}:${String(Math.floor(safe) % 60).padStart(2, "0")}`;
@@ -3826,6 +3893,8 @@ function createResultRow(row, newPersonalBest) {
 	}));
 	return module;
 }
+//#endregion
+//#region src/ui/progress-summary.ts
 var EMPTY_RECORD_VALUE = "---";
 var EMPTY_RECORD_DETAIL = "NO RECORD";
 var ProgressSummaryView = class {
@@ -3891,6 +3960,8 @@ function rows(bests, daily, dailyDate) {
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
+//#endregion
+//#region src/ui/timeline-view.ts
 var TimelineView = class {
 	elements;
 	durations;
@@ -3933,11 +4004,11 @@ var TimelineView = class {
 			});
 			return;
 		}
-		if (this.reducedMotion.matches || this.durations.reset <= 0) return;
+		if (this.reducedMotion.matches || this.durations.progress <= 0) return;
 		this.elements.fill.style.transform = `scaleX(${previousScale})`;
 		this.elements.fill.offsetWidth;
-		this.elements.fill.style.transition = "transform var(--duration-timeline-reset) ease-out";
-		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.reset, generation, (event) => {
+		this.elements.fill.style.transition = "transform var(--duration-progress) ease-out";
+		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.progress, generation, (event) => {
 			const transition = event;
 			return !transition.propertyName || transition.propertyName === "transform";
 		});
@@ -3946,7 +4017,7 @@ var TimelineView = class {
 		if (!seconds) return;
 		this.clearSurvivalFeedback();
 		this.elements.timeChangeText.textContent = seconds > 0 ? `+${seconds}S` : `${seconds}S`;
-		if (this.durations.survivalFeedback <= 0) {
+		if (this.durations.feedback <= 0) {
 			this.clearSurvivalFeedback();
 			return;
 		}
@@ -3968,7 +4039,7 @@ var TimelineView = class {
 			};
 			this.elements.timeChangeText.addEventListener("animationend", this.survivalListener);
 		}
-		this.survivalTimer = this.scheduler.setTimer(finish, this.durations.survivalFeedback);
+		this.survivalTimer = this.scheduler.setTimer(finish, this.durations.feedback);
 	}
 	clearSurvivalFeedback() {
 		this.survivalGeneration += 1;
@@ -4014,6 +4085,8 @@ var TimelineView = class {
 		this.elements.fill.style.transition = "";
 	}
 };
+//#endregion
+//#region src/ui/volume-control.ts
 var BAR_COUNT = 8;
 var VolumeControl = class {
 	container;
@@ -4049,6 +4122,8 @@ var VolumeControl = class {
 		});
 	}
 };
+//#endregion
+//#region src/ui/game-view.ts
 var ICONS = {
 	play: "M8 5v14l11-7z",
 	pause: "M6 5h4v14H6zM14 5h4v14h-4z",
@@ -4096,20 +4171,15 @@ var GameView = class {
 		};
 		const styles = getComputedStyle(root);
 		this.durations = {
-			survivalFeedback: duration(styles, "--duration-survival-feedback"),
-			shareVisible: duration(styles, "--duration-share-visible"),
-			shareFade: duration(styles, "--duration-share-fade"),
+			feedback: duration(styles, "--duration-feedback"),
 			wiggle: duration(styles, "--duration-wiggle"),
 			slot: duration(styles, "--duration-slot"),
-			resultModal: duration(styles, "--duration-result-modal"),
-			discoveryModal: duration(styles, "--duration-discovery-modal"),
-			timelineReset: duration(styles, "--duration-timeline-reset"),
-			timelineRewind: duration(styles, "--duration-timeline-rewind")
+			result: duration(styles, "--duration-result"),
+			discovery: duration(styles, "--duration-discovery"),
+			progress: duration(styles, "--duration-progress"),
+			rewind: duration(styles, "--duration-rewind")
 		};
-		this.modal = new ModalController(root, this.elements, {
-			result: this.durations.resultModal,
-			discovery: this.durations.discoveryModal
-		}, this.reducedMotion, (message) => this.announce(message));
+		this.modal = new ModalController(root, this.elements, this.durations, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.elements.currentSlot.parentElement,
@@ -4118,7 +4188,7 @@ var GameView = class {
 		}, {
 			slot: this.durations.slot,
 			wiggle: this.durations.wiggle,
-			collapse: () => this.modal.openKind === "result" ? this.durations.resultModal : this.durations.slot
+			collapse: () => this.modal.openKind === "result" ? this.durations.result : this.durations.slot
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
@@ -4127,11 +4197,7 @@ var GameView = class {
 			feedback: this.elements.feedback,
 			timeChange: this.elements.timeChange,
 			timeChangeText: this.elements.timeChangeText
-		}, {
-			reset: this.durations.timelineReset,
-			rewind: this.durations.timelineRewind,
-			survivalFeedback: this.durations.survivalFeedback
-		}, this.reducedMotion);
+		}, this.durations, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
@@ -4302,7 +4368,7 @@ var GameView = class {
 		this.resultCopyFeedbackTimer = window.setTimeout(() => {
 			this.resultCopyFeedbackTimer = 0;
 			if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.swapResultSecondaryLabel("SHARE", generation);
-		}, this.durations.shareVisible);
+		}, this.durations.feedback);
 	}
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
@@ -4430,7 +4496,7 @@ var GameView = class {
 			if (generation !== this.resultCopyFeedbackGeneration) return;
 			label.textContent = text;
 			label.classList.remove("fading");
-		}, this.durations.shareFade);
+		}, this.durations.rewind);
 	}
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
@@ -4633,8 +4699,8 @@ function markup() {
 	return [
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
-		`<div class="row header-action"><button type="button" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
-    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div>`,
+		`<div class="row header-action"><button type="button" class="button discovery-button" aria-controls="corzaguessr-discovery" aria-expanded="false">PROGRESS</button></div>`,
+		`<div class="modes" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
@@ -4649,7 +4715,6 @@ function markup() {
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions discovery-actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div><section class="reset-confirmation" role="group" aria-labelledby="corzaguessr-reset-title" aria-describedby="corzaguessr-reset-warning" hidden><strong id="corzaguessr-reset-title">RESET ALL PROGRESS?</strong><span id="corzaguessr-reset-warning">THIS ERASES DISCOVERY, DAILY PROGRESS, AND RECORDS.</span><div class="actions"><button type="button" class="button reset-cancel">CANCEL</button><button type="button" class="button reset-confirm">RESET</button></div></section></div></div></div>`,
 		`</div>`,
-		`</div>`,
 		`<p class="mode-prompt" role="status" aria-hidden="false">${COPY.modePrompt}</p>`,
 		`</div>`,
 		`<p class="sr-only status" aria-live="polite"></p>`,
@@ -4657,6 +4722,8 @@ function markup() {
 		`<audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`
 	].join("");
 }
+//#endregion
+//#region src/main.ts
 var JSDELIVR_REPOSITORY_BASE_URL = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/");
 var root = document.querySelector("#corzaguessr");
 if (root && !root.dataset.corzaguessrReady) {
@@ -4739,3 +4806,4 @@ if (root && !root.dataset.corzaguessrReady) {
 	});
 	window.addEventListener("pageshow", () => controller.handleVisibilityVisible());
 }
+//#endregion
