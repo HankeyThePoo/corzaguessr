@@ -17,7 +17,7 @@
   --scrim: rgb(16 16 16 / 50%);
   --artwork-scrim: rgb(16 16 16 / 30%);
   --control-glow: rgb(247 247 247 / 15%);
-  --glass-blur: 20px;
+  --glass-blur: 16px;
   --shadow-surface: 0 6px 18px rgb(16 16 16 / 30%);
   --shadow-text: 0 2px 8px rgb(16 16 16 / 90%);
   --success-border: rgb(16 185 129 / 50%);
