@@ -54,7 +54,6 @@
   --duration-result-modal: 350ms;
   --duration-discovery-scrim: 350ms;
   --duration-discovery-modal: 450ms;
-  --duration-timeline-accent: 250ms;
   --duration-timeline-reset: 300ms;
   --duration-timeline-rewind: 200ms;
   --duration-share-fade: 200ms;
@@ -479,7 +478,6 @@
 #corzaguessr .timeline {
   --timeline-border: var(--line);
   --timeline-progress: var(--off-white);
-  --timeline-marker: var(--line);
   position: relative;
   isolation: isolate;
   height: 46px;
@@ -492,7 +490,6 @@
 #corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .timeline {
   --timeline-border: var(--gradient);
   --timeline-progress: var(--gradient);
-  --timeline-marker: var(--gradient);
 }
 
 #corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .timeline::before {
@@ -509,7 +506,7 @@
   background: var(--timeline-border);
   clip-path: inset(0 100% 0 0);
   pointer-events: none;
-  transition: clip-path var(--duration-timeline-accent) ease-out;
+  transition: clip-path var(--duration-timeline-reset) ease-out;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -565,7 +562,7 @@
 
 #corzaguessr:not(.timed):has(.mode[aria-pressed="true"]) .snippet {
   display: block;
-  animation: corzaguessr-timeline-accent var(--duration-timeline-accent) ease-out;
+  animation: corzaguessr-timeline-accent var(--duration-timeline-reset) ease-out;
   transform-origin: left;
 }
 
@@ -645,10 +642,23 @@
 
 #corzaguessr .tick {
   position: absolute;
-  inset: 0 auto 0;
+  inset: var(--gradient-border-width) auto;
   z-index: 0;
   width: 2px;
-  background: var(--timeline-marker);
+  background: var(--line);
+}
+
+#corzaguessr .tick::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--gradient);
+  opacity: 0;
+  transition: opacity var(--duration-timeline-reset) ease-out;
+}
+
+#corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .tick::before {
+  opacity: 1;
 }
 
 #corzaguessr.timed .tick,
