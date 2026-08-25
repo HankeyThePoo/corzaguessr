@@ -63,7 +63,7 @@
   --volume-height: 30px;
   color: var(--off-white);
   padding: var(--space-4) var(--space-3) 3rem;
-  font-family: "Monument Extended", Inter, system-ui, sans-serif;
+  font-family: "Monument", Inter, system-ui, sans-serif;
   scrollbar-width: none;
 }
 
