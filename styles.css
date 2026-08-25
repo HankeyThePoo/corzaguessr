@@ -62,6 +62,8 @@
   --duration-share-fade: 200ms;
   --duration-survival-flash: 520ms;
   --slot-motion-duration: var(--duration-slot);
+  --play-size: 68px;
+  --volume-height: 30px;
   color: var(--off-white);
   padding: var(--space-4) var(--space-3) 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
@@ -144,7 +146,11 @@
   gap: var(--space-3);
 }
 
-/* Shared glass surface: containers own blur, tint, border, and shadow. */
+/*
+ * Glass panels are complete component boundaries. Keeping backdrop-filter on
+ * the underlay prevents a glass host from becoming the containing block for
+ * its fixed descendants (notably the mobile modals).
+ */
 #corzaguessr .glass {
   position: relative;
   isolation: isolate;
@@ -192,7 +198,6 @@
 }
 
 #corzaguessr .slots {
-  --slot-motion-duration: var(--duration-slot);
   display: grid;
   gap: var(--space-3);
   overflow: hidden;
@@ -200,7 +205,6 @@
 }
 
 #corzaguessr .history {
-  --slot-motion-duration: var(--duration-slot);
   display: grid;
   gap: 0;
   overflow: hidden;
@@ -358,8 +362,8 @@
 }
 
 #corzaguessr .play {
-  width: 68px;
-  height: 68px;
+  width: var(--play-size);
+  height: var(--play-size);
 }
 
 #corzaguessr .play:not(:disabled) {
@@ -376,11 +380,11 @@
 
 #corzaguessr .volume-control {
   position: absolute;
-  top: 19px;
+  top: calc((var(--play-size) - var(--volume-height)) / 2);
   right: 0;
   z-index: 1;
   width: 76px;
-  height: 30px;
+  height: var(--volume-height);
   border-radius: var(--radius);
   cursor: pointer;
   transition:
@@ -449,7 +453,7 @@
   appearance: none;
   -webkit-appearance: none;
   width: 10px;
-  height: 30px;
+  height: var(--volume-height);
   border: 0;
   background: transparent;
 }
@@ -462,7 +466,7 @@
 
 #corzaguessr .volume-range::-moz-range-thumb {
   width: 10px;
-  height: 30px;
+  height: var(--volume-height);
   border: 0;
   background: transparent;
 }
@@ -906,23 +910,19 @@
   visibility: visible;
 }
 
-#corzaguessr .modal-closing .result-modal {
+#corzaguessr .result-teardown {
+  --slot-motion-duration: var(--duration-result-modal);
+}
+
+#corzaguessr .result-teardown .result-modal {
   transition: background var(--duration-result-modal) ease;
 }
 
-#corzaguessr .modal-closing .slots {
-  --slot-motion-duration: var(--duration-result-modal);
-}
-
-#corzaguessr .modal-closing .history {
-  --slot-motion-duration: var(--duration-result-modal);
-}
-
-#corzaguessr .modal-closing .snippet {
+#corzaguessr .result-teardown .snippet {
   transition-duration: var(--duration-result-modal);
 }
 
-#corzaguessr .modal-closing .result-shell {
+#corzaguessr .result-teardown .result-shell {
   visibility: hidden;
 }
 
@@ -1698,6 +1698,8 @@
 
 @media (max-width: 360px) {
   #corzaguessr {
+    --play-size: 64px;
+    --volume-height: 28px;
     padding-inline: var(--space-2);
   }
 
@@ -1707,16 +1709,6 @@
 
   #corzaguessr .controls {
     gap: var(--space-2);
-  }
-
-  #corzaguessr .play {
-    width: 64px;
-    height: 64px;
-  }
-
-  #corzaguessr .volume-control {
-    top: 18px;
-    height: 28px;
   }
 
   #corzaguessr .volume-bars {
