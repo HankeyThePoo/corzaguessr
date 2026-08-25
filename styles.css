@@ -24,7 +24,7 @@
   --reward-gold-strong: rgb(255 218 94 / 95%);
   --reward-gold-soft: rgb(255 190 64 / 24%);
   --reward-gold-shadow: rgb(255 196 58 / 46%);
-  --radius: 6px;
+  --radius: 8px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -42,14 +42,19 @@
   --tracking-label: 0.08em;
   --tracking-heading: 0.1em;
   --duration-fast: 160ms;
-  --duration-feedback: 680ms;
-  --duration-gameplay-motion: 400ms;
+  --duration-survival-feedback: 680ms;
+  --duration-share-visible: 680ms;
+  --duration-wiggle: 400ms;
+  --duration-snippet: 400ms;
   --duration-slot: 250ms;
-  --duration-result: 350ms;
-  --duration-discovery: 450ms;
-  --duration-progress: 300ms;
-  --duration-rewind: 200ms;
-  --duration-flash: 520ms;
+  --duration-discovery-card: 250ms;
+  --duration-result-modal: 350ms;
+  --duration-discovery-scrim: 350ms;
+  --duration-discovery-modal: 450ms;
+  --duration-timeline-reset: 300ms;
+  --duration-timeline-rewind: 200ms;
+  --duration-share-fade: 200ms;
+  --duration-survival-flash: 520ms;
   --slot-motion-duration: var(--duration-slot);
   color: var(--off-white);
   padding: var(--space-4) var(--space-3) 3rem;
@@ -273,7 +278,7 @@
 
 #corzaguessr .result-secondary-label {
   opacity: 1;
-  transition: opacity var(--duration-rewind) ease;
+  transition: opacity var(--duration-share-fade) ease;
 }
 
 #corzaguessr .result-secondary-label.fading {
@@ -504,7 +509,7 @@
 }
 
 #corzaguessr .timeline.progress-rewinding::after {
-  animation: corzaguessr-progress-rewind var(--duration-rewind) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: corzaguessr-progress-rewind var(--duration-timeline-rewind) cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes corzaguessr-progress-rewind {
@@ -534,7 +539,7 @@
   z-index: 1;
   width: 3.125%;
   background: rgb(88 87 213 / 30%);
-  transition: width var(--duration-gameplay-motion);
+  transition: width var(--duration-snippet);
 }
 
 #corzaguessr .fill {
@@ -562,7 +567,7 @@
 
 #corzaguessr .feedback.survival-penalty,
 #corzaguessr .feedback.survival-reward {
-  animation: corzaguessr-survival-flash var(--duration-flash) cubic-bezier(0.16, 1, 0.3, 1);
+  animation: corzaguessr-survival-flash var(--duration-survival-flash) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #corzaguessr .feedback.survival-reward {
@@ -591,7 +596,7 @@
 }
 
 #corzaguessr .time-change.survival-change span {
-  animation: corzaguessr-survival-hit var(--duration-feedback) cubic-bezier(0.16, 1, 0.3, 1);
+  animation: corzaguessr-survival-hit var(--duration-survival-feedback) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #corzaguessr .time-change.survival-change-static span {
@@ -862,7 +867,7 @@
 }
 
 #corzaguessr .slot.wiggle {
-  animation: wiggle var(--duration-gameplay-motion);
+  animation: wiggle var(--duration-wiggle);
 }
 
 #corzaguessr .blink {
@@ -893,19 +898,19 @@
 }
 
 #corzaguessr .modal-closing .result-modal {
-  transition: background var(--duration-result) ease;
+  transition: background var(--duration-result-modal) ease;
 }
 
 #corzaguessr .modal-closing .slots {
-  --slot-motion-duration: var(--duration-result);
+  --slot-motion-duration: var(--duration-result-modal);
 }
 
 #corzaguessr .modal-closing .history {
-  --slot-motion-duration: var(--duration-result);
+  --slot-motion-duration: var(--duration-result-modal);
 }
 
 #corzaguessr .modal-closing .snippet {
-  transition-duration: var(--duration-result);
+  transition-duration: var(--duration-result-modal);
 }
 
 #corzaguessr .modal-closing .result-shell {
@@ -987,7 +992,7 @@
 
 #corzaguessr .discovery-modal {
   z-index: 4;
-  transition: background var(--duration-result) ease;
+  transition: background var(--duration-discovery-scrim) ease;
 }
 
 #corzaguessr .discovery-modal:focus {
@@ -1006,7 +1011,7 @@
 #corzaguessr .discovery-shell {
   height: 0;
   overflow: hidden;
-  transition: height var(--duration-discovery) ease;
+  transition: height var(--duration-discovery-modal) ease;
 }
 
 #corzaguessr .discovery-panel {
@@ -1191,7 +1196,7 @@
   padding: 0;
   overflow: hidden;
   transition:
-    height 250ms ease,
+    height var(--duration-discovery-card) ease,
     background var(--duration-fast) ease;
 }
 
@@ -1210,7 +1215,7 @@
   background-size: cover;
   filter: blur(24px) saturate(1.3) brightness(0.9);
   transform: scale(1.14);
-  transition: opacity var(--duration-slot) ease;
+  transition: opacity var(--duration-discovery-card) ease;
 }
 
 #corzaguessr .discovery-item-known::after {
