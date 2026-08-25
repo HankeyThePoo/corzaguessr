@@ -299,7 +299,7 @@
   border: 1px solid var(--line);
   background: var(--surface-glass);
   backdrop-filter: blur(16px);
-  box-shadow: none;
+  box-shadow: var(--shadow-surface);
   color: var(--off-white);
 }
 
