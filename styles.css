@@ -562,7 +562,7 @@
   z-index: 1;
   width: 3.125%;
   background: var(--timeline-progress);
-  opacity: 10%;
+  opacity: 20%;
   transition: width var(--duration-snippet);
 }
 
