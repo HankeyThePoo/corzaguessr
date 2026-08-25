@@ -9,20 +9,20 @@
     rgb(123 176 247 / 12%) 50%,
     rgb(141 100 245 / 12%)
   );
-  --surface-glass: rgb(255 255 255 / 4%);
+  --surface-glass: rgb(255 255 255 / 5%);
   --surface-interactive: rgb(255 255 255 / 20%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
   --scrim: rgb(0 0 0 / 50%);
-  --control-glow: rgb(247 247 247 / 14%);
+  --control-glow: rgb(247 247 247 / 15%);
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
   --success-border: rgb(16 185 129 / 50%);
-  --success-surface: rgb(16 185 129 / 12%);
+  --success-surface: rgb(16 185 129 / 10%);
   --danger-border: rgb(239 68 68 / 50%);
-  --danger-surface: rgb(239 68 68 / 12%);
+  --danger-surface: rgb(239 68 68 / 10%);
   --reward-gold-strong: rgb(255 218 94 / 90%);
-  --reward-gold-soft: rgb(255 190 64 / 24%);
+  --reward-gold-soft: rgb(255 190 64 / 25%);
   --reward-gold-shadow: rgb(255 196 58 / 50%);
   --radius: 6px;
   --space-1: 4px;
