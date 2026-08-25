@@ -285,20 +285,31 @@
 }
 
 #corzaguessr .discovery-button {
-  width: calc((720px - 2.25rem) / 4);
-  max-width: calc((100% - 2.25rem) / 4);
-  height: 42px;
-  min-height: 42px;
-  max-height: 42px;
+  width: min(180px, 25%);
+  max-width: none;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
   margin: calc(-1 * var(--space-4)) auto var(--space-4);
   padding: 0 var(--space-3);
-  background: var(--off-white);
+  background: var(--surface-glass);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-surface);
+  color: var(--off-white);
 }
 
 #corzaguessr .discovery-button::after {
   inset: 0;
   padding: 2px;
   border-radius: inherit;
+}
+
+#corzaguessr .discovery-button[aria-expanded="true"] {
+  background: var(--gradient-background-soft), var(--surface-opaque);
+}
+
+#corzaguessr .discovery-button[aria-expanded="true"]::after {
+  opacity: 1;
 }
 
 #corzaguessr .mode-navigation .mode {
@@ -1633,6 +1644,8 @@
     width: min(136px, 100%);
     max-width: none;
     height: 42px;
+    min-height: 42px;
+    max-height: 42px;
     margin-bottom: var(--space-3);
   }
 
