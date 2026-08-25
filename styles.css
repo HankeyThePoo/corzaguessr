@@ -161,22 +161,43 @@
   z-index: 1;
 }
 
+#corzaguessr .game-surface {
+  --mode-cap-half-width: min(50%, 360px);
+  --mode-cap-height: 40px;
+}
+
+#corzaguessr .game-surface::before {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  clip-path: polygon(
+    calc(50% - var(--mode-cap-half-width)) 0,
+    calc(50% + var(--mode-cap-half-width)) 0,
+    calc(50% + var(--mode-cap-half-width)) var(--mode-cap-height),
+    100% var(--mode-cap-height),
+    100% 100%,
+    0 100%,
+    0 var(--mode-cap-height),
+    calc(50% - var(--mode-cap-half-width)) var(--mode-cap-height)
+  );
+}
+
 #corzaguessr .mode-navigation {
   position: relative;
   z-index: 2;
   width: min(100%, 720px);
   margin: 0 auto -1px;
   border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: inset 0 0 0 1px var(--line);
   gap: 0;
-}
-
-#corzaguessr .mode-navigation::before {
-  box-shadow: none;
 }
 
 #corzaguessr .card {
   padding: var(--space-4);
   border-radius: var(--radius);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    var(--shadow-surface);
 }
 
 #corzaguessr .stack,
@@ -1615,6 +1636,11 @@
 }
 
 @media (max-width: 480px) {
+  #corzaguessr .game-surface {
+    --mode-cap-half-width: min(50%, 140px);
+    --mode-cap-height: 80px;
+  }
+
   #corzaguessr .mode-navigation {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
