@@ -539,7 +539,7 @@
   z-index: 1;
   width: 3.125%;
   background: var(--gradient);
-  opacity: 40%;
+  opacity: 20%;
   transition: width var(--duration-snippet);
 }
 
