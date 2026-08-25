@@ -9,11 +9,11 @@
     rgb(123 176 247 / 12%) 50%,
     rgb(141 100 245 / 12%)
   );
-  --surface-glass: rgb(255 255 255 / 8%);
-  --surface-interactive: rgb(255 255 255 / 18%);
+  --surface-glass: rgb(255 255 255 / 10%);
+  --surface-interactive: rgb(255 255 255 / 20%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
-  --scrim: rgb(0 0 0 / 55%);
+  --scrim: rgb(0 0 0 / 40%);
   --control-glow: rgb(247 247 247 / 14%);
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
@@ -21,9 +21,9 @@
   --success-surface: rgb(16 185 129 / 12%);
   --danger-border: rgb(239 68 68 / 50%);
   --danger-surface: rgb(239 68 68 / 12%);
-  --reward-gold-strong: rgb(255 218 94 / 95%);
+  --reward-gold-strong: rgb(255 218 94 / 90%);
   --reward-gold-soft: rgb(255 190 64 / 24%);
-  --reward-gold-shadow: rgb(255 196 58 / 46%);
+  --reward-gold-shadow: rgb(255 196 58 / 50%);
   --radius: 8px;
   --space-1: 4px;
   --space-2: 8px;
