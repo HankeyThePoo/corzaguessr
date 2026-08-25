@@ -1516,7 +1516,7 @@
     opacity: 1;
   }
 
-  #corzaguessr .button:not(:disabled):hover,
+  #corzaguessr .button:not(.glass):not(:disabled):hover,
   #corzaguessr .play:not(:disabled):hover,
   #corzaguessr .mode:not(:disabled):hover {
     filter: brightness(1.08) saturate(1.04);
