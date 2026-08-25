@@ -54,6 +54,7 @@
   --duration-result-modal: 350ms;
   --duration-discovery-scrim: 350ms;
   --duration-discovery-modal: 450ms;
+  --duration-timeline-accent: 250ms;
   --duration-timeline-reset: 300ms;
   --duration-timeline-rewind: 200ms;
   --duration-share-fade: 200ms;
@@ -485,12 +486,17 @@
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--surface-glass);
+  box-shadow: inset 0 0 0 var(--gradient-border-width) var(--line);
 }
 
 #corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .timeline {
   --timeline-border: var(--gradient);
   --timeline-progress: var(--gradient);
   --timeline-marker: var(--gradient);
+}
+
+#corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .timeline::before {
+  clip-path: inset(0);
 }
 
 #corzaguessr .timeline::before {
@@ -501,7 +507,9 @@
   padding: var(--gradient-border-width);
   border-radius: inherit;
   background: var(--timeline-border);
+  clip-path: inset(0 100% 0 0);
   pointer-events: none;
+  transition: clip-path var(--duration-timeline-accent) ease-out;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -557,6 +565,20 @@
 
 #corzaguessr:not(.timed):has(.mode[aria-pressed="true"]) .snippet {
   display: block;
+  animation: corzaguessr-timeline-accent var(--duration-timeline-accent) ease-out;
+  transform-origin: left;
+}
+
+@keyframes corzaguessr-timeline-accent {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  to {
+    opacity: 20%;
+    transform: scaleX(1);
+  }
 }
 
 #corzaguessr .fill {
