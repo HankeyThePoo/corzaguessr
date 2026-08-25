@@ -9,13 +9,10 @@
     rgb(123 176 247 / 12%) 50%,
     rgb(141 100 245 / 12%)
   );
-  --surface-glass: rgb(255 255 255 / 6%);
-  --surface-raised: rgb(255 255 255 / 8%);
-  --surface-expanded: rgb(255 255 255 / 11%);
+  --surface-glass: rgb(255 255 255 / 8%);
   --surface-interactive: rgb(255 255 255 / 18%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
-  --text-muted: rgb(255 255 255 / 72%);
   --scrim: rgb(0 0 0 / 55%);
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
@@ -39,14 +36,10 @@
   --text-display: 2rem;
   --text-clock: 1.35rem;
   --text-feedback: 1.35rem;
-  --text-heading: 1.1rem;
-  --text-title: 1rem;
-  --text-body: 0.9rem;
-  --text-control: 0.85rem;
+  --text-body: 1rem;
   --text-small: 0.8rem;
   --text-label: 0.75rem;
-  --text-meta: 0.65rem;
-  --text-micro: 0.6rem;
+  --text-meta: 0.6rem;
   --tracking-control: 0.04em;
   --tracking-label: 0.08em;
   --tracking-heading: 0.1em;
@@ -259,7 +252,7 @@
   background: var(--gradient);
   color: var(--near-black);
   cursor: pointer;
-  font-size: var(--text-control);
+  font-size: var(--text-body);
   font-weight: 800;
   letter-spacing: var(--tracking-control);
   text-transform: uppercase;
@@ -305,7 +298,7 @@
 
 #corzaguessr .discovery-button::after {
   inset: 0;
-  padding: 1px;
+  padding: 2px;
   border-radius: inherit;
 }
 
@@ -333,7 +326,7 @@
 
 #corzaguessr .mode-navigation .mode::after {
   inset: 0;
-  padding: 1px;
+  padding: 2px;
   border-radius: inherit;
 }
 
@@ -391,7 +384,7 @@
   height: calc(5px + var(--volume-step) * 2.5px);
   border-radius: 2px 2px 1px 1px;
   background: var(--surface-interactive);
-  box-shadow: inset 0 0 0 1px var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--surface-glass);
   transition:
     background var(--duration-fast) ease,
     box-shadow var(--duration-fast) ease;
@@ -472,7 +465,7 @@
   overflow: hidden;
   border-radius: var(--radius-content);
   background: var(--surface-glass);
-  box-shadow: inset 0 0 0 1px var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--surface-glass);
 }
 
 #corzaguessr .timeline::before {
@@ -699,7 +692,8 @@
 }
 
 #corzaguessr input::placeholder {
-  color: var(--text-muted);
+  color: var(--off-white);
+  opacity: 0.7;
 }
 
 #corzaguessr .ruleset {
@@ -712,7 +706,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-content);
   background: var(--surface-dark);
-  color: var(--text-muted);
+  color: var(--off-white);
   font: inherit;
   font-size: var(--text-body);
   line-height: 18px;
@@ -725,6 +719,7 @@
   display: flex;
   justify-content: center;
   min-width: 100%;
+  opacity: 0.7;
   white-space: nowrap;
 }
 
@@ -807,7 +802,7 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-content);
-  background: var(--surface-raised);
+  background: var(--surface-glass);
   line-height: 20px;
   text-align: center;
   text-transform: uppercase;
@@ -838,7 +833,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  padding: 1px;
+  padding: 2px;
   border-radius: inherit;
   background: var(--gradient);
   opacity: 0.5;
@@ -959,7 +954,7 @@
 #corzaguessr .result-label {
   font-size: var(--text-label);
   letter-spacing: var(--tracking-label);
-  opacity: 0.72;
+  opacity: 0.7;
 }
 
 #corzaguessr .end {
@@ -1026,7 +1021,7 @@
 #corzaguessr .progress-summary h4,
 #corzaguessr .discovery-title > span {
   font-family: inherit;
-  font-size: var(--text-heading);
+  font-size: var(--text-body);
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: var(--tracking-heading);
@@ -1056,7 +1051,7 @@
   padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-content);
-  background: var(--surface-raised);
+  background: var(--surface-glass);
   overflow-wrap: anywhere;
   text-align: center;
   text-transform: uppercase;
@@ -1070,14 +1065,14 @@
 }
 
 #corzaguessr .progress-best strong {
-  font-size: var(--text-control);
+  font-size: var(--text-body);
   line-height: 1.2;
 }
 
 #corzaguessr .progress-best small {
   font-size: var(--text-meta);
   line-height: 1.2;
-  opacity: 0.72;
+  opacity: 0.7;
 }
 
 #corzaguessr .discovery-title {
@@ -1085,7 +1080,7 @@
   gap: var(--space-1);
   margin: 0 0 var(--space-1);
   text-align: center;
-  font-size: var(--text-heading);
+  font-size: var(--text-body);
 }
 
 #corzaguessr .discovery-title small {
@@ -1125,14 +1120,14 @@
 }
 
 #corzaguessr .reset-confirmation strong {
-  font-size: var(--text-title);
+  font-size: var(--text-body);
   letter-spacing: var(--tracking-label);
 }
 
 #corzaguessr .reset-confirmation > span {
   font-size: var(--text-meta);
   line-height: 1.35;
-  opacity: 0.72;
+  opacity: 0.7;
 }
 
 #corzaguessr .reset-confirmation .actions {
@@ -1170,7 +1165,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-content);
-  background: var(--surface-raised);
+  background: var(--surface-glass);
   font-size: var(--text-body);
   line-height: 20px;
   text-align: center;
@@ -1213,7 +1208,7 @@
   inset: 0;
   background:
     linear-gradient(90deg, var(--scrim), rgb(0 0 0 / 30%)),
-    linear-gradient(180deg, var(--surface-raised), rgb(0 0 0 / 30%));
+    linear-gradient(180deg, var(--surface-glass), rgb(0 0 0 / 30%));
   transition: opacity var(--duration-fast) ease;
 }
 
@@ -1239,7 +1234,7 @@
     + var(--discovery-row-gap)
     + var(--discovery-row-gap)
   );
-  background: var(--surface-expanded);
+  background: var(--surface-glass);
 }
 
 #corzaguessr .discovery-item-toggle {
@@ -1317,7 +1312,7 @@
   overflow: hidden;
   place-items: center;
   border-radius: var(--radius-content);
-  background: var(--surface-raised);
+  background: var(--surface-glass);
   box-shadow:
     0 8px 24px rgb(0 0 0 / 30%),
     0 0 0 1px var(--surface-interactive);
@@ -1364,19 +1359,19 @@
   font-size: var(--text-label);
   font-weight: 800;
   letter-spacing: var(--tracking-label);
-  opacity: 0.72;
+  opacity: 0.7;
   -webkit-line-clamp: 2;
 }
 
 #corzaguessr .discovery-song-title {
-  font-size: var(--text-title);
+  font-size: var(--text-body);
   -webkit-line-clamp: 2;
 }
 
 #corzaguessr .discovery-release-date {
   margin-top: var(--space-2);
   font-size: var(--text-meta);
-  opacity: 0.72;
+  opacity: 0.7;
 }
 
 #corzaguessr .discovery-track-spotify {
@@ -1522,7 +1517,7 @@
   }
 
   #corzaguessr .progress-best small {
-    font-size: var(--text-micro);
+    font-size: var(--text-meta);
   }
 
   #corzaguessr .discovery-item-known,
@@ -1579,7 +1574,7 @@
   #corzaguessr .discovery-song-title {
     display: block;
     overflow: visible;
-    font-size: var(--text-title);
+    font-size: var(--text-body);
     -webkit-line-clamp: unset;
   }
 
@@ -1775,3 +1770,4 @@
     box-shadow: none;
   }
 }
+/*$vite$:1*/
