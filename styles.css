@@ -323,6 +323,7 @@
   background: var(--surface-glass);
   color: var(--off-white);
   box-shadow: inset calc(-1 * var(--mode-divider-width)) 0 var(--line);
+  transition: opacity var(--duration-fast) ease;
 }
 
 #corzaguessr .mode-navigation .mode:first-child {
@@ -348,6 +349,12 @@
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after {
   opacity: 1;
+}
+
+@media (min-width: 481px) {
+  #corzaguessr .mode-navigation .mode:has(+ .mode[aria-pressed="true"]) {
+    box-shadow: none;
+  }
 }
 
 #corzaguessr .play {
@@ -1637,6 +1644,23 @@
 
   #corzaguessr .mode-navigation .mode:last-child {
     border-radius: 0 0 var(--radius);
+    box-shadow: none;
+  }
+
+  #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
+    box-shadow: none;
+  }
+
+  #corzaguessr .mode-navigation:has(.mode:nth-child(2)[aria-pressed="true"]) .mode:first-child {
+    box-shadow: inset 0 calc(-1 * var(--mode-divider-width)) var(--line);
+  }
+
+  #corzaguessr .mode-navigation:has(.mode:nth-child(3)[aria-pressed="true"]) .mode:first-child {
+    box-shadow: inset calc(-1 * var(--mode-divider-width)) 0 var(--line);
+  }
+
+  #corzaguessr .mode-navigation:has(.mode:nth-child(4)[aria-pressed="true"]) .mode:nth-child(2),
+  #corzaguessr .mode-navigation:has(.mode:nth-child(4)[aria-pressed="true"]) .mode:nth-child(3) {
     box-shadow: none;
   }
 
