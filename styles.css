@@ -493,7 +493,7 @@
 }
 
 #corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .timeline::before {
-  clip-path: inset(0);
+  transform: scaleX(1);
 }
 
 #corzaguessr .timeline::before {
@@ -504,9 +504,11 @@
   padding: var(--gradient-border-width);
   border-radius: inherit;
   background: var(--timeline-border);
-  clip-path: inset(0 100% 0 0);
   pointer-events: none;
-  transition: clip-path var(--duration-timeline-reset) ease-out;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--duration-timeline-reset) ease-out;
+  will-change: transform;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -653,12 +655,14 @@
   position: absolute;
   inset: 0;
   background: var(--gradient);
-  opacity: 0;
-  transition: opacity var(--duration-timeline-reset) ease-out;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--duration-timeline-reset) ease-out;
+  will-change: transform;
 }
 
 #corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .tick::before {
-  opacity: 1;
+  transform: scaleX(1);
 }
 
 #corzaguessr.timed .tick,
