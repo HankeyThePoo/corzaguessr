@@ -45,7 +45,6 @@
   --tracking-heading: 0.1em;
   --opacity-muted: 70%;
   --duration-fast: 160ms;
-  --duration-play-enable: 250ms;
   --duration-survival-feedback: 680ms;
   --duration-share-visible: 680ms;
   --duration-wiggle: 400ms;
@@ -365,7 +364,7 @@
   height: var(--play-size);
   transition:
     filter var(--duration-fast) ease,
-    opacity var(--duration-play-enable) ease,
+    opacity var(--duration-timeline-reset) ease-out,
     box-shadow var(--duration-fast) ease;
 }
 
