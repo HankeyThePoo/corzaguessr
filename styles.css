@@ -24,9 +24,7 @@
   --reward-gold-strong: rgb(255 218 94 / 95%);
   --reward-gold-soft: rgb(255 190 64 / 24%);
   --reward-gold-shadow: rgb(255 196 58 / 46%);
-  --radius-control: 4px;
-  --radius-focus: 8px;
-  --radius-content: 12px;
+  --radius: 6px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -109,7 +107,7 @@
   position: absolute;
   inset: -4px;
   padding: 2px;
-  border-radius: var(--radius-focus);
+  border-radius: var(--radius);
   background: var(--gradient);
   opacity: 0;
   pointer-events: none;
@@ -137,7 +135,7 @@
   max-width: 720px;
   margin: 0 auto var(--space-5);
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: var(--surface-glass);
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow-surface);
@@ -146,7 +144,7 @@
 
 #corzaguessr .glass {
   position: relative;
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
 }
 
 #corzaguessr .glass::before {
@@ -168,7 +166,7 @@
 
 #corzaguessr .card {
   padding: var(--space-4);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
 }
 
 #corzaguessr .stack,
@@ -249,7 +247,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   background: var(--gradient);
   color: var(--near-black);
   cursor: pointer;
@@ -317,12 +315,12 @@
 }
 
 #corzaguessr .mode-navigation .mode:first-child {
-  border-radius: var(--radius-control) 0 0 var(--radius-control);
+  border-radius: var(--radius) 0 0 var(--radius);
 }
 
 #corzaguessr .mode-navigation .mode:last-child {
   border-right: 0;
-  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 #corzaguessr .mode-navigation .mode::after {
@@ -332,12 +330,15 @@
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
+  z-index: 1;
+  border-right-color: transparent;
   background: var(--gradient-background-soft), var(--surface-opaque);
   cursor: default;
   opacity: 1;
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after {
+  inset: -1px;
   opacity: 1;
 }
 
@@ -364,7 +365,7 @@
   z-index: 7;
   width: 76px;
   height: 30px;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius);
   cursor: pointer;
   transition:
     filter var(--duration-fast) ease,
@@ -464,7 +465,7 @@
   position: relative;
   height: 46px;
   overflow: hidden;
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--surface-glass);
   box-shadow: inset 0 0 0 1px var(--surface-glass);
 }
@@ -659,7 +660,7 @@
   inset: 0;
   z-index: 2;
   padding: 2px;
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--gradient);
   opacity: 0;
   pointer-events: none;
@@ -678,7 +679,7 @@
   height: 46px;
   padding: var(--space-3);
   border: 1px solid var(--line);
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   outline: 0;
   background: var(--surface-dark);
   color: var(--off-white);
@@ -705,7 +706,7 @@
   overflow: hidden;
   padding: var(--space-3);
   border: 1px solid var(--line);
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--surface-dark);
   color: var(--off-white);
   font: inherit;
@@ -765,7 +766,7 @@
   overflow-y: auto;
   scrollbar-width: none;
   border: 1px solid var(--line);
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: rgb(0 0 0 / 90%);
   box-shadow: var(--shadow-surface);
 }
@@ -802,7 +803,7 @@
   padding: var(--space-3);
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--surface-glass);
   line-height: 20px;
   text-align: center;
@@ -1051,7 +1052,7 @@
   min-height: 74px;
   padding: var(--space-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--surface-glass);
   overflow-wrap: anywhere;
   text-align: center;
@@ -1165,7 +1166,7 @@
   min-height: 42px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--surface-glass);
   font-size: var(--text-body);
   line-height: 20px;
@@ -1312,7 +1313,7 @@
   height: 116px;
   overflow: hidden;
   place-items: center;
-  border-radius: var(--radius-content);
+  border-radius: var(--radius);
   background: var(--surface-glass);
   box-shadow:
     0 8px 24px rgb(0 0 0 / 30%),
@@ -1622,7 +1623,7 @@
   #corzaguessr .mode-navigation .mode {
     height: 42px;
     border: 0;
-    border-radius: var(--radius-control);
+    border-radius: var(--radius);
     background: var(--surface-glass);
     backdrop-filter: blur(16px);
     color: var(--off-white);
