@@ -14,6 +14,7 @@
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
   --scrim: rgb(0 0 0 / 55%);
+  --control-glow: rgb(247 247 247 / 14%);
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
   --success-border: rgb(16 185 129 / 50%);
@@ -23,7 +24,6 @@
   --reward-gold-strong: rgb(255 218 94 / 95%);
   --reward-gold-soft: rgb(255 190 64 / 24%);
   --reward-gold-shadow: rgb(255 196 58 / 46%);
-  --radius-shell: 2px;
   --radius-control: 4px;
   --radius-focus: 8px;
   --radius-content: 12px;
@@ -36,7 +36,7 @@
   --text-display: 2rem;
   --text-clock: 1.35rem;
   --text-feedback: 1.35rem;
-  --text-body: 1rem;
+  --text-body: 0.88rem;
   --text-small: 0.8rem;
   --text-label: 0.75rem;
   --text-meta: 0.6rem;
@@ -45,7 +45,7 @@
   --tracking-heading: 0.1em;
   --duration-fast: 160ms;
   --duration-feedback: 680ms;
-  --duration-wiggle: 400ms;
+  --duration-gameplay-motion: 400ms;
   --duration-slot: 250ms;
   --duration-result: 350ms;
   --duration-discovery: 450ms;
@@ -167,7 +167,7 @@
 
 #corzaguessr .card {
   padding: var(--space-4);
-  border-radius: var(--radius-shell);
+  border-radius: var(--radius-control);
 }
 
 #corzaguessr .stack,
@@ -347,7 +347,7 @@
 }
 
 #corzaguessr .play:not(:disabled) {
-  box-shadow: 0 8px 24px rgb(247 247 247 / 14%);
+  box-shadow: 0 8px 24px var(--control-glow);
 }
 
 #corzaguessr .play svg {
@@ -401,7 +401,7 @@
 
 #corzaguessr .volume-bar.active {
   background: var(--off-white);
-  box-shadow: 0 0 8px rgb(247 247 247 / 18%);
+  box-shadow: 0 0 8px var(--control-glow);
 }
 
 #corzaguessr .volume-control.muted .volume-bar:first-child {
@@ -525,7 +525,7 @@
   z-index: 1;
   width: 3.125%;
   background: rgb(88 87 213 / 30%);
-  transition: width var(--duration-wiggle);
+  transition: width var(--duration-gameplay-motion);
 }
 
 #corzaguessr .fill {
@@ -853,7 +853,7 @@
 }
 
 #corzaguessr .slot.wiggle {
-  animation: wiggle var(--duration-wiggle);
+  animation: wiggle var(--duration-gameplay-motion);
 }
 
 #corzaguessr .blink {
