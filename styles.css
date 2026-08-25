@@ -341,11 +341,10 @@
   min-width: 0;
   margin: 0;
   padding: 0 10px;
-  border-right: var(--line-width) solid var(--line);
   border-radius: 0;
   background: var(--surface-glass);
   color: var(--off-white);
-  box-shadow: none;
+  box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
 }
 
 #corzaguessr .mode-navigation .mode:first-child {
@@ -353,8 +352,8 @@
 }
 
 #corzaguessr .mode-navigation .mode:last-child {
-  border-right: 0;
   border-radius: 0 var(--radius) 0 0;
+  box-shadow: none;
 }
 
 #corzaguessr .mode-navigation .mode::after {
@@ -363,8 +362,8 @@
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
   z-index: 1;
-  border-right-color: transparent;
   background: var(--gradient-background-soft), var(--surface-dark);
+  box-shadow: none;
   cursor: default;
   opacity: 1;
 }
@@ -1638,11 +1637,12 @@
 
   #corzaguessr .mode-navigation .mode {
     border: 0;
-    border-right: var(--line-width) solid var(--line);
-    border-bottom: var(--line-width) solid var(--line);
     border-radius: 0;
     background: transparent;
     color: var(--off-white);
+    box-shadow:
+      inset calc(-1 * var(--line-width)) 0 var(--line),
+      inset 0 calc(-1 * var(--line-width)) var(--line);
   }
 
   #corzaguessr .mode-navigation .mode:first-child {
@@ -1650,17 +1650,17 @@
   }
 
   #corzaguessr .mode-navigation .mode:nth-child(2) {
-    border-right: 0;
     border-radius: 0 var(--radius) 0 0;
+    box-shadow: inset 0 calc(-1 * var(--line-width)) var(--line);
   }
 
   #corzaguessr .mode-navigation .mode:nth-child(n + 3) {
-    border-bottom: 0;
+    box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
   }
 
   #corzaguessr .mode-navigation .mode:last-child {
-    border-right: 0;
     border-radius: 0;
+    box-shadow: none;
   }
 
   #corzaguessr .discovery-button {
