@@ -13,7 +13,7 @@
   --surface-interactive: rgb(255 255 255 / 20%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(255 255 255 / 10%);
-  --scrim: rgb(0 0 0 / 40%);
+  --scrim: rgb(0 0 0 / 50%);
   --control-glow: rgb(247 247 247 / 14%);
   --shadow-surface: 0 6px 18px rgb(0 0 0 / 30%);
   --shadow-text: 0 2px 8px rgb(0 0 0 / 90%);
@@ -24,7 +24,7 @@
   --reward-gold-strong: rgb(255 218 94 / 90%);
   --reward-gold-soft: rgb(255 190 64 / 24%);
   --reward-gold-shadow: rgb(255 196 58 / 50%);
-  --radius: 8px;
+  --radius: 6px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -82,6 +82,7 @@
   margin: var(--space-4) 0 var(--space-6);
   text-align: center;
   font-size: var(--text-display);
+  line-height: 1.33;
 }
 
 #corzaguessr button {
@@ -137,10 +138,10 @@
 }
 
 #corzaguessr .mode-navigation {
-  max-width: 720px;
-  margin: 0 auto var(--space-5);
+  width: 100%;
+  margin: 0;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius) var(--radius) 0 0;
   background: var(--surface-glass);
   backdrop-filter: blur(16px);
   box-shadow: var(--shadow-surface);
@@ -172,6 +173,14 @@
 #corzaguessr .card {
   padding: var(--space-4);
   border-radius: var(--radius);
+}
+
+#corzaguessr .mode-navigation + .card {
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+#corzaguessr .mode-navigation + .card.glass::before {
+  border-top: 0;
 }
 
 #corzaguessr .stack,
@@ -327,12 +336,12 @@
 }
 
 #corzaguessr .mode-navigation .mode:first-child {
-  border-radius: var(--radius) 0 0 var(--radius);
+  border-radius: var(--radius) 0 0;
 }
 
 #corzaguessr .mode-navigation .mode:last-child {
   border-right: 0;
-  border-radius: 0 var(--radius) var(--radius) 0;
+  border-radius: 0 var(--radius) 0 0;
 }
 
 #corzaguessr .mode-navigation .mode::after {
@@ -1616,14 +1625,9 @@
   #corzaguessr .mode-navigation {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: min(100%, 280px);
-    max-width: none;
-    gap: var(--space-2);
-    margin: 0 auto var(--space-4);
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
+    width: 100%;
+    gap: 0;
+    margin: 0;
   }
 
   #corzaguessr .mode {
@@ -1634,10 +1638,29 @@
 
   #corzaguessr .mode-navigation .mode {
     border: 0;
-    border-radius: var(--radius);
-    background: var(--surface-glass);
-    backdrop-filter: blur(16px);
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
     color: var(--off-white);
+  }
+
+  #corzaguessr .mode-navigation .mode:first-child {
+    border-radius: var(--radius) 0 0;
+  }
+
+  #corzaguessr .mode-navigation .mode:nth-child(2) {
+    border-right: 0;
+    border-radius: 0 var(--radius) 0 0;
+  }
+
+  #corzaguessr .mode-navigation .mode:nth-child(n + 3) {
+    border-bottom: 0;
+  }
+
+  #corzaguessr .mode-navigation .mode:last-child {
+    border-right: 0;
+    border-radius: 0;
   }
 
   #corzaguessr .discovery-button {
