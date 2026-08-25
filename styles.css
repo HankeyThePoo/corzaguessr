@@ -538,7 +538,8 @@
 #corzaguessr .snippet {
   z-index: 1;
   width: 3.125%;
-  background: var(--gradient-background-soft);
+  background: var(--gradient);
+  opacity: 20%;
   transition: width var(--duration-snippet);
 }
 
