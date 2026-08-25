@@ -3727,7 +3727,7 @@ var ModalController = class {
 		this.openFrame = 0;
 		this.cancelCloseWait();
 		if (kind === "result") {
-			this.elements.card.classList.add("modal-closing");
+			this.elements.card.classList.add("result-teardown");
 			this.elements.card.classList.remove("modal-visible");
 		} else {
 			this.root.classList.remove("discovery-visible");
@@ -3742,7 +3742,7 @@ var ModalController = class {
 			if (this.kind !== kind || this.transitionGeneration !== generation) return;
 			this.cancelCloseWait();
 			if (kind === "result") {
-				this.elements.card.classList.remove("modal-open", "modal-visible", "modal-closing");
+				this.elements.card.classList.remove("modal-open", "modal-visible", "result-teardown");
 				this.elements.result.setAttribute("aria-hidden", "true");
 			} else {
 				this.root.classList.remove("discovery-open", "discovery-visible");
