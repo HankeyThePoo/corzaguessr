@@ -332,10 +332,14 @@
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"],
-#corzaguessr .play:not(:disabled),
 #corzaguessr button.skip:not(:disabled) {
   background: var(--gradient-background-soft), var(--surface-dark);
   box-shadow: none;
+}
+
+#corzaguessr .play:not(:disabled) {
+  background: var(--gradient);
+  color: var(--near-black);
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
@@ -345,7 +349,6 @@
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after,
-#corzaguessr .play:not(:disabled)::after,
 #corzaguessr button.skip:not(:disabled)::after {
   opacity: 1;
 }
@@ -365,6 +368,10 @@
   width: 34px;
   height: 34px;
   fill: var(--off-white);
+}
+
+#corzaguessr .play:not(:disabled) svg {
+  fill: var(--near-black);
 }
 
 #corzaguessr .volume-control {
@@ -469,12 +476,21 @@
 }
 
 #corzaguessr .timeline {
+  --timeline-border: var(--line);
+  --timeline-progress: var(--off-white);
+  --timeline-marker: var(--line);
   position: relative;
   isolation: isolate;
   height: 46px;
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--surface-glass);
+}
+
+#corzaguessr .game-surface:has(.mode[aria-pressed="true"]) .timeline {
+  --timeline-border: var(--gradient);
+  --timeline-progress: var(--gradient);
+  --timeline-marker: var(--gradient);
 }
 
 #corzaguessr .timeline::before {
@@ -484,7 +500,7 @@
   z-index: 4;
   padding: var(--gradient-border-width);
   border-radius: inherit;
-  background: var(--gradient);
+  background: var(--timeline-border);
   pointer-events: none;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -496,7 +512,7 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  background: var(--gradient);
+  background: var(--timeline-progress);
   opacity: 0;
   pointer-events: none;
   transform: scaleX(0);
@@ -533,7 +549,7 @@
 #corzaguessr .snippet {
   z-index: 1;
   width: 3.125%;
-  background: var(--gradient);
+  background: var(--timeline-progress);
   opacity: 20%;
   transition: width var(--duration-snippet);
 }
@@ -541,7 +557,7 @@
 #corzaguessr .fill {
   right: 0;
   z-index: 2;
-  background: var(--gradient);
+  background: var(--timeline-progress);
   transform: scaleX(0);
   transform-origin: left;
 }
@@ -605,7 +621,7 @@
   inset: 0 auto 0;
   z-index: 0;
   width: 2px;
-  background: var(--gradient);
+  background: var(--timeline-marker);
 }
 
 #corzaguessr.timed .tick,
