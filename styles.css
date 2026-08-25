@@ -9,7 +9,7 @@
     rgb(123 176 247 / 12%) 50%,
     rgb(141 100 245 / 12%)
   );
-  --surface-glass: rgb(247 247 247 / 2%);
+  --surface-glass: rgb(0 0 0 / 20%);
   --surface-interactive: rgb(247 247 247 / 20%);
   --surface-dark: rgb(0 0 0 / 40%);
   --line: rgb(247 247 247 / 28%);
