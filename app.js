@@ -1,4 +1,3 @@
-//#region \0vite/modulepreload-polyfill.js
 (function polyfill() {
 	const relList = document.createElement("link").relList;
 	if (relList && relList.supports && relList.supports("modulepreload")) return;
@@ -28,8 +27,6 @@
 		fetch(link.href, fetchOpts);
 	}
 })();
-//#endregion
-//#region src/application/catalog.ts
 var RETRY_DELAY_MS = 5e3;
 var LOADING_GRACE_MS = 2e3;
 var Catalog = class {
@@ -92,8 +89,6 @@ var Catalog = class {
 function isRetryable(error) {
 	return !(typeof error === "object" && error !== null && "retryable" in error && error.retryable === false);
 }
-//#endregion
-//#region src/domain/mode-rules.ts
 var SNIPPET_SECONDS = [
 	1,
 	2,
@@ -250,8 +245,6 @@ function updateSpeedrunBest(bests, won, elapsedMs, trackCount) {
 		newPersonalBest: true
 	};
 }
-//#endregion
-//#region src/domain/game-session.ts
 var GameSession = class {
 	modeState = null;
 	roundState = null;
@@ -421,8 +414,6 @@ var GameSession = class {
 		};
 	}
 };
-//#endregion
-//#region src/domain/track-catalog.ts
 function summarizeDiscovery(tracks, discoveries) {
 	const discovered = tracks.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
 	const total = tracks.length;
@@ -546,8 +537,6 @@ function clampRandom(value) {
 function isReleasedBy(track, date) {
 	return track.releaseDate !== null && track.releaseDate <= date;
 }
-//#endregion
-//#region src/application/copy.ts
 var COPY = {
 	modePrompt: "SELECT A MODE TO BEGIN",
 	loadingCatalog: "LOADING TRACKLIST...",
@@ -559,8 +548,6 @@ var COPY = {
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
 };
-//#endregion
-//#region src/application/daily-share.ts
 var SHARE_URL = "https://stolenvalorhq.com/corzaguessr";
 var MONTHS$1 = [
 	"January",
@@ -587,8 +574,6 @@ function formatShareDate(value) {
 	const monthName = month ? MONTHS$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
-//#endregion
-//#region src/application/game-view-model.ts
 function presentationPhase(session, transport) {
 	if (session.result) return "result";
 	if (transport.status === "retry") return "retry";
@@ -698,8 +683,6 @@ function composeGameViewModel(input) {
 		overlay: input.overlay
 	};
 }
-//#endregion
-//#region src/application/game-controller.ts
 var GameController = class {
 	catalog;
 	progress;
@@ -1253,8 +1236,6 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 		};
 	}
 }
-//#endregion
-//#region src/domain/progress-defaults.ts
 function emptyDailyProgress() {
 	return {
 		date: "",
@@ -1288,8 +1269,6 @@ function emptyPersonalBests() {
 		}
 	};
 }
-//#endregion
-//#region src/application/progress.ts
 var Progress = class {
 	storage;
 	options;
@@ -1496,13 +1475,9 @@ function cloneBests(bests) {
 		speedrun: { ...bests.speedrun }
 	};
 }
-//#endregion
-//#region src/application/track-assets.ts
 function trackAssetNumber(dailyNumber) {
 	return String(dailyNumber).padStart(2, "0");
 }
-//#endregion
-//#region src/platform/catalog-source.ts
 var CatalogLoadError = class extends Error {
 	kind;
 	retryable;
@@ -1550,8 +1525,6 @@ var CatalogSource = class {
 		}
 	}
 };
-//#endregion
-//#region src/platform/daily-schedule.ts
 var DAILY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
 	timeZone: "Europe/Budapest",
 	year: "numeric",
@@ -1649,8 +1622,6 @@ var DailySchedule = class {
 		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
 	}
 };
-//#endregion
-//#region src/platform/game-clock.ts
 var browserScheduler$1 = {
 	requestFrame: (callback) => requestAnimationFrame(callback),
 	cancelFrame: (handle) => cancelAnimationFrame(handle),
@@ -1824,8 +1795,6 @@ var GameClock = class {
 		this.timer = 0;
 	}
 };
-//#endregion
-//#region src/platform/progress-storage.ts
 var STORAGE_KEYS = {
 	discoveries: "corzaguessr:discoveries",
 	daily: "corzaguessr:daily",
@@ -2007,8 +1976,6 @@ var ProgressStorage = class {
 		}
 	}
 };
-//#endregion
-//#region src/platform/share-clipboard.ts
 var ShareClipboard = class {
 	target;
 	constructor(target = navigator) {
@@ -2024,15 +1991,11 @@ var ShareClipboard = class {
 		}
 	}
 };
-//#endregion
-//#region src/platform/spotify-link.ts
 var SpotifyLink = class {
 	openSpotify(trackId) {
 		window.open(`https://open.spotify.com/track/${trackId}`, "_blank", "noopener,noreferrer");
 	}
 };
-//#endregion
-//#region src/platform/volume-settings.ts
 var VOLUME_STORAGE_KEY = "corzaguessr:volume";
 var VolumeSettings = class {
 	storage;
@@ -2071,16 +2034,10 @@ function browserStorage() {
 		return null;
 	}
 }
-//#endregion
-//#region src/playback/audio-player.ts
 var browserTiming = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimeout: (handle) => window.clearTimeout(handle)
 };
-/**
-* The only module that touches HTMLAudioElement. Slot and play generations make
-* callbacks from released sources and superseded play promises harmless.
-*/
 var AudioPlayer = class {
 	sourceForRound;
 	callbacks;
@@ -2521,8 +2478,6 @@ function isNamedError(error, name) {
 function samePlaybackOperation(left, right) {
 	return Boolean(left && left.slotId === right.slotId && left.slotGeneration === right.slotGeneration && left.roundId === right.roundId && left.playGeneration === right.playGeneration);
 }
-//#endregion
-//#region src/playback/playback.ts
 var browserScheduler = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimeout: (handle) => window.clearTimeout(handle),
@@ -2530,10 +2485,6 @@ var browserScheduler = {
 };
 var MAXIMUM_AUTOMATIC_RECOVERIES = 2;
 var MAXIMUM_STANDBY_RECOVERIES = 2;
-/**
-* Owns round transport, grace notices, prefetch, and recovery. It deliberately
-* leaves HTMLMediaElement details to AudioPlayer and game state to GameSession.
-*/
 var Playback = class {
 	audio;
 	callbacks;
@@ -2933,16 +2884,12 @@ var Playback = class {
 		};
 	}
 };
-//#endregion
-//#region src/ui/motion-scheduler.ts
 var browserUiScheduler = {
 	requestFrame: (callback) => window.requestAnimationFrame(callback),
 	cancelFrame: (handle) => window.cancelAnimationFrame(handle),
 	setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimer: (handle) => window.clearTimeout(handle)
 };
-//#endregion
-//#region src/ui/attempt-history-view.ts
 var AttemptHistoryView = class {
 	elements;
 	durations;
@@ -3216,8 +3163,6 @@ function toneClasses(tone) {
 	if (tone === "final-prompt" || tone === "technical") return ["blink"];
 	return [];
 }
-//#endregion
-//#region src/ui/track-search.ts
 var TOKEN_ALIASES = {
 	featuring: "feat",
 	feat: "feat",
@@ -3268,8 +3213,6 @@ function tokenPositions(titleTokens, queryTokens, matches) {
 	}
 	return positionTotal;
 }
-//#endregion
-//#region src/ui/autocomplete.ts
 var MAX_SUGGESTIONS = 5;
 var Autocomplete = class {
 	input;
@@ -3390,8 +3333,6 @@ var Autocomplete = class {
 		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
-//#endregion
-//#region src/ui/date-format.ts
 var MONTHS = [
 	"JANUARY",
 	"FEBRUARY",
@@ -3414,8 +3355,6 @@ function formatOrdinalDate(value) {
 	const remainder = numericDay % 100;
 	return `${monthName} ${numericDay}${remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH"}, ${year}`;
 }
-//#endregion
-//#region src/ui/discovery-list-view.ts
 function formatReleaseDate(value) {
 	return value === null ? "TBA" : formatOrdinalDate(value);
 }
@@ -3588,8 +3527,6 @@ function splitTrackTitle(value) {
 	const separator = value.indexOf(" - ");
 	return separator < 0 ? ["", value] : [value.slice(0, separator), value.slice(separator + 3)];
 }
-//#endregion
-//#region src/ui/focus-navigation.ts
 var MODES = [
 	"daily",
 	"classic",
@@ -3639,8 +3576,6 @@ function available(state, target) {
 function isMode(target) {
 	return target === "daily" || target === "blitz" || target === "classic" || target === "survival";
 }
-//#endregion
-//#region src/ui/modal-controller.ts
 var ModalController = class {
 	root;
 	elements;
@@ -3847,8 +3782,6 @@ var ModalController = class {
 		this.closeListener = null;
 	}
 };
-//#endregion
-//#region src/ui/result-presenter.ts
 function formatClock(seconds) {
 	const safe = Math.max(0, seconds);
 	return `${Math.floor(safe / 60)}:${String(Math.floor(safe) % 60).padStart(2, "0")}`;
@@ -3893,8 +3826,6 @@ function createResultRow(row, newPersonalBest) {
 	}));
 	return module;
 }
-//#endregion
-//#region src/ui/progress-summary.ts
 var EMPTY_RECORD_VALUE = "---";
 var EMPTY_RECORD_DETAIL = "NO RECORD";
 var ProgressSummaryView = class {
@@ -3960,8 +3891,6 @@ function rows(bests, daily, dailyDate) {
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
-//#endregion
-//#region src/ui/timeline-view.ts
 var TimelineView = class {
 	elements;
 	durations;
@@ -4085,8 +4014,6 @@ var TimelineView = class {
 		this.elements.fill.style.transition = "";
 	}
 };
-//#endregion
-//#region src/ui/volume-control.ts
 var BAR_COUNT = 8;
 var VolumeControl = class {
 	container;
@@ -4122,8 +4049,6 @@ var VolumeControl = class {
 		});
 	}
 };
-//#endregion
-//#region src/ui/game-view.ts
 var ICONS = {
 	play: "M8 5v14l11-7z",
 	pause: "M6 5h4v14H6zM14 5h4v14h-4z",
@@ -4732,8 +4657,6 @@ function markup() {
 		`<audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`
 	].join("");
 }
-//#endregion
-//#region src/main.ts
 var JSDELIVR_REPOSITORY_BASE_URL = new URL("https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@main/");
 var root = document.querySelector("#corzaguessr");
 if (root && !root.dataset.corzaguessrReady) {
@@ -4816,4 +4739,3 @@ if (root && !root.dataset.corzaguessrReady) {
 	});
 	window.addEventListener("pageshow", () => controller.handleVisibilityVisible());
 }
-//#endregion
