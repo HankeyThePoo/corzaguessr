@@ -297,9 +297,10 @@
   max-width: none;
   margin: calc(-1 * var(--space-4)) auto var(--space-4);
   padding: 0 var(--space-3);
+  border: 1px solid var(--line);
   background: var(--surface-glass);
   backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-surface);
+  box-shadow: none;
   color: var(--off-white);
 }
 
