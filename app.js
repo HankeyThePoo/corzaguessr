@@ -4209,12 +4209,9 @@ var GameView = class {
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
-		if (typeof ResizeObserver !== "undefined") {
-			new ResizeObserver(() => {
-				if (this.modal.discoveryLayoutActive) this.elements.discoveryShell.style.height = `${this.elements.discoveryPanel.offsetHeight}px`;
-			}).observe(this.elements.discoveryPanel);
-			new ResizeObserver(() => this.positionModeContour()).observe(this.elements.gameSurface);
-		}
+		if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => {
+			if (this.modal.discoveryLayoutActive) this.elements.discoveryShell.style.height = `${this.elements.discoveryPanel.offsetHeight}px`;
+		}).observe(this.elements.discoveryPanel);
 	}
 	bind(handlers) {
 		this.handlers = handlers;
@@ -4281,7 +4278,6 @@ var GameView = class {
 			button.disabled = state.appStatus === "error" || selected || state.overlay === "discovery";
 			button.setAttribute("aria-pressed", String(selected));
 		}
-		this.positionModeContour();
 		this.elements.icon.setAttribute("d", ICONS[state.playbackIcon]);
 		this.elements.play.setAttribute("aria-label", state.playbackIcon === "play" ? "PLAY" : state.playbackIcon === "pause" ? "PAUSE" : "STOP");
 		this.elements.skip.textContent = state.skipText;
@@ -4611,14 +4607,6 @@ var GameView = class {
 		if (element instanceof HTMLButtonElement && element.disabled) return false;
 		return element.offsetParent !== null;
 	}
-	positionModeContour() {
-		const selected = Object.values(this.modeButtons).find((button) => button.getAttribute("aria-pressed") === "true");
-		if (!selected) return;
-		const surfaceBounds = this.elements.gameSurface.getBoundingClientRect();
-		const selectedBounds = selected.getBoundingClientRect();
-		this.elements.gameSurface.style.setProperty("--active-mode-left", `${selectedBounds.left - surfaceBounds.left}px`);
-		this.elements.gameSurface.style.setProperty("--mode-width", `${selectedBounds.width}px`);
-	}
 	handlePointerMove(event) {
 		if (event.pointerType !== "mouse" || !this.finePointer.matches) return;
 		this.setInputModality("pointer-fine");
@@ -4663,7 +4651,6 @@ var GameView = class {
 		resultSecondary.append(resultSecondaryLabel);
 		return {
 			headerAction: this.required(".header-action"),
-			gameSurface: this.required(".game-surface"),
 			modes: this.required(".modes"),
 			board: this.required(".board"),
 			currentSlot: this.required(".current-slot"),
