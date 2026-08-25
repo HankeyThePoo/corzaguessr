@@ -937,7 +937,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
   width: 100%;
   max-height: min(82dvh, 650px);
   padding: var(--space-4);
@@ -947,7 +947,7 @@
 }
 
 #corzaguessr .corzaguessr-modal h3 {
-  margin: var(--space-1);
+  margin: 0;
 }
 
 #corzaguessr .result-meta {
@@ -958,8 +958,8 @@
 #corzaguessr .result-module {
   display: grid;
   gap: var(--space-1);
-  padding-top: var(--space-3);
-  margin-top: var(--space-3);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
   border-top: var(--line-width) solid var(--line);
 }
 
@@ -1025,18 +1025,18 @@
 #corzaguessr .discovery-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: var(--space-2);
+  gap: var(--space-4);
   height: auto;
   max-height: min(78dvh, 650px);
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  padding: var(--space-4);
   overflow: hidden;
 }
 
 #corzaguessr .progress-summary {
   display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-1);
-  padding-top: var(--space-3);
+  gap: var(--space-4);
+  margin-top: 0;
+  padding-top: var(--space-4);
   border-top: var(--line-width) solid var(--line);
 }
 
@@ -1100,7 +1100,7 @@
 #corzaguessr .discovery-title {
   display: grid;
   gap: var(--space-1);
-  margin: 0 0 var(--space-1);
+  margin: 0;
   text-align: center;
   font-size: var(--text-body);
 }
@@ -1122,16 +1122,16 @@
 }
 
 #corzaguessr .discovery-panel > .actions {
-  margin-top: var(--space-1);
-  padding-top: var(--space-3);
+  margin-top: 0;
+  padding-top: var(--space-4);
   border-top: var(--line-width) solid var(--line);
 }
 
 #corzaguessr .reset-confirmation {
   display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-  padding-top: var(--space-3);
+  gap: var(--space-1);
+  margin-top: 0;
+  padding-top: var(--space-4);
   border-top: var(--line-width) solid var(--line);
   text-align: center;
   text-transform: uppercase;
@@ -1153,7 +1153,7 @@
 }
 
 #corzaguessr .reset-confirmation .actions {
-  margin-top: var(--space-1);
+  margin-top: var(--space-3);
 }
 
 #corzaguessr .discovery-items {
@@ -1462,30 +1462,12 @@
   }
 
   #corzaguessr .discovery-panel {
-    --progress-section-spacing: var(--space-1);
     height: 80dvh;
     max-height: 80dvh;
-    gap: var(--progress-section-spacing);
-    padding-top: var(--progress-section-spacing);
   }
 
   #corzaguessr .discovery-items {
     max-height: none;
-  }
-
-  #corzaguessr .progress-summary {
-    gap: var(--progress-section-spacing);
-    margin-top: 0;
-    padding-top: var(--progress-section-spacing);
-  }
-
-  #corzaguessr .discovery-title {
-    margin-bottom: 0;
-  }
-
-  #corzaguessr .discovery-panel > .actions {
-    margin-top: 0;
-    padding-top: var(--progress-section-spacing);
   }
 
   #corzaguessr .progress-bests {
@@ -1719,11 +1701,6 @@
   #corzaguessr .result-shell,
   #corzaguessr .discovery-shell {
     width: calc(100% - 16px);
-  }
-
-  #corzaguessr .corzaguessr-modal,
-  #corzaguessr .discovery-panel {
-    padding: var(--space-3);
   }
 
   #corzaguessr .actions {
