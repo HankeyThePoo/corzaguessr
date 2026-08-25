@@ -4003,11 +4003,11 @@ var TimelineView = class {
 			});
 			return;
 		}
-		if (this.reducedMotion.matches || this.durations.progress <= 0) return;
+		if (this.reducedMotion.matches || this.durations.reset <= 0) return;
 		this.elements.fill.style.transform = `scaleX(${previousScale})`;
 		this.elements.fill.offsetWidth;
-		this.elements.fill.style.transition = "transform var(--duration-progress) ease-out";
-		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.progress, generation, (event) => {
+		this.elements.fill.style.transition = "transform var(--duration-timeline-reset) ease-out";
+		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.reset, generation, (event) => {
 			const transition = event;
 			return !transition.propertyName || transition.propertyName === "transform";
 		});
@@ -4016,7 +4016,7 @@ var TimelineView = class {
 		if (!seconds) return;
 		this.clearSurvivalFeedback();
 		this.elements.timeChangeText.textContent = seconds > 0 ? `+${seconds}S` : `${seconds}S`;
-		if (this.durations.feedback <= 0) {
+		if (this.durations.survivalFeedback <= 0) {
 			this.clearSurvivalFeedback();
 			return;
 		}
@@ -4038,7 +4038,7 @@ var TimelineView = class {
 			};
 			this.elements.timeChangeText.addEventListener("animationend", this.survivalListener);
 		}
-		this.survivalTimer = this.scheduler.setTimer(finish, this.durations.feedback);
+		this.survivalTimer = this.scheduler.setTimer(finish, this.durations.survivalFeedback);
 	}
 	clearSurvivalFeedback() {
 		this.survivalGeneration += 1;
@@ -4170,15 +4170,20 @@ var GameView = class {
 		};
 		const styles = getComputedStyle(root);
 		this.durations = {
-			feedback: duration(styles, "--duration-feedback"),
-			wiggle: duration(styles, "--duration-gameplay-motion"),
+			survivalFeedback: duration(styles, "--duration-survival-feedback"),
+			shareVisible: duration(styles, "--duration-share-visible"),
+			shareFade: duration(styles, "--duration-share-fade"),
+			wiggle: duration(styles, "--duration-wiggle"),
 			slot: duration(styles, "--duration-slot"),
-			result: duration(styles, "--duration-result"),
-			discovery: duration(styles, "--duration-discovery"),
-			progress: duration(styles, "--duration-progress"),
-			rewind: duration(styles, "--duration-rewind")
+			resultModal: duration(styles, "--duration-result-modal"),
+			discoveryModal: duration(styles, "--duration-discovery-modal"),
+			timelineReset: duration(styles, "--duration-timeline-reset"),
+			timelineRewind: duration(styles, "--duration-timeline-rewind")
 		};
-		this.modal = new ModalController(root, this.elements, this.durations, this.reducedMotion, (message) => this.announce(message));
+		this.modal = new ModalController(root, this.elements, {
+			result: this.durations.resultModal,
+			discovery: this.durations.discoveryModal
+		}, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.elements.currentSlot.parentElement,
@@ -4187,7 +4192,7 @@ var GameView = class {
 		}, {
 			slot: this.durations.slot,
 			wiggle: this.durations.wiggle,
-			collapse: () => this.modal.openKind === "result" ? this.durations.result : this.durations.slot
+			collapse: () => this.modal.openKind === "result" ? this.durations.resultModal : this.durations.slot
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
@@ -4196,7 +4201,11 @@ var GameView = class {
 			feedback: this.elements.feedback,
 			timeChange: this.elements.timeChange,
 			timeChangeText: this.elements.timeChangeText
-		}, this.durations, this.reducedMotion);
+		}, {
+			reset: this.durations.timelineReset,
+			rewind: this.durations.timelineRewind,
+			survivalFeedback: this.durations.survivalFeedback
+		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
@@ -4367,7 +4376,7 @@ var GameView = class {
 		this.resultCopyFeedbackTimer = window.setTimeout(() => {
 			this.resultCopyFeedbackTimer = 0;
 			if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.swapResultSecondaryLabel("SHARE", generation);
-		}, this.durations.feedback);
+		}, this.durations.shareVisible);
 	}
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
@@ -4495,7 +4504,7 @@ var GameView = class {
 			if (generation !== this.resultCopyFeedbackGeneration) return;
 			label.textContent = text;
 			label.classList.remove("fading");
-		}, this.durations.rewind);
+		}, this.durations.shareFade);
 	}
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
