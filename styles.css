@@ -51,7 +51,6 @@
   --duration-snippet: 400ms;
   --duration-slot: 250ms;
   --duration-discovery-card: 250ms;
-  --duration-result-modal: 350ms;
   --duration-discovery-scrim: 350ms;
   --duration-discovery-modal: 450ms;
   --duration-timeline-reset: 300ms;
@@ -1010,22 +1009,6 @@
 #corzaguessr .modal-open .result-modal {
   pointer-events: auto;
   visibility: visible;
-}
-
-#corzaguessr .result-teardown {
-  --slot-motion-duration: var(--duration-result-modal);
-}
-
-#corzaguessr .result-teardown .result-modal {
-  transition: background var(--duration-result-modal) ease;
-}
-
-#corzaguessr .result-teardown .snippet {
-  transition-duration: var(--duration-result-modal);
-}
-
-#corzaguessr .result-teardown .result-shell {
-  visibility: hidden;
 }
 
 #corzaguessr .modal-visible .result-modal {
