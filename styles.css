@@ -238,18 +238,11 @@
 }
 
 #corzaguessr .guess-lane .skip-row {
-  width: 0;
   min-width: 0;
   overflow: hidden;
   transition:
     opacity var(--slot-motion-duration) ease,
-    translate var(--slot-motion-duration) ease,
-    width var(--slot-motion-duration) ease;
-}
-
-#corzaguessr:has(.current-slot:not([hidden])) .guess-lane .skip-row,
-#corzaguessr:has(.slots:not(:empty)) .guess-lane .skip-row {
-  width: var(--attempt-action-width);
+    translate var(--slot-motion-duration) ease;
 }
 
 #corzaguessr .guess-lane .skip {
