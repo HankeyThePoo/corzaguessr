@@ -220,17 +220,8 @@
   --attempt-copy-offset: calc(var(--attempt-action-width) + var(--space-4));
   --attempt-copy-shift: calc(min(64px, 17%) + var(--space-2));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 0fr;
-  align-items: center;
-  gap: 0;
-  transition:
-    grid-template-columns var(--slot-motion-duration) ease,
-    gap var(--slot-motion-duration) ease;
-}
-
-#corzaguessr:has(.current-slot:not([hidden])) .guess-lane,
-#corzaguessr:has(.slots:not(:empty)) .guess-lane {
   grid-template-columns: minmax(0, 1fr) var(--attempt-action-width);
+  align-items: center;
   gap: var(--space-4);
 }
 
@@ -240,10 +231,6 @@
 
 #corzaguessr .guess-lane .skip-row {
   min-width: 0;
-  overflow: hidden;
-  transition:
-    opacity var(--slot-motion-duration) ease,
-    translate var(--slot-motion-duration) ease;
 }
 
 #corzaguessr .guess-lane .skip {
@@ -832,13 +819,11 @@
   white-space: nowrap;
 }
 
-#corzaguessr:has(.current-slot:not([hidden])) .guess-lane input,
-#corzaguessr:has(.slots:not(:empty)) .guess-lane input {
+#corzaguessr .guess-lane input {
   text-indent: var(--attempt-copy-offset);
 }
 
-#corzaguessr:has(.current-slot:not([hidden])) .guess-lane .ruleset-track,
-#corzaguessr:has(.slots:not(:empty)) .guess-lane .ruleset-track {
+#corzaguessr .guess-lane .ruleset-track {
   translate: var(--attempt-copy-shift) 0;
 }
 
@@ -911,8 +896,7 @@
   color: var(--near-black);
 }
 
-#corzaguessr .slot,
-#corzaguessr .skip-row {
+#corzaguessr .slot {
   transition:
     opacity var(--slot-motion-duration) ease,
     translate var(--slot-motion-duration) ease;
@@ -941,8 +925,7 @@
   background: var(--surface-dark);
 }
 
-#corzaguessr .slot.fade,
-#corzaguessr .skip-row.fade {
+#corzaguessr .slot.fade {
   opacity: 0;
   translate: 0 -8px;
 }
