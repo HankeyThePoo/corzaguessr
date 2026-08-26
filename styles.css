@@ -218,31 +218,42 @@
 
 #corzaguessr .guess-lane {
   --attempt-action-width: min(128px, 34%);
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0fr;
+  align-items: center;
+  gap: 0;
+  transition:
+    grid-template-columns var(--slot-motion-duration) ease,
+    gap var(--slot-motion-duration) ease;
 }
 
-#corzaguessr .guess-lane .guess {
-  padding-right: calc(var(--attempt-action-width) + var(--space-3));
+#corzaguessr:has(.current-slot:not([hidden])) .guess-lane,
+#corzaguessr:has(.slots:not(:empty)) .guess-lane {
+  grid-template-columns: minmax(0, 1fr) var(--attempt-action-width);
+  gap: var(--space-4);
 }
 
-#corzaguessr .guess-lane .ruleset {
-  padding-inline: calc(var(--attempt-action-width) + var(--space-3));
+#corzaguessr .guess-lane .auto {
+  min-width: 0;
 }
 
 #corzaguessr .guess-lane .skip-row {
-  position: absolute;
-  z-index: 4;
-  top: 3px;
-  right: 3px;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  transition:
+    opacity var(--slot-motion-duration) ease,
+    translate var(--slot-motion-duration) ease,
+    width var(--slot-motion-duration) ease;
+}
+
+#corzaguessr:has(.current-slot:not([hidden])) .guess-lane .skip-row,
+#corzaguessr:has(.slots:not(:empty)) .guess-lane .skip-row {
   width: var(--attempt-action-width);
 }
 
 #corzaguessr .guess-lane .skip {
   width: 100%;
-}
-
-#corzaguessr:has(.current-slot[hidden]):has(.slots:empty) .guess-lane .skip-row {
-  display: none;
 }
 
 #corzaguessr .slots:empty {
