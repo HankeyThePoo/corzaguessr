@@ -3001,11 +3001,7 @@ var AttemptHistoryView = class {
 		return !this.elements.current.hidden || this.elements.history.children.length > 0;
 	}
 	collapseAttempts() {
-		const fading = [
-			this.elements.action,
-			...!this.elements.current.hidden ? [this.elements.current] : [],
-			...[...this.elements.history.children]
-		];
+		const fading = [...!this.elements.current.hidden ? [this.elements.current] : [], ...[...this.elements.history.children]];
 		this.startCollapse(this.elements.container, fading, this.durations.collapse(), () => {
 			const pending = this.pendingSnapshot;
 			this.pendingSnapshot = null;
@@ -3019,12 +3015,10 @@ var AttemptHistoryView = class {
 		this.cancelCollapse();
 		if (this.reducedMotion.matches || duration <= 0) {
 			container.style.height = "";
-			this.elements.action.classList.remove("fade");
 			return;
 		}
 		const targetHeight = container.offsetHeight;
 		container.style.height = "0px";
-		this.fadeIn(this.elements.action);
 		container.offsetHeight;
 		container.style.height = `${targetHeight}px`;
 		const generation = ++this.renderGeneration;
@@ -3119,8 +3113,6 @@ var AttemptHistoryView = class {
 		this.elements.current.dataset.currentKey = "";
 		this.elements.current.textContent = "";
 		this.elements.current.hidden = true;
-		this.elements.action.classList.remove("fade");
-		this.elements.action.style.transition = "";
 		this.elements.container.style.height = "";
 		this.elements.history.replaceChildren();
 		this.elements.history.style.height = "";
@@ -4132,7 +4124,6 @@ var GameView = class {
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
-			action: this.elements.skipRow,
 			current: this.elements.currentSlot,
 			history: this.elements.slots
 		}, {
