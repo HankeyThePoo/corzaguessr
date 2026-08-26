@@ -789,8 +789,6 @@ var GameController = class {
 				overlay: "result",
 				outcome: "restart"
 			})) return;
-			if (mode === "daily" && this.latestDailyDate) this.dailyDate = this.latestDailyDate;
-			this.resetForMode(mode);
 			return;
 		}
 		this.resetForMode(mode);
@@ -830,7 +828,13 @@ var GameController = class {
 			if (request.outcome === "completed-daily") {
 				this.startDailyCountdown();
 				this.session.dismissResult();
-			} else this.prime();
+			} else {
+				const mode = this.session.snapshot.mode;
+				if (!mode) return;
+				if (mode === "daily" && this.latestDailyDate) this.dailyDate = this.latestDailyDate;
+				this.resetForMode(mode);
+				return;
+			}
 			this.render();
 			return;
 		}
