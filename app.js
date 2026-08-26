@@ -1009,31 +1009,16 @@ var GameController = class {
 			this.view.present({ type: "gameplay-ready" });
 			return;
 		}
-		if (shortcut) {
-			const snapshot = this.clock.pause();
-			this.playback.pause();
-			this.session.markRoundStopped();
-			this.playback.replay(round, snapshot.elapsedMs > 0);
-			this.view.present({ type: "playback-restarted" });
-			this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
-			this.render();
-			this.view.present({ type: "gameplay-ready" });
-		} else if (requested) {
-			this.clock.pause();
-			this.playback.pause();
-			this.view.present({ type: "playback-restarted" });
-			this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
-			this.render();
-			this.view.present({ type: "gameplay-ready" });
-		} else {
-			const elapsed = this.clock.snapshot().elapsedMs;
-			this.session.markRoundStopped();
-			this.playback.replay(round, elapsed > 0);
-			this.view.present({ type: "playback-restarted" });
-			this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
-			this.render();
-			this.view.present({ type: "gameplay-ready" });
-		}
+		const stopping = requested && !shortcut;
+		const pausing = requested || shortcut;
+		const elapsed = pausing ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
+		if (pausing) this.playback.pause();
+		this.session.markRoundStopped();
+		if (!stopping) this.playback.replay(round, elapsed > 0 || !state.roundHeard);
+		this.view.present({ type: "playback-restarted" });
+		this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
+		this.render();
+		this.view.present({ type: "gameplay-ready" });
 	}
 	resolveAttempt(outcome, guessed) {
 		const state = this.session.snapshot;
