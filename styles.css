@@ -218,6 +218,8 @@
 
 #corzaguessr .guess-lane {
   --attempt-action-width: min(128px, 34%);
+  --attempt-copy-offset: calc(var(--attempt-action-width) + var(--space-4));
+  --attempt-copy-shift: calc(min(64px, 17%) + var(--space-2));
   display: grid;
   grid-template-columns: minmax(0, 1fr) 0fr;
   align-items: center;
@@ -788,13 +790,14 @@
   background: var(--surface-dark);
   color: var(--off-white);
   font: inherit;
-  font-size: var(--text-body);
-  line-height: 18px;
+  line-height: 20px;
   text-align: center;
+  text-indent: 0;
   text-transform: uppercase;
   transition:
     background var(--duration-fast) ease,
-    border-color var(--duration-fast) ease;
+    border-color var(--duration-fast) ease,
+    text-indent var(--slot-motion-duration) ease;
 }
 
 #corzaguessr input::placeholder {
@@ -814,8 +817,7 @@
   background: var(--surface-dark);
   color: var(--off-white);
   font: inherit;
-  font-size: var(--text-body);
-  line-height: 18px;
+  line-height: 20px;
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -826,7 +828,19 @@
   justify-content: center;
   min-width: 100%;
   opacity: 1;
+  translate: 0 0;
+  transition: translate var(--slot-motion-duration) ease;
   white-space: nowrap;
+}
+
+#corzaguessr:has(.current-slot:not([hidden])) .guess-lane input,
+#corzaguessr:has(.slots:not(:empty)) .guess-lane input {
+  text-indent: var(--attempt-copy-offset);
+}
+
+#corzaguessr:has(.current-slot:not([hidden])) .guess-lane .ruleset-track,
+#corzaguessr:has(.slots:not(:empty)) .guess-lane .ruleset-track {
+  translate: var(--attempt-copy-shift) 0;
 }
 
 #corzaguessr .ruleset-copy {
