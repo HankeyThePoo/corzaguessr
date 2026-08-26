@@ -3689,10 +3689,8 @@ var ModalController = class {
 		this.scheduler.cancelFrame(this.openFrame);
 		this.openFrame = 0;
 		this.cancelCloseWait();
-		if (kind === "result") {
-			this.elements.card.classList.add("result-teardown");
-			this.elements.card.classList.remove("modal-visible");
-		} else {
+		if (kind === "result") this.elements.card.classList.remove("modal-visible");
+		else {
 			this.root.classList.remove("discovery-visible");
 			this.elements.discoveryShell.style.height = `${this.elements.discoveryShell.offsetHeight}px`;
 			this.elements.discoveryShell.offsetHeight;
@@ -3700,12 +3698,11 @@ var ModalController = class {
 			this.elements.discoveryButton.setAttribute("aria-expanded", "false");
 		}
 		onStart();
-		const duration = this.reducedMotion.matches ? 0 : kind === "result" ? this.durations.result : this.durations.discovery;
 		const finish = () => {
 			if (this.kind !== kind || this.transitionGeneration !== generation) return;
 			this.cancelCloseWait();
 			if (kind === "result") {
-				this.elements.card.classList.remove("modal-open", "modal-visible", "result-teardown");
+				this.elements.card.classList.remove("modal-open", "modal-visible");
 				this.elements.result.setAttribute("aria-hidden", "true");
 			} else {
 				this.root.classList.remove("discovery-open", "discovery-visible");
@@ -3723,18 +3720,17 @@ var ModalController = class {
 			const target = focusOverride && this.canFocus(focusOverride) ? focusOverride : preferred && this.canFocus(preferred) ? preferred : fallbackFocus;
 			if (this.canFocus(target)) target.focus({ preventScroll: true });
 		};
-		if (duration <= 0) {
+		if (kind === "result" || this.reducedMotion.matches) {
 			finish();
 			return true;
 		}
-		const transitionTarget = kind === "result" ? this.elements.result : this.elements.discoveryShell;
-		const transitionProperty = kind === "result" ? "background-color" : "height";
+		const transitionTarget = this.elements.discoveryShell;
 		this.closeListener = (event) => {
 			const transition = event;
-			if (event.target === transitionTarget && (!transition.propertyName || transition.propertyName === transitionProperty || kind === "result" && transition.propertyName === "background")) finish();
+			if (event.target === transitionTarget && (!transition.propertyName || transition.propertyName === "height")) finish();
 		};
 		transitionTarget.addEventListener("transitionend", this.closeListener);
-		this.closeTimer = this.scheduler.setTimer(finish, duration);
+		this.closeTimer = this.scheduler.setTimer(finish, this.durations.discovery);
 		return true;
 	}
 	trapFocus(event) {
@@ -4128,15 +4124,11 @@ var GameView = class {
 			shareFade: duration(styles, "--duration-share-fade"),
 			wiggle: duration(styles, "--duration-wiggle"),
 			slot: duration(styles, "--duration-slot"),
-			resultModal: duration(styles, "--duration-result-modal"),
 			discoveryModal: duration(styles, "--duration-discovery-modal"),
 			timelineReset: duration(styles, "--duration-timeline-reset"),
 			timelineRewind: duration(styles, "--duration-timeline-rewind")
 		};
-		this.modal = new ModalController(root, this.elements, {
-			result: this.durations.resultModal,
-			discovery: this.durations.discoveryModal
-		}, this.reducedMotion, (message) => this.announce(message));
+		this.modal = new ModalController(root, this.elements, { discovery: this.durations.discoveryModal }, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
@@ -4146,7 +4138,7 @@ var GameView = class {
 		}, {
 			slot: this.durations.slot,
 			wiggle: this.durations.wiggle,
-			collapse: () => this.modal.openKind === "result" ? this.durations.resultModal : this.durations.slot
+			collapse: () => this.durations.slot
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
