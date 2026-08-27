@@ -318,9 +318,6 @@ var GameSession = class {
 			tone: "technical"
 		};
 	}
-	markRoundStopped() {
-		this.roundHeardState = false;
-	}
 	clearRound() {
 		this.roundState = null;
 		this.roundHeardState = false;
@@ -657,6 +654,7 @@ function composeGameViewModel(input) {
 		"result"
 	].includes(phase);
 	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && !["retry", "result"].includes(phase));
+	const attemptEnabled = !!(guessEnabled && session.round && acceptsAttempt(session, transport));
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
@@ -666,7 +664,8 @@ function composeGameViewModel(input) {
 		inputVisible,
 		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
 		guessEnabled,
-		skipEnabled: !!(guessEnabled && session.round && acceptsAttempt(session, transport)),
+		attemptEnabled,
+		skipEnabled: attemptEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: snippetSeconds(session.attempt),
 		skipText: skipLabel(session.mode, session.attempt),
@@ -675,6 +674,7 @@ function composeGameViewModel(input) {
 		unavailableGuessIds: session.guessedTrackIds,
 		clock: input.clock,
 		result: session.result,
+		resultPersistenceFailed: input.resultPersistenceFailed ?? false,
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
@@ -705,6 +705,8 @@ var GameController = class {
 	nextRoundId = 0;
 	finishing = false;
 	persistenceFailureQueued = false;
+	resultPersistenceFailed = false;
+	pageVisible = true;
 	constructor(catalog, progress, clock, playback, view, dailySchedule, spotifyLink, shareClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
@@ -725,6 +727,7 @@ var GameController = class {
 				this.catalogLoadingVisible = true;
 				if (!this.tracks.length) this.appStatus = "loading";
 				this.render();
+				this.view.announce(COPY.loadingCatalog);
 			},
 			onLoaded: (tracks) => {
 				this.catalogLoadingVisible = false;
@@ -828,6 +831,7 @@ var GameController = class {
 			if (request.outcome === "completed-daily") {
 				this.startDailyCountdown();
 				this.session.dismissResult();
+				this.resultPersistenceFailed = false;
 			} else {
 				const mode = this.session.snapshot.mode;
 				if (!mode) return;
@@ -843,7 +847,7 @@ var GameController = class {
 			this.view.announce(MODE_RULES.speedrun.description);
 			return;
 		}
-		if (this.playback.ownedRound) this.playback.restore();
+		if (this.playback.ownedRound && this.pageVisible) this.playback.restore();
 		this.prime();
 		this.render();
 	}
@@ -895,10 +899,15 @@ var GameController = class {
 		}
 	}
 	handleVisibilityVisible() {
-		if (this.playback.ownedRound && !this.overlay) this.playback.restore();
+		this.pageVisible = true;
 		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
+		if (this.overlay) return;
+		if (this.playback.ownedRound) this.playback.restore();
+		this.prime();
+		this.render();
 	}
 	handleVisibilityHidden() {
+		this.pageVisible = false;
 		const state = this.session.snapshot;
 		if (!this.playback.ownedRound || state.result) return;
 		const wasRequested = playbackRequested(this.playback.snapshot);
@@ -956,14 +965,22 @@ var GameController = class {
 		this.render();
 		this.view.present({ type: "recovery-needed" });
 	}
-	onLoading() {
+	onLoading(visible) {
 		this.render();
+		if (visible) this.view.announce(COPY.loadingTrack);
 	}
 	onProgressPersistenceFailure(failure) {
-		if (failure.operation === "reset-progress" || this.persistenceFailureQueued) return;
+		if (failure.operation === "reset-progress") return;
+		this.resultPersistenceFailed = true;
+		if (this.persistenceFailureQueued) return;
 		this.persistenceFailureQueued = true;
 		queueMicrotask(() => {
 			this.persistenceFailureQueued = false;
+			if (this.overlay === "result" && this.session.snapshot.result) {
+				this.render();
+				return;
+			}
+			this.resultPersistenceFailed = false;
 			this.view.announce("PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
 		});
 	}
@@ -1016,8 +1033,8 @@ var GameController = class {
 		const stopping = requested && !shortcut;
 		const pausing = requested || shortcut;
 		const elapsed = pausing ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
-		if (pausing) this.playback.pause();
-		this.session.markRoundStopped();
+		if (stopping) this.playback.rewind(round);
+		else if (pausing) this.playback.pause();
 		if (!stopping) this.playback.replay(round, elapsed > 0 || !state.roundHeard);
 		this.view.present({ type: "playback-restarted" });
 		this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
@@ -1076,7 +1093,6 @@ var GameController = class {
 		const limit = snippetSeconds(this.session.snapshot.attempt) * 1e3;
 		if (clockWasRunning) this.clock.extendPuzzle(limit);
 		else {
-			this.session.markRoundStopped();
 			this.playback.replay(round, true);
 			this.view.present({ type: "playback-restarted" });
 			this.clock.restartPuzzle(limit);
@@ -1101,6 +1117,7 @@ var GameController = class {
 	resetForMode(mode) {
 		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
+		this.resultPersistenceFailed = false;
 		this.sessionNumber += 1;
 		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
 		const resumed = seed?.attempt ?? 0;
@@ -1124,6 +1141,7 @@ var GameController = class {
 	resetToModeSelection() {
 		this.dailySchedule.stop();
 		this.sessionNumber += 1;
+		this.resultPersistenceFailed = false;
 		this.playback.reset();
 		this.session.reset(null);
 		this.clock.configure({
@@ -1154,7 +1172,7 @@ var GameController = class {
 	}
 	prime() {
 		const state = this.session.snapshot;
-		if (!state.mode || !this.tracks.length || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate)) return;
+		if (!this.pageVisible || !state.mode || !this.tracks.length || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate)) return;
 		this.playback.prime();
 	}
 	dailyCatalogPending() {
@@ -1177,7 +1195,8 @@ var GameController = class {
 			dailyCountdownMs: this.dailyCountdownMs,
 			discoveries: this.progress.discoveries,
 			tracks: this.tracks,
-			overlay: this.overlay
+			overlay: this.overlay,
+			resultPersistenceFailed: this.resultPersistenceFailed
 		});
 		this.view.render(viewModel, String(this.sessionNumber));
 	}
@@ -1316,8 +1335,8 @@ var Progress = class {
 			step: attempt,
 			history: []
 		};
-		if (!this.storage.saveDaily(next)) return this.persistenceFailed("start-daily");
 		this.dailyState = next;
+		if (!this.storage.saveDaily(next)) return this.persistenceFailed("start-daily");
 		return true;
 	}
 	updateDailyAttempt(step, history) {
@@ -1327,8 +1346,8 @@ var Progress = class {
 			step,
 			history: history.map((slot) => ({ ...slot }))
 		};
-		if (!this.storage.saveDaily(next)) return this.persistenceFailed("advance-daily");
 		this.dailyState = next;
+		if (!this.storage.saveDaily(next)) return this.persistenceFailed("advance-daily");
 		return true;
 	}
 	recordDiscovery(trackNumber) {
@@ -1363,8 +1382,8 @@ var Progress = class {
 				step: run.attempt,
 				history: completedHistory
 			};
-			if (this.storage.saveDaily(nextDaily)) this.dailyState = nextDaily;
-			else this.persistenceFailed("complete-daily");
+			this.dailyState = nextDaily;
+			if (!this.storage.saveDaily(nextDaily)) this.persistenceFailed("complete-daily");
 			return {
 				mode: "daily",
 				won: run.won,
@@ -1376,15 +1395,17 @@ var Progress = class {
 		if (run.mode === "classic") {
 			const nextBests = cloneBests(this.bestsState);
 			const update = updateClassicBest(nextBests, run.won, run.attempt);
-			const bestPersisted = !update.changed || this.saveBests(nextBests);
-			if (update.changed && bestPersisted) this.bestsState = nextBests;
+			if (update.changed) {
+				this.saveBests(nextBests);
+				this.bestsState = nextBests;
+			}
 			const best = this.bestsState.classic;
 			return {
 				mode: "classic",
 				won: run.won,
 				trackTitle: run.track.title,
 				spotify: run.track.spotify,
-				newPersonalBest: update.newPersonalBest && bestPersisted,
+				newPersonalBest: update.newPersonalBest,
 				streak: update.streak,
 				average: update.average,
 				bestStreak: best.best,
@@ -2155,6 +2176,18 @@ var AudioPlayer = class {
 		});
 		return true;
 	}
+	rewind(round) {
+		const slot = this.active;
+		if (!slot || slot.round?.id !== round.id || slot.failed || this.suspension) return false;
+		this.cancelPlaybackWatchdog();
+		this.operation = null;
+		slot.playGeneration += 1;
+		slot.playRequested = false;
+		slot.element.pause();
+		this.seek(slot, true);
+		this.status = "paused";
+		return true;
+	}
 	pause() {
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
@@ -2405,8 +2438,8 @@ var AudioPlayer = class {
 		this.watchdogTimer = 0;
 		this.watchdogOwner = null;
 	}
-	seek(slot) {
-		if (!slot.round || slot.element.readyState < HTMLMediaElement.HAVE_METADATA || slot.element.seeking) return;
+	seek(slot, force = false) {
+		if (!slot.round || slot.element.readyState < HTMLMediaElement.HAVE_METADATA || !force && slot.element.seeking) return;
 		try {
 			slot.element.currentTime = this.targetTime(slot);
 		} catch {}
@@ -2626,6 +2659,14 @@ var Playback = class {
 		this.beginLoadingNotice(round, "starting", operation);
 		if (this.audio.snapshot().activeReady) this.prefetch();
 		return true;
+	}
+	rewind(round) {
+		if (this.suspended || !this.owns(round)) return false;
+		this.operationGeneration += 1;
+		this.clearLoading();
+		const rewound = this.audio.rewind(round);
+		if (rewound) this.status = "paused";
+		return rewound;
 	}
 	pause() {
 		this.operationGeneration += 1;
@@ -3244,20 +3285,25 @@ var Autocomplete = class {
 	suggestions = [];
 	selectedIndex = -1;
 	unavailableSignature = "";
+	suspended = false;
 	constructor(input, list, onGuess, onPlaybackShortcut) {
 		this.input = input;
 		this.list = list;
 		this.onGuess = onGuess;
 		this.onPlaybackShortcut = onPlaybackShortcut;
-		input.addEventListener("input", () => this.update());
+		input.addEventListener("input", () => {
+			if (!this.suspended) this.update();
+		});
 		input.addEventListener("keydown", (event) => this.handleKeydown(event));
 		list.addEventListener("pointerover", (event) => {
+			if (this.suspended) return;
 			const option = event.target instanceof Element ? event.target.closest("[role=option]") : null;
 			if (!option) return;
 			const index = [...this.list.children].indexOf(option);
 			if (index >= 0) this.select(index);
 		});
 		list.addEventListener("click", (event) => {
+			if (this.suspended) return;
 			const option = event.target instanceof Element ? event.target.closest("[role=option]") : null;
 			if (!option) return;
 			const track = this.suggestions[[...this.list.children].indexOf(option)];
@@ -3272,7 +3318,15 @@ var Autocomplete = class {
 		this.searchIndex = createTrackSearchIndex(tracks);
 		this.unavailableSignature = unavailableSignature;
 		this.unavailable = new Set(unavailable);
-		if (this.input.value.trim()) this.update(selectedId);
+		if (this.input.value.trim() && !this.suspended) this.update(selectedId);
+	}
+	setSuspended(suspended) {
+		if (suspended === this.suspended) return;
+		this.suspended = suspended;
+		this.suggestions = [];
+		this.selectedIndex = -1;
+		this.render();
+		if (!suspended && this.input.value.trim()) this.update();
 	}
 	reset() {
 		this.input.value = "";
@@ -3294,6 +3348,13 @@ var Autocomplete = class {
 	handleKeydown(event) {
 		if (event.key === "Escape") {
 			this.reset();
+			return;
+		}
+		if (this.suspended) {
+			if (event.key === "Enter") {
+				event.preventDefault();
+				if (!this.input.value.trim()) this.onPlaybackShortcut();
+			}
 			return;
 		}
 		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -4203,6 +4264,7 @@ var GameView = class {
 		this.elements.play.disabled = !state.playEnabled;
 		this.elements.skip.disabled = !state.skipEnabled;
 		this.elements.guess.disabled = !state.guessEnabled || transportVisible;
+		this.autocomplete.setSuspended(!state.attemptEnabled || transportVisible);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
 		this.elements.headerAction.inert = overlay;
@@ -4226,7 +4288,7 @@ var GameView = class {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
 		}
-		this.renderResult(state.result);
+		this.renderResult(state.result, state.resultPersistenceFailed);
 		this.renderClock(state.clock);
 		if (openingOverlay === "result") this.modal.openResult();
 		else if (openingOverlay === "discovery") {
@@ -4374,8 +4436,8 @@ var GameView = class {
 		this.elements.discoveryActions.hidden = false;
 		if (returnFocus) this.elements.discoveryReset.focus({ preventScroll: true });
 	}
-	renderResult(result) {
-		const signature = result ? JSON.stringify(result) : "";
+	renderResult(result, persistenceFailed) {
+		const signature = result ? JSON.stringify([result, persistenceFailed]) : "";
 		if (signature === this.resultSignature) return;
 		this.resultSignature = signature;
 		if (this.resultCopyFeedbackTimer) {
@@ -4396,7 +4458,8 @@ var GameView = class {
 		const rows = resultRows(result);
 		const newPersonalBest = result.mode !== "daily" && result.newPersonalBest;
 		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultRow(row, newPersonalBest)));
-		this.elements.resultMeta.dataset.announcement = resultAnnouncement(result, rows);
+		const announcement = resultAnnouncement(result, rows);
+		this.elements.resultMeta.dataset.announcement = persistenceFailed ? `${announcement} PROGRESS COULD NOT BE SAVED IN THIS BROWSER.` : announcement;
 		const daily = result.mode === "daily";
 		this.elements.resultSecondaryLabel.textContent = daily ? "SHARE" : "SPOTIFY";
 		this.elements.resultSecondary.setAttribute("aria-label", daily ? "SHARE DAILY RESULT" : "OPEN RESULT TRACK ON SPOTIFY");
@@ -4715,7 +4778,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		onBlocked: (round) => controller?.onAudioBlocked(round),
 		onEnded: (round) => controller?.onAudioEnded(round),
 		onRecovery: (kind) => controller?.onAudioRecovery(kind),
-		onLoading: () => controller?.onLoading()
+		onLoading: (visible) => controller?.onLoading(visible)
 	});
 	const dailySchedule = new DailySchedule((date) => controller?.handleDailyDateChanged(date));
 	controller = new GameController(catalog, progress, clock, playback, view, dailySchedule, new SpotifyLink(), new ShareClipboard());
@@ -4744,9 +4807,12 @@ if (root && !root.dataset.corzaguessrReady) {
 		}
 	});
 	controller.bootstrap(dailySchedule.current());
+	if (document.hidden) controller.handleVisibilityHidden();
 	document.addEventListener("visibilitychange", () => {
 		if (document.hidden) controller.handleVisibilityHidden();
 		else controller.handleVisibilityVisible();
 	});
-	window.addEventListener("pageshow", () => controller.handleVisibilityVisible());
+	window.addEventListener("pageshow", () => {
+		if (!document.hidden) controller.handleVisibilityVisible();
+	});
 }
