@@ -989,12 +989,9 @@
   z-index: 1;
 }
 
-#corzaguessr .modal-open .result-modal {
+#corzaguessr .result-open .result-modal {
   pointer-events: auto;
   visibility: visible;
-}
-
-#corzaguessr .modal-visible .result-modal {
   background: var(--scrim);
 }
 
