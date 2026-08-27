@@ -101,54 +101,49 @@ var MODE_RULES = {
 	classic: {
 		initialTimeMs: null,
 		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
-		roundStyle: "puzzle",
-		clockKind: "puzzle",
-		clockDisplay: "snippet",
-		adjustsTime: false,
+		gameplay: "puzzle",
 		failurePolicy: "heard-fixed"
 	},
 	daily: {
 		initialTimeMs: null,
 		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
-		roundStyle: "puzzle",
-		clockKind: "puzzle",
-		clockDisplay: "snippet",
-		adjustsTime: false,
+		gameplay: "puzzle",
 		failurePolicy: "fixed"
 	},
 	blitz: {
 		initialTimeMs: 6e4,
 		description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
-		roundStyle: "timed",
-		clockKind: "blitz",
-		clockDisplay: "countdown",
-		adjustsTime: false,
+		gameplay: "blitz",
 		failurePolicy: "replace"
 	},
 	survival: {
 		initialTimeMs: 3e4,
 		description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT",
-		roundStyle: "timed",
-		clockKind: "survival",
-		clockDisplay: "survival",
-		adjustsTime: true,
+		gameplay: "survival",
 		failurePolicy: "replace"
 	},
 	speedrun: {
 		initialTimeMs: 3e4,
 		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
-		roundStyle: "timed",
-		clockKind: "survival",
-		clockDisplay: "survival",
-		adjustsTime: true,
+		gameplay: "survival",
 		failurePolicy: "replace"
 	}
 };
 function isTimedMode(mode) {
-	return mode !== null && MODE_RULES[mode].roundStyle === "timed";
+	return mode !== null && MODE_RULES[mode].gameplay !== "puzzle";
 }
 function isPuzzleMode(mode) {
-	return mode !== null && MODE_RULES[mode].roundStyle === "puzzle";
+	return mode !== null && MODE_RULES[mode].gameplay === "puzzle";
+}
+function clockKindForMode(mode) {
+	return MODE_RULES[mode].gameplay;
+}
+function clockDisplayForMode(mode) {
+	const gameplay = MODE_RULES[mode].gameplay;
+	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : "survival";
+}
+function modeAdjustsTime(mode) {
+	return MODE_RULES[mode].gameplay === "survival";
 }
 function snippetSeconds(attempt) {
 	return SNIPPET_SECONDS[Math.max(0, Math.min(SNIPPET_SECONDS.length - 1, attempt))];
@@ -534,6 +529,43 @@ function clampRandom(value) {
 function isReleasedBy(track, date) {
 	return track.releaseDate !== null && track.releaseDate <= date;
 }
+function emptyDailyProgress() {
+	return { status: "none" };
+}
+function dailyInProgress(progress, date) {
+	return progress.status === "in-progress" && progress.date === date;
+}
+function dailyStarted(progress, date) {
+	return progress.status !== "none" && progress.date === date;
+}
+function dailyCompleted(progress, date) {
+	return progress.status === "completed" && progress.date === date;
+}
+function dailyWon(progress, date) {
+	return dailyCompleted(progress, date) && progress.outcome === "won";
+}
+function emptyPersonalBests() {
+	return {
+		classic: {
+			current: 0,
+			best: 0,
+			snippetTotal: 0,
+			bestSnippetTotal: 0
+		},
+		blitz: {
+			score: 0,
+			accuracy: null
+		},
+		survival: {
+			score: 0,
+			accuracy: null
+		},
+		speedrun: {
+			timeMs: 0,
+			trackCount: 0
+		}
+	};
+}
 var COPY = {
 	modePrompt: "SELECT A MODE TO BEGIN",
 	loadingCatalog: "LOADING TRACKLIST...",
@@ -597,20 +629,14 @@ function acceptsAttempt(session, transport) {
 }
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
-	if (progress.date === dailyDate && progress.started && !progress.completed && progress.dailyNumber !== null) return !isDailyTrackAvailable(tracks, dailyDate, progress.dailyNumber);
+	if (dailyInProgress(progress, dailyDate)) return !isDailyTrackAvailable(tracks, dailyDate, progress.dailyNumber);
 	return !hasDailyTrackAvailable(tracks, dailyDate);
-}
-function dailyDone(progress, date) {
-	return progress.date === date && progress.completed;
-}
-function dailyInProgress(progress, date) {
-	return progress.date === date && progress.started && !progress.completed;
 }
 function rulesText(input) {
 	const { session, dailyProgress, dailyDate } = input;
-	if (session.mode === "daily" && dailyDone(dailyProgress, dailyDate)) {
+	if (session.mode === "daily" && dailyCompleted(dailyProgress, dailyDate)) {
 		const attempts = dailyProgress.step + 1;
-		return `${dailyProgress.won ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK IN ${formatDailyCountdown(input.dailyCountdownMs)}`;
+		return `${dailyWon(dailyProgress, dailyDate) ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK IN ${formatDailyCountdown(input.dailyCountdownMs)}`;
 	}
 	if (input.appStatus === "loading") return input.catalogLoadingVisible ? COPY.loadingCatalog : COPY.modePrompt;
 	if (input.appStatus === "error") return COPY.catalogError;
@@ -640,7 +666,7 @@ function composeGameViewModel(input) {
 		text: `${speedrunTracksLeft} ${speedrunTracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT`
 	} : session.currentSlot;
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
-	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyDone(input.dailyProgress, input.dailyDate) && !session.round);
+	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const playPhase = [
 		"idle",
 		"playing",
@@ -658,14 +684,12 @@ function composeGameViewModel(input) {
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
-		phase,
 		rulesText: rulesText(input),
 		transportText: transport.loading.visible ? COPY.loadingTrack : "",
 		inputVisible,
 		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
 		guessEnabled,
 		attemptEnabled,
-		skipEnabled: attemptEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: snippetSeconds(session.attempt),
 		skipText: skipLabel(session.mode, session.attempt),
@@ -703,7 +727,6 @@ var GameController = class {
 	overlay = null;
 	sessionNumber = 0;
 	nextRoundId = 0;
-	finishing = false;
 	persistenceFailureQueued = false;
 	resultPersistenceFailed = false;
 	pageVisible = true;
@@ -748,7 +771,7 @@ var GameController = class {
 	}
 	selectMode(mode) {
 		const state = this.session.snapshot;
-		if (this.overlay || this.appStatus === "error" || state.mode === mode) return;
+		if (this.activeOverlay || this.appStatus === "error" || state.mode === mode) return;
 		if (mode === "daily") {
 			const date = this.dailySchedule.start();
 			this.latestDailyDate = date;
@@ -771,27 +794,28 @@ var GameController = class {
 	guess(dailyNumber) {
 		const state = this.session.snapshot;
 		const round = state.round;
-		if (!round || !acceptsAttempt(state, this.playback.snapshot) || this.overlay || state.guessedTrackIds.has(dailyNumber)) return;
+		if (!round || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay || state.guessedTrackIds.has(dailyNumber)) return;
 		const guessed = this.tracks.find((track) => track.dailyNumber === dailyNumber);
 		if (!guessed || isTimedMode(state.mode) && !state.roundHeard) return;
 		if (!this.session.recordGuess(dailyNumber)) return;
 		this.resolveAttempt(dailyNumber === round.track.dailyNumber ? "correct" : "wrong", guessed);
 	}
 	resultAction() {
-		const mode = this.session.snapshot.mode;
+		const state = this.session.snapshot;
+		const mode = state.mode;
 		if (!mode) return;
-		if (this.overlay === "result") {
+		if (state.result) {
 			if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
-				this.view.beginOverlayClose({
-					overlay: "result",
-					outcome: "completed-daily"
-				});
+				this.startDailyCountdown();
+				this.session.dismissResult();
+				this.resultPersistenceFailed = false;
+				this.render();
+				this.view.closeResult("classic");
 				return;
 			}
-			if (!this.view.beginOverlayClose({
-				overlay: "result",
-				outcome: "restart"
-			})) return;
+			if (mode === "daily" && this.latestDailyDate) this.dailyDate = this.latestDailyDate;
+			this.resetForMode(mode);
+			this.view.closeResult("play");
 			return;
 		}
 		this.resetForMode(mode);
@@ -801,7 +825,7 @@ var GameController = class {
 			this.closeDiscovery();
 			return;
 		}
-		if (this.overlay || this.session.snapshot.result) return;
+		if (this.activeOverlay) return;
 		if (this.playback.ownedRound) {
 			this.clock.pause();
 			this.playback.suspend();
@@ -811,37 +835,16 @@ var GameController = class {
 	}
 	closeDiscovery() {
 		if (this.overlay !== "discovery") return;
-		this.view.beginOverlayClose({
-			overlay: "discovery",
-			outcome: "resume"
-		});
+		this.view.beginDiscoveryClose({ outcome: "resume" });
 	}
 	startSpeedrun() {
 		if (this.overlay !== "discovery" || !this.speedrunUnlocked()) return;
-		if (!this.view.beginOverlayClose({
-			overlay: "discovery",
-			outcome: "start-speedrun"
-		})) return;
+		if (!this.view.beginDiscoveryClose({ outcome: "start-speedrun" })) return;
 		this.dailySchedule.stop();
 	}
-	onOverlayClosed(request) {
-		if (this.overlay !== request.overlay) return;
+	onDiscoveryClosed(request) {
+		if (this.overlay !== "discovery") return;
 		this.overlay = null;
-		if (request.overlay === "result") {
-			if (request.outcome === "completed-daily") {
-				this.startDailyCountdown();
-				this.session.dismissResult();
-				this.resultPersistenceFailed = false;
-			} else {
-				const mode = this.session.snapshot.mode;
-				if (!mode) return;
-				if (mode === "daily" && this.latestDailyDate) this.dailyDate = this.latestDailyDate;
-				this.resetForMode(mode);
-				return;
-			}
-			this.render();
-			return;
-		}
 		if (request.outcome === "start-speedrun") {
 			this.resetForMode("speedrun");
 			this.view.announce(MODE_RULES.speedrun.description);
@@ -867,11 +870,11 @@ var GameController = class {
 	}
 	shareDaily() {
 		const result = this.session.snapshot.result;
-		if (this.overlay !== "result" || result?.mode !== "daily") return;
+		if (result?.mode !== "daily") return;
 		const sessionNumber = this.sessionNumber;
 		const dailyDate = this.dailyDate;
 		const stillCurrent = () => {
-			return this.sessionNumber === sessionNumber && this.dailyDate === dailyDate && this.overlay === "result" && this.session.snapshot.result?.mode === "daily";
+			return this.sessionNumber === sessionNumber && this.dailyDate === dailyDate && this.session.snapshot.result?.mode === "daily";
 		};
 		this.shareClipboard.copy(formatDailyShare(dailyDate, result)).then((copied) => {
 			if (!stillCurrent()) return;
@@ -901,7 +904,7 @@ var GameController = class {
 	handleVisibilityVisible() {
 		this.pageVisible = true;
 		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
-		if (this.overlay) return;
+		if (this.activeOverlay) return;
 		if (this.playback.ownedRound) this.playback.restore();
 		this.prime();
 		this.render();
@@ -976,7 +979,7 @@ var GameController = class {
 		this.persistenceFailureQueued = true;
 		queueMicrotask(() => {
 			this.persistenceFailureQueued = false;
-			if (this.overlay === "result" && this.session.snapshot.result) {
+			if (this.session.snapshot.result) {
 				this.render();
 				return;
 			}
@@ -989,7 +992,7 @@ var GameController = class {
 	}
 	onClockExpired() {
 		const state = this.session.snapshot;
-		if (this.finishing || state.result || !state.round) return;
+		if (state.result || !state.round) return;
 		if (isTimedMode(state.mode)) this.finishGame(false);
 		else {
 			this.playback.pause();
@@ -1002,7 +1005,7 @@ var GameController = class {
 		const transport = this.playback.snapshot;
 		const phase = presentationPhase(state, transport);
 		const requested = playbackRequested(transport);
-		if (this.appStatus !== "ready" || !state.mode || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
+		if (this.appStatus !== "ready" || !state.mode || this.activeOverlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
 		if (phase === "idle" || phase === "retry") {
 			this.playback.start({ manualRetry: phase === "retry" });
 			return;
@@ -1045,7 +1048,7 @@ var GameController = class {
 		const state = this.session.snapshot;
 		const round = state.round;
 		const mode = state.mode;
-		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.overlay || this.finishing) return;
+		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
 		if (isTimedMode(mode)) {
 			const snapshot = this.clock.pause();
 			if (snapshot.expired || snapshot.remainingMs <= 0) {
@@ -1064,7 +1067,7 @@ var GameController = class {
 				this.finishGame(true, round);
 				return;
 			}
-			if (MODE_RULES[mode].adjustsTime) {
+			if (modeAdjustsTime(mode)) {
 				const adjustment = survivalAdjustment(outcome);
 				this.view.present({
 					type: "survival-adjusted",
@@ -1104,15 +1107,12 @@ var GameController = class {
 		const state = this.session.snapshot;
 		const round = state.round ?? fallbackRound;
 		const mode = state.mode;
-		if (!round || !mode || state.result || this.finishing) return;
-		this.finishing = true;
+		if (!round || !mode || state.result) return;
 		const clock = this.clock.pause();
 		this.playback.stop();
 		const result = this.progress.finish(finishedRun(mode, won, round, state, clock, this.dailyDate, this.tracks.length));
 		this.session.finish(result);
-		this.overlay = "result";
 		this.render();
-		this.finishing = false;
 	}
 	resetForMode(mode) {
 		this.dailySchedule.stopCountdown();
@@ -1122,15 +1122,14 @@ var GameController = class {
 		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
 		const resumed = seed?.attempt ?? 0;
 		this.session.reset(mode, seed);
-		const rule = MODE_RULES[mode];
-		const initial = rule.initialTimeMs;
+		const initial = MODE_RULES[mode].initialTimeMs;
 		const milliseconds = initial ?? snippetSeconds(resumed) * 1e3;
 		this.clock.configure(initial === null ? {
 			kind: "puzzle",
 			initialMs: milliseconds,
 			limitMs: milliseconds
 		} : {
-			kind: rule.clockKind,
+			kind: clockKindForMode(mode),
 			initialMs: milliseconds
 		});
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
@@ -1156,7 +1155,8 @@ var GameController = class {
 		let track;
 		let clipStart;
 		if (mode === "daily") {
-			track = selectDailyTrack(this.tracks, this.dailyDate, this.progress.dailyInProgress(this.dailyDate) ? this.progress.daily.dailyNumber : null);
+			const daily = this.progress.daily;
+			track = selectDailyTrack(this.tracks, this.dailyDate, dailyInProgress(daily, this.dailyDate) ? daily.dailyNumber : null);
 			if (!track) return null;
 			clipStart = dailyClipStart(track, this.dailyDate);
 		} else {
@@ -1172,7 +1172,7 @@ var GameController = class {
 	}
 	prime() {
 		const state = this.session.snapshot;
-		if (!this.pageVisible || !state.mode || !this.tracks.length || this.overlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate)) return;
+		if (!this.pageVisible || !state.mode || !this.tracks.length || this.activeOverlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate)) return;
 		this.playback.prime();
 	}
 	dailyCatalogPending() {
@@ -1195,7 +1195,7 @@ var GameController = class {
 			dailyCountdownMs: this.dailyCountdownMs,
 			discoveries: this.progress.discoveries,
 			tracks: this.tracks,
-			overlay: this.overlay,
+			overlay: this.activeOverlay,
 			resultPersistenceFailed: this.resultPersistenceFailed
 		});
 		this.view.render(viewModel, String(this.sessionNumber));
@@ -1203,8 +1203,11 @@ var GameController = class {
 	startDailyCountdown() {
 		this.dailySchedule.startCountdown((remainingMs) => {
 			this.dailyCountdownMs = remainingMs;
-			if (!this.overlay && this.session.snapshot.mode === "daily") this.render();
+			if (!this.activeOverlay && this.session.snapshot.mode === "daily") this.render();
 		});
+	}
+	get activeOverlay() {
+		return this.session.snapshot.result ? "result" : this.overlay;
 	}
 };
 function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCount) {
@@ -1244,39 +1247,6 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 		};
 	}
 }
-function emptyDailyProgress() {
-	return {
-		date: "",
-		dailyNumber: null,
-		started: false,
-		completed: false,
-		won: false,
-		step: 0,
-		history: []
-	};
-}
-function emptyPersonalBests() {
-	return {
-		classic: {
-			current: 0,
-			best: 0,
-			snippetTotal: 0,
-			bestSnippetTotal: 0
-		},
-		blitz: {
-			score: 0,
-			accuracy: null
-		},
-		survival: {
-			score: 0,
-			accuracy: null
-		},
-		speedrun: {
-			timeMs: 0,
-			trackCount: 0
-		}
-	};
-}
 var Progress = class {
 	storage;
 	options;
@@ -1301,24 +1271,25 @@ var Progress = class {
 		return cloneBests(this.bestsState);
 	}
 	dailyDone(date) {
-		return this.dailyState.date === date && this.dailyState.completed;
+		return dailyCompleted(this.dailyState, date);
 	}
 	dailyInProgress(date) {
-		return this.dailyState.date === date && this.dailyState.started && !this.dailyState.completed;
+		return dailyInProgress(this.dailyState, date);
 	}
 	dailySessionSeed(date, tracks) {
-		if (this.dailyState.date !== date || !this.dailyState.started) return {
+		const daily = this.dailyState;
+		if (daily.status === "none" || daily.date !== date) return {
 			attempt: 0,
 			history: [],
 			guessedTrackIds: /* @__PURE__ */ new Set(),
 			currentSlot: null
 		};
-		const attempts = this.dailyState.history;
-		const currentSlot = this.dailyState.completed ? attempts[0] ?? null : null;
-		const history = this.dailyState.completed ? attempts.slice(1) : attempts;
+		const attempts = daily.history;
+		const currentSlot = daily.status === "completed" ? attempts[0] ?? null : null;
+		const history = daily.status === "completed" ? attempts.slice(1) : attempts;
 		const guessedTrackIds = new Set(attempts.filter((slot) => slot.tone === "wrong").map((slot) => tracks.find((track) => track.title === slot.text)?.dailyNumber).filter((trackNumber) => trackNumber !== void 0));
 		return {
-			attempt: this.dailyState.step,
+			attempt: daily.step,
 			history: history.map((slot) => ({ ...slot })),
 			guessedTrackIds,
 			currentSlot: currentSlot ? { ...currentSlot } : null
@@ -1327,11 +1298,9 @@ var Progress = class {
 	markDailyStarted(date, track, attempt) {
 		if (this.dailyInProgress(date)) return true;
 		const next = {
+			status: "in-progress",
 			date,
 			dailyNumber: track.dailyNumber,
-			started: true,
-			completed: false,
-			won: false,
 			step: attempt,
 			history: []
 		};
@@ -1340,7 +1309,7 @@ var Progress = class {
 		return true;
 	}
 	updateDailyAttempt(step, history) {
-		if (!this.dailyState.started || this.dailyState.completed) return true;
+		if (this.dailyState.status !== "in-progress") return true;
 		const next = {
 			...this.dailyState,
 			step,
@@ -1374,11 +1343,10 @@ var Progress = class {
 				id: run.attempt + 1
 			}, ...run.history.map((slot) => ({ ...slot }))] : [];
 			const nextDaily = {
+				status: "completed",
+				outcome: run.won ? "won" : "lost",
 				date: run.dailyDate,
 				dailyNumber: run.track.dailyNumber,
-				started: true,
-				completed: true,
-				won: run.won,
 				step: run.attempt,
 				history: completedHistory
 			};
@@ -1472,7 +1440,7 @@ var Progress = class {
 	}
 };
 function cloneDaily(progress) {
-	return {
+	return progress.status === "none" ? progress : {
 		...progress,
 		history: progress.history.map((slot) => ({ ...slot }))
 	};
@@ -1811,16 +1779,24 @@ var STORAGE_KEYS = {
 	personalBests: "corzaguessr:personal-bests"
 };
 function parseDailyProgress(value) {
-	if (!isRecord(value) || !hasExactKeys(value, [
+	if (!isRecord(value) || typeof value.status !== "string") return emptyDailyProgress();
+	if (value.status === "none") return emptyDailyProgress();
+	const completed = value.status === "completed";
+	if (value.status !== "in-progress" && !completed || !hasExactKeys(value, completed ? [
+		"status",
+		"outcome",
 		"date",
 		"dailyNumber",
-		"started",
-		"completed",
-		"won",
+		"step",
+		"history"
+	] : [
+		"status",
+		"date",
+		"dailyNumber",
 		"step",
 		"history"
 	])) return emptyDailyProgress();
-	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || value.started !== true || typeof value.completed !== "boolean" || typeof value.won !== "boolean" || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || !value.completed && value.won || value.completed && value.history.length !== value.step + 1 || !value.completed && value.history.length !== value.step) return emptyDailyProgress();
+	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || completed && value.outcome !== "won" && value.outcome !== "lost" || completed && value.history.length !== value.step + 1 || !completed && value.history.length !== value.step) return emptyDailyProgress();
 	const history = [];
 	for (let index = 0; index < value.history.length; index += 1) {
 		const candidate = value.history[index];
@@ -1829,8 +1805,8 @@ function parseDailyProgress(value) {
 			"text",
 			"tone"
 		])) return emptyDailyProgress();
-		const expectedId = value.completed ? value.step + 1 - index : value.step - index;
-		const validTone = value.completed && index === 0 ? value.won && candidate.tone === "correct" || !value.won && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
+		const expectedId = completed ? value.step + 1 - index : value.step - index;
+		const validTone = completed && index === 0 ? value.outcome === "won" && candidate.tone === "correct" || value.outcome === "lost" && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
 		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || !validTone) return emptyDailyProgress();
 		history.push({
 			id: candidate.id,
@@ -1838,14 +1814,19 @@ function parseDailyProgress(value) {
 			tone: candidate.tone
 		});
 	}
-	return {
+	const common = {
 		date: value.date,
 		dailyNumber: value.dailyNumber,
-		started: true,
-		completed: value.completed,
-		won: value.won,
 		step: value.step,
 		history
+	};
+	return completed ? {
+		status: "completed",
+		outcome: value.outcome,
+		...common
+	} : {
+		status: "in-progress",
+		...common
 	};
 }
 function parsePersonalBests(value) {
@@ -3670,7 +3651,6 @@ var ModalController = class {
 	openFrame = 0;
 	transitionGeneration = 0;
 	closeListener = null;
-	scrollLockDepth = 0;
 	lockedScroll = null;
 	constructor(root, elements, durations, reducedMotion, announce, scheduler = browserUiScheduler) {
 		this.root = root;
@@ -3688,22 +3668,15 @@ var ModalController = class {
 	}
 	openResult() {
 		if (this.kind) return;
-		const generation = this.beginOpen();
+		this.beginOpen();
 		this.kind = "result";
 		this.closing = false;
 		this.captureReturnFocus();
 		this.lockScroll();
-		this.elements.card.classList.add("modal-open");
+		this.elements.card.classList.add("result-open");
 		this.elements.result.setAttribute("aria-hidden", "false");
-		const finishOpen = () => {
-			this.openFrame = 0;
-			if (!this.transitionMatches("result", generation)) return;
-			this.elements.card.classList.add("modal-visible");
-			this.elements.resultAction.focus({ preventScroll: true });
-			this.announce(this.elements.resultMeta.dataset.announcement || "RESULT");
-		};
-		if (this.reducedMotion.matches) finishOpen();
-		else this.openFrame = this.scheduler.requestFrame(finishOpen);
+		this.elements.resultAction.focus({ preventScroll: true });
+		this.announce(this.elements.resultMeta.dataset.announcement || "RESULT");
 	}
 	openDiscovery() {
 		if (this.kind) return;
@@ -3735,35 +3708,40 @@ var ModalController = class {
 			this.openFrame = this.scheduler.requestFrame(finishOpen);
 		}
 	}
-	close(kind, fallbackFocus, onStart, onClosed, focusOverride = null) {
-		if (this.closing || this.kind !== kind) return false;
+	closeResult(fallbackFocus) {
+		if (this.kind !== "result") return false;
+		this.scheduler.cancelFrame(this.openFrame);
+		this.openFrame = 0;
+		this.cancelCloseWait();
+		this.elements.card.classList.remove("result-open");
+		this.elements.result.setAttribute("aria-hidden", "true");
+		this.kind = null;
+		this.closing = false;
+		this.unlockScroll();
+		this.returnFocus = null;
+		if (this.canFocus(fallbackFocus)) fallbackFocus.focus({ preventScroll: true });
+		return true;
+	}
+	closeDiscovery(fallbackFocus, onClosed, focusOverride = null) {
+		if (this.closing || this.kind !== "discovery") return false;
 		this.closing = true;
 		const generation = ++this.transitionGeneration;
 		this.scheduler.cancelFrame(this.openFrame);
 		this.openFrame = 0;
 		this.cancelCloseWait();
-		if (kind === "result") this.elements.card.classList.remove("modal-visible");
-		else {
-			this.root.classList.remove("discovery-visible");
-			this.elements.discoveryShell.style.height = `${this.elements.discoveryShell.offsetHeight}px`;
-			this.elements.discoveryShell.offsetHeight;
-			this.elements.discoveryShell.style.height = "0px";
-			this.elements.discoveryButton.setAttribute("aria-expanded", "false");
-		}
-		onStart();
+		this.root.classList.remove("discovery-visible");
+		this.elements.discoveryShell.style.height = `${this.elements.discoveryShell.offsetHeight}px`;
+		this.elements.discoveryShell.offsetHeight;
+		this.elements.discoveryShell.style.height = "0px";
+		this.elements.discoveryButton.setAttribute("aria-expanded", "false");
 		const finish = () => {
-			if (this.kind !== kind || this.transitionGeneration !== generation) return;
+			if (this.kind !== "discovery" || this.transitionGeneration !== generation) return;
 			this.cancelCloseWait();
-			if (kind === "result") {
-				this.elements.card.classList.remove("modal-open", "modal-visible");
-				this.elements.result.setAttribute("aria-hidden", "true");
-			} else {
-				this.root.classList.remove("discovery-open", "discovery-visible");
-				this.elements.discoveryModal.setAttribute("aria-hidden", "true");
-				this.elements.discoveryShell.style.height = "";
-				this.elements.discoveryShell.style.transition = "";
-				this.elements.discoveryClose.style.visibility = "";
-			}
+			this.root.classList.remove("discovery-open", "discovery-visible");
+			this.elements.discoveryModal.setAttribute("aria-hidden", "true");
+			this.elements.discoveryShell.style.height = "";
+			this.elements.discoveryShell.style.transition = "";
+			this.elements.discoveryClose.style.visibility = "";
 			this.kind = null;
 			this.closing = false;
 			this.unlockScroll();
@@ -3773,7 +3751,7 @@ var ModalController = class {
 			const target = focusOverride && this.canFocus(focusOverride) ? focusOverride : preferred && this.canFocus(preferred) ? preferred : fallbackFocus;
 			if (this.canFocus(target)) target.focus({ preventScroll: true });
 		};
-		if (kind === "result" || this.reducedMotion.matches) {
+		if (this.reducedMotion.matches) {
 			finish();
 			return true;
 		}
@@ -3808,7 +3786,6 @@ var ModalController = class {
 		this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	}
 	lockScroll() {
-		this.scrollLockDepth += 1;
 		if (this.lockedScroll) return;
 		const html = document.documentElement;
 		const body = document.body;
@@ -3828,8 +3805,6 @@ var ModalController = class {
 	}
 	unlockScroll() {
 		if (!this.lockedScroll) return;
-		this.scrollLockDepth = Math.max(0, this.scrollLockDepth - 1);
-		if (this.scrollLockDepth) return;
 		const snapshot = this.lockedScroll;
 		document.documentElement.style.cssText = snapshot.htmlCssText;
 		document.body.style.cssText = snapshot.bodyCssText;
@@ -3934,11 +3909,11 @@ var ProgressSummaryView = class {
 };
 function rows(bests, daily, dailyDate) {
 	const classicAverage = bests.classic.best ? bests.classic.bestSnippetTotal / bests.classic.best : 0;
-	const dailyComplete = daily.date === dailyDate && daily.completed;
+	const dailyComplete = dailyCompleted(daily, dailyDate);
 	const standard = [
 		{
 			mode: "DAILY",
-			value: dailyComplete ? daily.won ? `${daily.step + 1}/6` : "FAILED" : EMPTY_RECORD_VALUE,
+			value: dailyComplete ? dailyWon(daily, dailyDate) ? `${daily.step + 1}/6` : "FAILED" : EMPTY_RECORD_VALUE,
 			detail: dailyComplete ? formatOrdinalDate(daily.date) : EMPTY_RECORD_DETAIL
 		},
 		{
@@ -4255,14 +4230,13 @@ var GameView = class {
 		if (sessionChanged) this.timeline.beginReset();
 		if (sessionChanged || openingOverlay) this.resetTransientUi();
 		this.root.dataset.appStatus = state.appStatus;
-		this.root.dataset.sessionStatus = state.phase;
 		const transportVisible = state.transportText !== "";
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
 		this.root.classList.toggle("timed", isTimedMode(state.mode));
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
-		this.elements.skip.disabled = !state.skipEnabled;
+		this.elements.skip.disabled = !state.attemptEnabled;
 		this.elements.guess.disabled = !state.guessEnabled || transportVisible;
 		this.autocomplete.setSuspended(!state.attemptEnabled || transportVisible);
 		const blockedBoard = awaiting || state.appStatus === "loading";
@@ -4306,14 +4280,14 @@ var GameView = class {
 		if (!mode) this.elements.endtime.textContent = "0:01";
 		else if (isTimedMode(mode)) {
 			const rule = MODE_RULES[mode];
-			const survival = rule.clockDisplay === "survival";
+			const survival = clockDisplayForMode(mode) === "survival";
 			const initial = rule.initialTimeMs;
 			this.elements.endtime.textContent = formatClock(survival ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3);
 			display = formatClock((survival ? clock.elapsedMs : clock.remainingMs) / 1e3);
 			const denominator = survival ? clock.maxRemainingMs : initial;
 			progress = denominator ? clock.remainingMs / denominator : 0;
 		} else {
-			const seconds = mode === "daily" && !state.inputVisible && state.dailyProgress.date === state.dailyDate && state.dailyProgress.started ? state.snippetSeconds : clock.elapsedMs / 1e3;
+			const seconds = mode === "daily" && !state.inputVisible && dailyStarted(state.dailyProgress, state.dailyDate) ? state.snippetSeconds : clock.elapsedMs / 1e3;
 			this.elements.endtime.textContent = `0:${String(state.snippetSeconds).padStart(2, "0")}`;
 			display = formatClock(seconds);
 			progress = seconds ? seconds / SNIPPET_SECONDS.at(-1) + .0025 : 0;
@@ -4335,7 +4309,7 @@ var GameView = class {
 				this.state?.mode ? this.focusPlay() : this.focusMode("daily");
 				return;
 			case "mode-selected":
-				if (this.state?.mode === "daily" && this.state.dailyProgress.date === this.state.dailyDate && this.state.dailyProgress.completed) this.focusMode("classic");
+				if (this.state?.mode === "daily" && dailyCompleted(this.state.dailyProgress, this.state.dailyDate)) this.focusMode("classic");
 				else this.focusPlay();
 				return;
 			case "gameplay-ready":
@@ -4358,12 +4332,14 @@ var GameView = class {
 				return;
 		}
 	}
-	beginOverlayClose(request) {
-		const kind = request.overlay;
-		const fallback = kind === "result" ? this.elements.play : this.elements.discoveryButton;
-		return this.modal.close(kind, fallback, () => {}, () => queueMicrotask(() => {
-			this.handlers?.overlayClosed(request);
-			this.focusAfterOverlayClose(request);
+	closeResult(focus) {
+		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
+		return this.modal.closeResult(target);
+	}
+	beginDiscoveryClose(request) {
+		return this.modal.closeDiscovery(this.elements.discoveryButton, () => queueMicrotask(() => {
+			this.handlers?.discoveryClosed(request);
+			this.focusAfterDiscoveryClose(request);
 		}));
 	}
 	showDailyShareCopied() {
@@ -4395,11 +4371,7 @@ var GameView = class {
 	focusGuess() {
 		if (this.inputModality !== "pointer-coarse" && !this.elements.guess.disabled && !this.elements.guess.closest("[inert]")) queueMicrotask(() => this.elements.guess.focus({ preventScroll: true }));
 	}
-	focusAfterOverlayClose(request) {
-		if (request.overlay === "result") {
-			request.outcome === "completed-daily" ? this.focusMode("classic") : this.focusPlay();
-			return;
-		}
+	focusAfterDiscoveryClose(request) {
 		if (request.outcome === "start-speedrun" || this.state?.mode) this.focusPlay();
 		else this.focusIfAvailable(this.elements.discoveryButton);
 	}
@@ -4579,7 +4551,7 @@ var GameView = class {
 		const enabled = new Set(entries.filter(([, element]) => this.canNavigateTo(element)).map(([id]) => id));
 		const currentElement = pointerAnchor && this.canNavigateTo(pointerAnchor) ? pointerAnchor : document.activeElement;
 		const current = entries.find(([, element]) => element === currentElement)?.[0] ?? null;
-		const completedDaily = this.state?.mode === "daily" && this.state.dailyProgress.date === this.state.dailyDate && this.state.dailyProgress.completed;
+		const completedDaily = this.state?.mode === "daily" && dailyCompleted(this.state.dailyProgress, this.state.dailyDate);
 		const target = nextPrimaryFocus({
 			current,
 			enabled,
@@ -4796,7 +4768,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		shareDaily: () => controller.shareDaily(),
 		openDiscoverySpotify: (dailyNumber) => controller.openDiscoverySpotify(dailyNumber),
 		startSpeedrun: () => controller.startSpeedrun(),
-		overlayClosed: (request) => controller.onOverlayClosed(request),
+		discoveryClosed: (request) => controller.onDiscoveryClosed(request),
 		setVolume: (volume, committed) => {
 			audio.setVolume(volume / 100);
 			if (!committed) return;
