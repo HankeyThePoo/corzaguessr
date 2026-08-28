@@ -1223,7 +1223,7 @@ var Progress = class {
 		};
 	}
 	markDailyStarted(date, track) {
-		if (this.dailyInProgress(date)) return true;
+		if (this.dailyInProgress(date)) return;
 		const next = {
 			status: "in-progress",
 			date,
@@ -1231,28 +1231,25 @@ var Progress = class {
 			history: []
 		};
 		this.dailyState = next;
-		if (!this.storage.saveDaily(next)) return this.persistenceFailed();
-		return true;
+		if (!this.storage.saveDaily(next)) this.persistenceFailed();
 	}
 	updateDailyAttempt(history) {
-		if (this.dailyState.status !== "in-progress") return true;
+		if (this.dailyState.status !== "in-progress") return;
 		const next = {
 			...this.dailyState,
 			history: history.map((slot) => ({ ...slot }))
 		};
 		this.dailyState = next;
-		if (!this.storage.saveDaily(next)) return this.persistenceFailed();
-		return true;
+		if (!this.storage.saveDaily(next)) this.persistenceFailed();
 	}
 	recordDiscovery(trackNumber) {
-		if (this.discoveriesState.has(trackNumber)) return true;
+		if (this.discoveriesState.has(trackNumber)) return;
 		const next = new Set(this.discoveriesState).add(trackNumber);
 		if (!this.storage.saveDiscoveries(next)) {
 			this.persistenceFailed();
-			return false;
+			return;
 		}
 		this.discoveriesState = next;
-		return true;
 	}
 	resetProgress() {
 		if (!this.storage.clearProgress()) return false;
@@ -3397,9 +3394,6 @@ var ModalController = class {
 		this.reducedMotion = reducedMotion;
 		this.announce = announce;
 		this.scheduler = scheduler;
-	}
-	get openKind() {
-		return this.kind;
 	}
 	get discoveryLayoutActive() {
 		return this.kind === "discovery" && !this.closing;
