@@ -700,7 +700,7 @@ var GameController = class {
 				this.tracks = tracks;
 				this.prime();
 				this.render();
-				this.view.applyEffect({ type: "catalog-ready" });
+				this.view.focusAfterCatalogReady();
 			},
 			onError: () => {
 				this.catalogLoadingVisible = false;
@@ -722,7 +722,7 @@ var GameController = class {
 		this.resetForMode(mode);
 		this.view.announce(MODE_RULES[mode].description);
 		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.startDailyCountdown();
-		this.view.applyEffect({ type: "mode-selected" });
+		this.view.focusAfterModeSelected();
 	}
 	play() {
 		this.handlePlay(false);
@@ -820,7 +820,7 @@ var GameController = class {
 		this.shareClipboard.copy(formatDailyShare(dailyDate, result)).then((copied) => {
 			if (!stillCurrent()) return;
 			if (copied) {
-				this.view.applyEffect({ type: "daily-share-copied" });
+				this.view.showDailyShareCopied();
 				this.view.announce("RESULT COPIED TO CLIPBOARD.");
 			} else this.view.announce("RESULT COULD NOT BE COPIED IN THIS BROWSER.");
 		}, () => {
@@ -870,7 +870,7 @@ var GameController = class {
 			if (!isTimedMode(this.session.snapshot.mode)) this.clock.restart(snippetSeconds(this.session.snapshot.attempt) * 1e3);
 			this.clock.start();
 			this.render();
-			this.view.applyEffect({ type: "gameplay-ready" });
+			this.view.focusGuess();
 			return;
 		}
 		if (this.session.snapshot.round?.id === round.id) {
@@ -905,7 +905,7 @@ var GameController = class {
 		}
 		this.view.announce(kind === "selected-track-retry" ? COPY.selectedTrackRetry : COPY.trackError);
 		this.render();
-		this.view.applyEffect({ type: "recovery-needed" });
+		this.view.focusPlay();
 	}
 	onLoading(visible) {
 		this.render();
@@ -964,7 +964,7 @@ var GameController = class {
 				this.playback.replay(round, false);
 				this.render();
 			}
-			this.view.applyEffect({ type: "gameplay-ready" });
+			this.view.focusGuess();
 			return;
 		}
 		const stopping = requested && !shortcut;
@@ -973,10 +973,10 @@ var GameController = class {
 		if (stopping) this.playback.rewind(round);
 		else if (pausing) this.playback.pause();
 		if (!stopping) this.playback.replay(round, elapsed > 0 || !roundHeard);
-		this.view.applyEffect({ type: "playback-restarted" });
+		this.view.resetTimeline();
 		this.clock.restart(snippetSeconds(state.attempt) * 1e3);
 		this.render();
-		this.view.applyEffect({ type: "gameplay-ready" });
+		this.view.focusGuess();
 	}
 	resolveAttempt(outcome, guessed) {
 		const state = this.session.snapshot;
@@ -989,7 +989,7 @@ var GameController = class {
 				return;
 			}
 		}
-		this.view.applyEffect({ type: "attempt-submitted" });
+		this.view.resetGuessInput();
 		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
 		if (isTimedMode(mode)) {
 			this.playback.pause();
@@ -1002,10 +1002,7 @@ var GameController = class {
 			}
 			if (modeAdjustsTime(mode)) {
 				const adjustment = survivalAdjustment(outcome);
-				this.view.applyEffect({
-					type: "survival-adjusted",
-					seconds: adjustment / 1e3
-				});
+				this.view.flashTimeChange(adjustment / 1e3);
 				if (this.clock.adjust(adjustment).remainingMs <= 0) {
 					this.finishGame(false, round);
 					return;
@@ -1029,11 +1026,11 @@ var GameController = class {
 		if (clockWasRunning) this.clock.extendTo(limit);
 		else {
 			this.playback.replay(round, true);
-			this.view.applyEffect({ type: "playback-restarted" });
+			this.view.resetTimeline();
 			this.clock.restart(limit);
 		}
 		this.render();
-		this.view.applyEffect({ type: "gameplay-ready" });
+		this.view.focusGuess();
 	}
 	finishGame(won, fallbackRound = null) {
 		const state = this.session.snapshot;
@@ -4006,34 +4003,21 @@ var GameView = class {
 			this.elements.status.textContent = message;
 		});
 	}
-	applyEffect(effect) {
-		switch (effect.type) {
-			case "catalog-ready":
-				this.state?.mode ? this.focusPlay() : this.focusMode("daily");
-				return;
-			case "mode-selected":
-				if (this.state?.mode === "daily" && dailyCompleted(this.state.dailyProgress, this.state.dailyDate)) this.focusMode("classic");
-				else this.focusPlay();
-				return;
-			case "gameplay-ready":
-				this.focusGuess();
-				return;
-			case "playback-restarted":
-				this.timeline.beginReset(true);
-				return;
-			case "attempt-submitted":
-				this.autocomplete.reset();
-				return;
-			case "survival-adjusted":
-				this.timeline.flashSurvivalChange(effect.seconds);
-				return;
-			case "recovery-needed":
-				this.focusPlay();
-				return;
-			case "daily-share-copied":
-				this.showDailyShareCopied();
-				return;
-		}
+	focusAfterCatalogReady() {
+		this.state?.mode ? this.focusPlay() : this.focusMode("daily");
+	}
+	focusAfterModeSelected() {
+		if (this.state?.mode === "daily" && dailyCompleted(this.state.dailyProgress, this.state.dailyDate)) this.focusMode("classic");
+		else this.focusPlay();
+	}
+	resetTimeline() {
+		this.timeline.beginReset(true);
+	}
+	resetGuessInput() {
+		this.autocomplete.reset();
+	}
+	flashTimeChange(seconds) {
+		this.timeline.flashSurvivalChange(seconds);
 	}
 	closeResult(focus) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
