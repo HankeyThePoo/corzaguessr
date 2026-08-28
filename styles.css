@@ -58,6 +58,7 @@
   --duration-share-fade: 200ms;
   --duration-survival-flash: 520ms;
   --slot-motion-duration: var(--duration-slot);
+  --control-height: 46px;
   --play-size: 68px;
   --volume-height: 30px;
   color: var(--off-white);
@@ -280,6 +281,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: var(--control-height);
+  min-height: var(--control-height);
   border-radius: var(--radius);
   background: transparent;
   color: var(--off-white);
@@ -297,8 +300,6 @@
 
 #corzaguessr .button,
 #corzaguessr .mode {
-  height: 40px;
-  min-height: 40px;
   padding: 0 var(--space-4);
 }
 
@@ -388,6 +389,7 @@
 #corzaguessr .play {
   width: var(--play-size);
   height: var(--play-size);
+  min-height: var(--play-size);
   transition:
     filter var(--duration-fast) ease,
     opacity var(--duration-timeline-reset) ease-out,
@@ -510,7 +512,7 @@
   --timeline-progress: var(--off-white);
   position: relative;
   isolation: isolate;
-  height: 46px;
+  height: var(--control-height);
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--surface-glass);
@@ -773,7 +775,7 @@
 
 #corzaguessr input {
   width: 100%;
-  height: 46px;
+  height: var(--control-height);
   padding: var(--space-3);
   border: var(--line-width) solid var(--line);
   border-radius: var(--radius);
@@ -906,7 +908,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 46px;
+  min-height: var(--control-height);
   padding: var(--space-3);
   overflow: hidden;
   border: var(--line-width) solid var(--line);
