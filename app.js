@@ -228,22 +228,22 @@ var GameSession = class {
 	modeState = null;
 	roundState = null;
 	roundNumberState = 0;
-	guessesState = 0;
-	correctState = 0;
 	attemptsState = [];
-	speedrunCorrectTrackIdsState = /* @__PURE__ */ new Set();
 	resultState = null;
 	get snapshot() {
+		const timedAttempts = isTimedMode(this.modeState) ? this.attemptsState : [];
+		const correctAttempts = timedAttempts.filter((attempt) => attempt.outcome === "correct");
+		const speedrunCorrectTrackIds = this.modeState === "speedrun" ? new Set(correctAttempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null)) : /* @__PURE__ */ new Set();
 		return {
 			mode: this.modeState,
 			round: this.roundState ? this.copyRound(this.roundState) : null,
 			roundNumber: this.roundNumberState,
 			attempt: this.puzzleAttempt(),
-			guesses: this.guessesState,
-			correct: this.correctState,
+			guesses: timedAttempts.filter((attempt) => attempt.outcome !== "skip").length,
+			correct: correctAttempts.length,
 			attempts: this.attemptsState.map((attempt) => ({ ...attempt })),
 			guessedTrackIds: this.puzzleGuessedTrackIds(),
-			speedrunCorrectTrackIds: new Set(this.speedrunCorrectTrackIdsState),
+			speedrunCorrectTrackIds,
 			result: this.resultState ? { ...this.resultState } : null
 		};
 	}
@@ -251,10 +251,7 @@ var GameSession = class {
 		this.modeState = mode;
 		this.roundState = null;
 		this.roundNumberState = 0;
-		this.guessesState = 0;
-		this.correctState = 0;
 		this.attemptsState = seed.attempts.map((attempt) => ({ ...attempt }));
-		this.speedrunCorrectTrackIdsState.clear();
 		this.resultState = null;
 	}
 	setRound(round) {
@@ -273,12 +270,8 @@ var GameSession = class {
 	}
 	resolveTimed(outcome, guessed) {
 		if (!isTimedMode(this.modeState)) throw new Error("Timed attempts require Blitz, Survival, or Speedrun mode.");
-		const speedrunMilestone = !!(outcome === "correct" && this.modeState === "speedrun" && this.roundState && !this.speedrunCorrectTrackIdsState.has(this.roundState.track.dailyNumber));
-		if (outcome === "correct" && this.modeState === "speedrun" && this.roundState) this.speedrunCorrectTrackIdsState.add(this.roundState.track.dailyNumber);
+		const speedrunMilestone = !!(outcome === "correct" && this.modeState === "speedrun" && this.roundState && !this.attemptsState.some((attempt) => attempt.outcome === "correct" && attempt.trackNumber === this.roundState?.track.dailyNumber));
 		this.attemptsState.unshift(this.createAttempt(this.roundNumberState, outcome, guessed, speedrunMilestone));
-		if (this.attemptsState.length > 19) this.attemptsState.length = 19;
-		if (outcome !== "skip") this.guessesState += 1;
-		if (outcome === "correct") this.correctState += 1;
 		this.roundNumberState += 1;
 		this.roundState = null;
 	}
@@ -518,6 +511,7 @@ function formatShareDate(value) {
 	const monthName = month ? MONTHS$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
+var MAX_VISIBLE_TIMED_ATTEMPTS = 19;
 function acceptsAttempt(session, transport) {
 	return !!session.round && !session.result && !transport.retryNeeded && transport.activeRoundId === session.round.id;
 }
@@ -554,7 +548,7 @@ function composeGameViewModel(input) {
 	const { session, transport } = input;
 	const requested = transport.playRequested;
 	const speedrunTracksLeft = Math.max(0, input.tracks.length - session.speedrunCorrectTrackIds.size);
-	const slots = session.attempts.map((attempt) => attemptSlot(attempt, session.mode, input.tracks));
+	const slots = (isTimedMode(session.mode) ? session.attempts.slice(0, MAX_VISIBLE_TIMED_ATTEMPTS) : session.attempts).map((attempt) => attemptSlot(attempt, session.mode, input.tracks));
 	const completedDaily = session.mode === "daily" && dailyCompleted(input.dailyProgress, input.dailyDate);
 	const completedPuzzle = (session.mode === "daily" || session.mode === "classic") && (!!session.result || completedDaily);
 	const history = completedPuzzle ? slots.slice(1) : slots;
