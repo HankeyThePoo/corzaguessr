@@ -135,9 +135,6 @@ function isTimedMode(mode) {
 function isPuzzleMode(mode) {
 	return mode !== null && MODE_RULES[mode].gameplay === "puzzle";
 }
-function clockKindForMode(mode) {
-	return MODE_RULES[mode].gameplay === "puzzle" ? "puzzle" : "timed";
-}
 function clockDisplayForMode(mode) {
 	const gameplay = MODE_RULES[mode].gameplay;
 	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : "survival";
@@ -243,8 +240,6 @@ function updateSpeedrunBest(bests, won, elapsedMs, trackCount) {
 var GameSession = class {
 	modeState = null;
 	roundState = null;
-	roundHeardState = false;
-	attemptState = 0;
 	roundNumberState = 0;
 	guessesState = 0;
 	correctState = 0;
@@ -253,13 +248,11 @@ var GameSession = class {
 	guessedTrackIdsState = /* @__PURE__ */ new Set();
 	speedrunCorrectTrackIdsState = /* @__PURE__ */ new Set();
 	resultState = null;
-	nextSlotId = 0;
 	get snapshot() {
 		return {
 			mode: this.modeState,
 			round: this.roundState ? this.copyRound(this.roundState) : null,
-			roundHeard: this.roundHeardState,
-			attempt: this.attemptState,
+			attempt: isPuzzleMode(this.modeState) ? this.historyState.length : 0,
 			guesses: this.guessesState,
 			correct: this.correctState,
 			currentSlot: this.currentSlotState ? { ...this.currentSlotState } : null,
@@ -270,15 +263,12 @@ var GameSession = class {
 		};
 	}
 	reset(mode, seed = {
-		attempt: 0,
 		history: [],
 		guessedTrackIds: /* @__PURE__ */ new Set(),
 		currentSlot: null
 	}) {
 		this.modeState = mode;
 		this.roundState = null;
-		this.roundHeardState = false;
-		this.attemptState = seed.attempt;
 		this.roundNumberState = 0;
 		this.guessesState = 0;
 		this.correctState = 0;
@@ -287,24 +277,18 @@ var GameSession = class {
 		this.guessedTrackIdsState.clear();
 		for (const trackId of seed.guessedTrackIds) this.guessedTrackIdsState.add(trackId);
 		this.speedrunCorrectTrackIdsState.clear();
-		this.nextSlotId = Math.max(this.nextSlotId, seed.currentSlot?.id ?? 0, ...this.historyState.map((slot) => slot.id));
 		this.resultState = null;
 	}
 	beginPreparing(round) {
 		if (this.roundNumberState === 0) this.roundNumberState = 1;
 		this.roundState = this.copyRound(round);
-		this.roundHeardState = false;
 		if (!this.currentSlotState || this.currentSlotState.tone === "technical") this.currentSlotState = this.prompt();
 	}
 	beginPlaying(round) {
+		if (this.roundNumberState === 0) this.roundNumberState = 1;
 		this.roundState = this.copyRound(round);
-		this.roundHeardState = true;
 		if (isTimedMode(this.modeState)) this.guessedTrackIdsState.clear();
 		if (!this.currentSlotState) this.currentSlotState = this.prompt();
-	}
-	resumePlaying(round) {
-		if (this.roundState?.id !== round.id) return;
-		this.roundHeardState = true;
 	}
 	showTrackError(message) {
 		if (this.currentSlotState) this.currentSlotState = {
@@ -315,7 +299,6 @@ var GameSession = class {
 	}
 	clearRound() {
 		this.roundState = null;
-		this.roundHeardState = false;
 	}
 	recordGuess(trackNumber) {
 		if (this.guessedTrackIdsState.has(trackNumber)) return false;
@@ -324,14 +307,12 @@ var GameSession = class {
 	}
 	resolvePuzzleAttempt(outcome, guessedTitle) {
 		if (!isPuzzleMode(this.modeState)) throw new Error("Puzzle attempts require Daily or Classic mode.");
+		const attempt = this.historyState.length;
 		const slot = this.createAttemptSlot(outcome, guessedTitle, false);
-		const finished = outcome === "correct" || this.attemptState === 5;
+		const finished = outcome === "correct" || attempt === 5;
 		if (finished) this.currentSlotState = slot;
 		else this.archive(slot);
-		if (!finished) {
-			this.attemptState += 1;
-			this.currentSlotState = this.prompt();
-		}
+		if (!finished) this.currentSlotState = this.prompt();
 		return { finished };
 	}
 	resolveTimed(outcome, guessedTitle) {
@@ -344,15 +325,13 @@ var GameSession = class {
 		this.roundNumberState += 1;
 		this.currentSlotState = this.prompt();
 		this.roundState = null;
-		this.roundHeardState = false;
 	}
 	finish(result) {
 		if (!this.modeState || result.mode !== this.modeState) throw new Error("Game result mode must match the active session mode.");
-		this.roundHeardState = false;
 		if (isTimedMode(this.modeState)) {
 			const speedrunWon = result.mode === "speedrun" && result.won;
 			this.currentSlotState = {
-				id: ++this.nextSlotId,
+				id: this.roundNumberState,
 				text: speedrunWon ? "SPEEDRUN COMPLETE" : "TIME'S UP",
 				tone: "neutral"
 			};
@@ -362,13 +341,12 @@ var GameSession = class {
 	dismissResult() {
 		if (!this.resultState) return;
 		this.roundState = null;
-		this.roundHeardState = false;
 		this.resultState = null;
 	}
 	prompt() {
-		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : puzzlePrompt(this.attemptState);
+		const prompt = isTimedMode(this.modeState) ? timedPrompt(this.roundNumberState) : puzzlePrompt(this.historyState.length);
 		return {
-			id: ++this.nextSlotId,
+			id: isTimedMode(this.modeState) ? this.roundNumberState : this.historyState.length + 1,
 			...prompt
 		};
 	}
@@ -376,12 +354,13 @@ var GameSession = class {
 		let text = title;
 		if (outcome === "skip") if (isTimedMode(this.modeState)) text = "SKIPPED";
 		else {
-			const finalGuess = this.attemptState === 5;
-			const added = finalGuess ? 0 : SNIPPET_SECONDS[this.attemptState + 1] - SNIPPET_SECONDS[this.attemptState];
-			text = finalGuess ? "FINAL GUESS SKIPPED" : `GUESS ${this.attemptState + 1} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`;
+			const attempt = this.historyState.length;
+			const finalGuess = attempt === 5;
+			const added = finalGuess ? 0 : SNIPPET_SECONDS[attempt + 1] - SNIPPET_SECONDS[attempt];
+			text = finalGuess ? "FINAL GUESS SKIPPED" : `GUESS ${attempt + 1} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`;
 		}
 		const slot = {
-			id: ++this.nextSlotId,
+			id: isTimedMode(this.modeState) ? this.roundNumberState : this.historyState.length + 1,
 			text,
 			tone: outcome
 		};
@@ -392,11 +371,7 @@ var GameSession = class {
 	}
 	archive(slot) {
 		const timed = isTimedMode(this.modeState);
-		const id = timed ? this.roundNumberState : this.attemptState + 1;
-		this.historyState.unshift({
-			...slot,
-			id
-		});
+		this.historyState.unshift(slot);
 		if (timed && this.historyState.length > 19) this.historyState.length = 19;
 	}
 	copyRound(round) {
@@ -544,6 +519,10 @@ function dailyCompleted(progress, date) {
 function dailyWon(progress, date) {
 	return dailyCompleted(progress, date) && progress.outcome === "won";
 }
+function dailyAttempt(progress) {
+	if (progress.status === "none") return 0;
+	return progress.status === "completed" ? Math.max(0, progress.history.length - 1) : progress.history.length;
+}
 function emptyPersonalBests() {
 	return {
 		classic: {
@@ -603,11 +582,8 @@ function formatShareDate(value) {
 	const monthName = month ? MONTHS$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
-function playbackRequested(transport) {
-	return transport.status === "starting" || transport.status === "playing" || transport.status === "waiting";
-}
 function acceptsAttempt(session, transport) {
-	return !!session.round && !session.result && transport.status !== "retry" && session.roundHeard;
+	return !!session.round && !session.result && !transport.retryNeeded && transport.activeRoundId === session.round.id;
 }
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
@@ -617,16 +593,16 @@ function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 function rulesText(input) {
 	const { session, dailyProgress, dailyDate } = input;
 	if (session.mode === "daily" && dailyCompleted(dailyProgress, dailyDate)) {
-		const attempts = dailyProgress.step + 1;
+		const attempts = dailyAttempt(dailyProgress) + 1;
 		return `${dailyWon(dailyProgress, dailyDate) ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK IN ${formatDailyCountdown(input.dailyCountdownMs)}`;
 	}
 	if (input.appStatus === "loading") return input.catalogLoadingVisible ? COPY.loadingCatalog : COPY.modePrompt;
 	if (input.appStatus === "error") return COPY.catalogError;
 	if (!session.mode) return COPY.modePrompt;
-	if (input.transport.status === "retry") return COPY.trackError;
+	if (input.transport.retryNeeded) return COPY.trackError;
 	if (session.mode === "daily") {
 		if (dailyCatalogPending(session.mode, input.tracks, dailyDate, dailyProgress)) return COPY.trackUnavailable;
-		if (dailyInProgress(dailyProgress, dailyDate)) return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${dailyProgress.step + 1}`;
+		if (dailyInProgress(dailyProgress, dailyDate)) return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${dailyAttempt(dailyProgress) + 1}`;
 	}
 	return MODE_RULES[session.mode].description;
 }
@@ -640,7 +616,7 @@ function formatDailyCountdown(milliseconds) {
 }
 function composeGameViewModel(input) {
 	const { session, transport } = input;
-	const requested = playbackRequested(transport);
+	const requested = transport.playRequested;
 	const speedrunTracksLeft = Math.max(0, input.tracks.length - session.speedrunCorrectTrackIds.size);
 	const currentSlot = session.mode === "speedrun" && session.currentSlot?.tone === "prompt" ? {
 		...session.currentSlot,
@@ -648,15 +624,16 @@ function composeGameViewModel(input) {
 	} : session.currentSlot;
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
-	const playControlAvailable = !session.round || transport.status === "retry" || session.roundHeard || transport.pendingRoundId === session.round.id && !requested;
-	const inputVisible = !!session.round && !session.result && transport.status !== "retry";
+	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
+	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id && !requested;
+	const inputVisible = !!session.round && !session.result && !transport.retryNeeded;
 	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay);
 	const attemptEnabled = !!(guessEnabled && session.round && acceptsAttempt(session, transport));
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
 		rulesText: rulesText(input),
-		transportText: transport.loading.visible ? COPY.loadingTrack : "",
+		transportText: transport.loading ? COPY.loadingTrack : "",
 		inputVisible,
 		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playControlAvailable),
 		guessEnabled,
@@ -669,7 +646,7 @@ function composeGameViewModel(input) {
 		unavailableGuessIds: session.guessedTrackIds,
 		clock: input.clock,
 		result: session.result,
-		resultPersistenceFailed: input.resultPersistenceFailed ?? false,
+		resultPersistenceFailed: input.resultPersistenceFailed,
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
@@ -689,13 +666,13 @@ var GameController = class {
 	shareClipboard;
 	random;
 	session = new GameSession();
-	appStatus = "loading";
+	catalogError = false;
 	catalogLoadingVisible = false;
 	tracks = [];
 	latestDailyDate = "1970-01-01";
 	dailyDate = "1970-01-01";
 	dailyCountdownMs = 0;
-	overlay = null;
+	discoveryOpen = false;
 	sessionNumber = 0;
 	nextRoundId = 0;
 	persistenceFailureQueued = false;
@@ -718,15 +695,15 @@ var GameController = class {
 		this.render();
 		this.catalog.load(date, {
 			onLoading: () => {
+				this.catalogError = false;
 				this.catalogLoadingVisible = true;
-				if (!this.tracks.length) this.appStatus = "loading";
 				this.render();
 				this.view.announce(COPY.loadingCatalog);
 			},
 			onLoaded: (tracks) => {
 				this.catalogLoadingVisible = false;
+				this.catalogError = false;
 				this.tracks = tracks;
-				this.appStatus = this.session.snapshot.mode ? "ready" : "awaiting-mode";
 				this.prime();
 				this.render();
 				this.view.present({ type: "catalog-ready" });
@@ -734,7 +711,7 @@ var GameController = class {
 			onError: () => {
 				this.catalogLoadingVisible = false;
 				if (this.tracks.length) return;
-				this.appStatus = "error";
+				this.catalogError = true;
 				this.view.announce(COPY.catalogError);
 				this.render();
 			}
@@ -742,7 +719,7 @@ var GameController = class {
 	}
 	selectMode(mode) {
 		const state = this.session.snapshot;
-		if (this.activeOverlay || this.appStatus === "error" || state.mode === mode) return;
+		if (this.activeOverlay || this.catalogError || state.mode === mode) return;
 		if (mode === "daily") {
 			const date = this.dailySchedule.start();
 			this.latestDailyDate = date;
@@ -767,7 +744,7 @@ var GameController = class {
 		const round = state.round;
 		if (!round || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay || state.guessedTrackIds.has(dailyNumber)) return;
 		const guessed = this.tracks.find((track) => track.dailyNumber === dailyNumber);
-		if (!guessed || isTimedMode(state.mode) && !state.roundHeard) return;
+		if (!guessed) return;
 		if (!this.session.recordGuess(dailyNumber)) return;
 		this.resolveAttempt(dailyNumber === round.track.dailyNumber ? "correct" : "wrong", guessed);
 	}
@@ -791,7 +768,7 @@ var GameController = class {
 		}
 	}
 	openDiscovery() {
-		if (this.overlay === "discovery") {
+		if (this.discoveryOpen) {
 			this.closeDiscovery();
 			return;
 		}
@@ -800,21 +777,21 @@ var GameController = class {
 			this.clock.pause();
 			this.playback.suspend();
 		}
-		this.overlay = "discovery";
+		this.discoveryOpen = true;
 		this.render();
 	}
 	closeDiscovery() {
-		if (this.overlay !== "discovery") return;
+		if (!this.discoveryOpen) return;
 		this.view.beginDiscoveryClose({ outcome: "resume" });
 	}
 	startSpeedrun() {
-		if (this.overlay !== "discovery" || !this.speedrunUnlocked()) return;
+		if (!this.discoveryOpen || !this.speedrunUnlocked()) return;
 		if (!this.view.beginDiscoveryClose({ outcome: "start-speedrun" })) return;
 		this.dailySchedule.stop();
 	}
 	onDiscoveryClosed(request) {
-		if (this.overlay !== "discovery") return;
-		this.overlay = null;
+		if (!this.discoveryOpen) return;
+		this.discoveryOpen = false;
 		if (request.outcome === "start-speedrun") {
 			this.resetForMode("speedrun");
 			this.view.announce(MODE_RULES.speedrun.description);
@@ -825,7 +802,7 @@ var GameController = class {
 		this.render();
 	}
 	resetProgress() {
-		if (this.overlay !== "discovery") return;
+		if (!this.discoveryOpen) return;
 		if (!this.progress.resetProgress()) {
 			this.view.announce("PROGRESS COULD NOT BE RESET IN THIS BROWSER.");
 			return;
@@ -857,7 +834,7 @@ var GameController = class {
 		});
 	}
 	openDiscoverySpotify(dailyNumber) {
-		if (this.overlay !== "discovery" || !this.progress.discoveries.has(dailyNumber)) return;
+		if (!this.discoveryOpen || !this.progress.discoveries.has(dailyNumber)) return;
 		const spotify = this.tracks.find((track) => track.dailyNumber === dailyNumber)?.spotify ?? "";
 		if (spotify) this.spotifyLink.openSpotify(spotify);
 	}
@@ -883,27 +860,26 @@ var GameController = class {
 		this.pageVisible = false;
 		const state = this.session.snapshot;
 		if (!this.playback.ownedRound || state.result) return;
-		const wasRequested = playbackRequested(this.playback.snapshot);
+		const wasRequested = this.playback.snapshot.playRequested;
 		this.clock.pause();
 		this.playback.suspend();
 		if (wasRequested) this.render();
 	}
 	onPending(round) {
 		this.session.beginPreparing(round);
-		if (this.session.snapshot.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track, this.session.snapshot.attempt);
+		if (this.session.snapshot.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track);
 		this.render();
 	}
 	onAudioPlaying(round, startedNewRound) {
 		if (startedNewRound) {
 			this.session.beginPlaying(round);
-			if (!isTimedMode(this.session.snapshot.mode)) this.clock.restartPuzzle(snippetSeconds(this.session.snapshot.attempt) * 1e3);
+			if (!isTimedMode(this.session.snapshot.mode)) this.clock.restart(snippetSeconds(this.session.snapshot.attempt) * 1e3);
 			this.clock.start();
 			this.render();
 			this.view.present({ type: "gameplay-ready" });
 			return;
 		}
 		if (this.session.snapshot.round?.id === round.id) {
-			this.session.resumePlaying(round);
 			this.clock.start();
 			this.render();
 		}
@@ -921,7 +897,7 @@ var GameController = class {
 	}
 	onAudioEnded(round) {
 		const state = this.session.snapshot;
-		if (state.round?.id !== round.id || !state.roundHeard || state.result) return;
+		if (state.round?.id !== round.id || this.playback.snapshot.activeRoundId !== round.id || state.result) return;
 		this.clock.pause();
 		if (isTimedMode(state.mode)) this.resolveAttempt("skip", null);
 		else this.render();
@@ -942,8 +918,7 @@ var GameController = class {
 		this.render();
 		if (visible) this.view.announce(COPY.loadingTrack);
 	}
-	onProgressPersistenceFailure(failure) {
-		if (failure.operation === "reset-progress") return;
+	onProgressPersistenceFailure() {
 		this.resultPersistenceFailed = true;
 		if (this.persistenceFailureQueued) return;
 		this.persistenceFailureQueued = true;
@@ -973,19 +948,20 @@ var GameController = class {
 		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
 		const state = this.session.snapshot;
 		const transport = this.playback.snapshot;
-		const requested = playbackRequested(transport);
+		const requested = transport.playRequested;
+		const roundHeard = !!state.round && transport.activeRoundId === state.round.id;
 		if (this.appStatus !== "ready" || !state.mode || this.activeOverlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
-		if (!state.round || transport.status === "retry") {
-			this.playback.start({ manualRetry: transport.status === "retry" });
+		if (!state.round || transport.retryNeeded) {
+			this.playback.start(transport.retryNeeded);
 			return;
 		}
-		if (!state.roundHeard && transport.pendingRoundId === state.round.id && !requested) {
+		if (!roundHeard && transport.pendingRoundId === state.round.id && !requested) {
 			this.playback.replay(state.round, false);
 			this.render();
 			return;
 		}
 		const round = state.round;
-		if (!round || !state.roundHeard) return;
+		if (!round || !roundHeard) return;
 		if (isTimedMode(state.mode)) {
 			if (requested) {
 				this.clock.pause();
@@ -1003,9 +979,9 @@ var GameController = class {
 		const elapsed = pausing ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
 		if (stopping) this.playback.rewind(round);
 		else if (pausing) this.playback.pause();
-		if (!stopping) this.playback.replay(round, elapsed > 0 || !state.roundHeard);
+		if (!stopping) this.playback.replay(round, elapsed > 0 || !roundHeard);
 		this.view.present({ type: "playback-restarted" });
-		this.clock.restartPuzzle(snippetSeconds(state.attempt) * 1e3);
+		this.clock.restart(snippetSeconds(state.attempt) * 1e3);
 		this.render();
 		this.view.present({ type: "gameplay-ready" });
 	}
@@ -1015,8 +991,7 @@ var GameController = class {
 		const mode = state.mode;
 		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
 		if (isTimedMode(mode)) {
-			const snapshot = this.clock.pause();
-			if (snapshot.expired || snapshot.remainingMs <= 0) {
+			if (this.clock.pause().remainingMs <= 0) {
 				this.finishGame(false);
 				return;
 			}
@@ -1038,8 +1013,7 @@ var GameController = class {
 					type: "survival-adjusted",
 					seconds: adjustment / 1e3
 				});
-				const snapshot = this.clock.adjust(adjustment);
-				if (snapshot.expired || snapshot.remainingMs <= 0) {
+				if (this.clock.adjust(adjustment).remainingMs <= 0) {
 					this.finishGame(false, round);
 					return;
 				}
@@ -1047,7 +1021,7 @@ var GameController = class {
 			this.playback.start();
 			return;
 		}
-		const clockWasRunning = playbackRequested(this.playback.snapshot) && this.clock.snapshot().running;
+		const clockWasRunning = this.playback.snapshot.playRequested && this.clock.snapshot().running;
 		const resolution = this.session.resolvePuzzleAttempt(outcome, guessed?.title ?? "");
 		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
@@ -1056,14 +1030,14 @@ var GameController = class {
 		}
 		if (mode === "daily" && this.progress.dailyInProgress(this.dailyDate)) {
 			const updated = this.session.snapshot;
-			this.progress.updateDailyAttempt(updated.attempt, updated.history);
+			this.progress.updateDailyAttempt(updated.history);
 		}
 		const limit = snippetSeconds(this.session.snapshot.attempt) * 1e3;
-		if (clockWasRunning) this.clock.extendPuzzle(limit);
+		if (clockWasRunning) this.clock.extendTo(limit);
 		else {
 			this.playback.replay(round, true);
 			this.view.present({ type: "playback-restarted" });
-			this.clock.restartPuzzle(limit);
+			this.clock.restart(limit);
 		}
 		this.render();
 		this.view.present({ type: "gameplay-ready" });
@@ -1085,20 +1059,11 @@ var GameController = class {
 		this.resultPersistenceFailed = false;
 		this.sessionNumber += 1;
 		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate, this.tracks) : void 0;
-		const resumed = seed?.attempt ?? 0;
+		const resumed = seed?.history.length ?? 0;
 		this.session.reset(mode, seed);
-		const initial = MODE_RULES[mode].initialTimeMs;
-		const milliseconds = initial ?? snippetSeconds(resumed) * 1e3;
-		this.clock.configure(initial === null ? {
-			kind: "puzzle",
-			initialMs: milliseconds,
-			limitMs: milliseconds
-		} : {
-			kind: clockKindForMode(mode),
-			initialMs: milliseconds
-		});
+		const milliseconds = MODE_RULES[mode].initialTimeMs ?? snippetSeconds(resumed) * 1e3;
+		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
-		this.appStatus = this.tracks.length ? "ready" : this.appStatus;
 		this.prime();
 		this.render();
 	}
@@ -1108,12 +1073,7 @@ var GameController = class {
 		this.resultPersistenceFailed = false;
 		this.playback.reset();
 		this.session.reset(null);
-		this.clock.configure({
-			kind: "puzzle",
-			initialMs: 1e3,
-			limitMs: 1e3
-		});
-		if (this.tracks.length) this.appStatus = "awaiting-mode";
+		this.clock.configure(1e3);
 		this.render();
 	}
 	createRound(mode, failed, avoid) {
@@ -1172,7 +1132,11 @@ var GameController = class {
 		});
 	}
 	get activeOverlay() {
-		return this.session.snapshot.result ? "result" : this.overlay;
+		return this.session.snapshot.result ? "result" : this.discoveryOpen ? "discovery" : null;
+	}
+	get appStatus() {
+		if (this.tracks.length) return this.session.snapshot.mode ? "ready" : "awaiting-mode";
+		return this.catalogError ? "error" : "loading";
 	}
 };
 function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCount) {
@@ -1244,7 +1208,6 @@ var Progress = class {
 	dailySessionSeed(date, tracks) {
 		const daily = this.dailyState;
 		if (daily.status === "none" || daily.date !== date) return {
-			attempt: 0,
 			history: [],
 			guessedTrackIds: /* @__PURE__ */ new Set(),
 			currentSlot: null
@@ -1254,48 +1217,45 @@ var Progress = class {
 		const history = daily.status === "completed" ? attempts.slice(1) : attempts;
 		const guessedTrackIds = new Set(attempts.filter((slot) => slot.tone === "wrong").map((slot) => tracks.find((track) => track.title === slot.text)?.dailyNumber).filter((trackNumber) => trackNumber !== void 0));
 		return {
-			attempt: daily.step,
 			history: history.map((slot) => ({ ...slot })),
 			guessedTrackIds,
 			currentSlot: currentSlot ? { ...currentSlot } : null
 		};
 	}
-	markDailyStarted(date, track, attempt) {
+	markDailyStarted(date, track) {
 		if (this.dailyInProgress(date)) return true;
 		const next = {
 			status: "in-progress",
 			date,
 			dailyNumber: track.dailyNumber,
-			step: attempt,
 			history: []
 		};
 		this.dailyState = next;
-		if (!this.storage.saveDaily(next)) return this.persistenceFailed("start-daily");
+		if (!this.storage.saveDaily(next)) return this.persistenceFailed();
 		return true;
 	}
-	updateDailyAttempt(step, history) {
+	updateDailyAttempt(history) {
 		if (this.dailyState.status !== "in-progress") return true;
 		const next = {
 			...this.dailyState,
-			step,
 			history: history.map((slot) => ({ ...slot }))
 		};
 		this.dailyState = next;
-		if (!this.storage.saveDaily(next)) return this.persistenceFailed("advance-daily");
+		if (!this.storage.saveDaily(next)) return this.persistenceFailed();
 		return true;
 	}
 	recordDiscovery(trackNumber) {
 		if (this.discoveriesState.has(trackNumber)) return true;
 		const next = new Set(this.discoveriesState).add(trackNumber);
 		if (!this.storage.saveDiscoveries(next)) {
-			this.persistenceFailed("record-discovery");
+			this.persistenceFailed();
 			return false;
 		}
 		this.discoveriesState = next;
 		return true;
 	}
 	resetProgress() {
-		if (!this.storage.clearProgress()) return this.persistenceFailed("reset-progress");
+		if (!this.storage.clearProgress()) return false;
 		this.discoveriesState.clear();
 		this.dailyState = emptyDailyProgress();
 		this.bestsState = emptyPersonalBests();
@@ -1303,20 +1263,16 @@ var Progress = class {
 	}
 	finish(run) {
 		if (run.mode === "daily") {
-			const completedHistory = run.currentSlot ? [{
-				...run.currentSlot,
-				id: run.attempt + 1
-			}, ...run.history.map((slot) => ({ ...slot }))] : [];
+			const completedHistory = run.currentSlot ? [{ ...run.currentSlot }, ...run.history.map((slot) => ({ ...slot }))] : [];
 			const nextDaily = {
 				status: "completed",
 				outcome: run.won ? "won" : "lost",
 				date: run.dailyDate,
 				dailyNumber: run.track.dailyNumber,
-				step: run.attempt,
 				history: completedHistory
 			};
 			this.dailyState = nextDaily;
-			if (!this.storage.saveDaily(nextDaily)) this.persistenceFailed("complete-daily");
+			if (!this.storage.saveDaily(nextDaily)) this.persistenceFailed();
 			return {
 				mode: "daily",
 				won: run.won,
@@ -1397,10 +1353,10 @@ var Progress = class {
 	}
 	saveBests(next) {
 		if (this.storage.savePersonalBests(next)) return true;
-		return this.persistenceFailed("save-personal-bests");
+		return this.persistenceFailed();
 	}
-	persistenceFailed(operation) {
-		this.options.onPersistenceFailure?.({ operation });
+	persistenceFailed() {
+		this.options.onPersistenceFailure?.();
 		return false;
 	}
 };
@@ -1565,58 +1521,43 @@ var DailySchedule = class {
 		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
 	}
 };
-var browserScheduler$1 = {
-	requestFrame: (callback) => requestAnimationFrame(callback),
-	cancelFrame: (handle) => cancelAnimationFrame(handle),
-	setTimer: (callback, delay) => window.setTimeout(callback, delay),
+var browserAnimationScheduler = {
+	requestFrame: (callback) => window.requestAnimationFrame(callback),
+	cancelFrame: (handle) => window.cancelAnimationFrame(handle),
+	setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
 	clearTimer: (handle) => window.clearTimeout(handle)
 };
 var GameClock = class {
 	callbacks;
 	now;
 	scheduler;
-	config = {
-		kind: "puzzle",
-		initialMs: 1e3,
-		limitMs: 1e3
-	};
-	running = false;
 	anchorMs = null;
 	elapsedMs = 0;
 	remainingMs = 1e3;
 	maxRemainingMs = 1e3;
-	expired = false;
 	frame = 0;
 	timer = 0;
 	generation = 0;
-	constructor(callbacks, now = () => performance.now(), scheduler = browserScheduler$1) {
+	constructor(callbacks, now = () => performance.now(), scheduler = browserAnimationScheduler) {
 		this.callbacks = callbacks;
 		this.now = now;
 		this.scheduler = scheduler;
 	}
-	configure(configuration) {
+	configure(milliseconds) {
 		this.cancelScheduled();
-		this.config = {
-			...configuration,
-			limitMs: configuration.limitMs ?? configuration.initialMs
-		};
-		this.running = false;
 		this.anchorMs = null;
 		this.elapsedMs = 0;
-		this.remainingMs = configuration.initialMs;
-		this.maxRemainingMs = configuration.initialMs;
-		this.expired = false;
+		this.remainingMs = milliseconds;
+		this.maxRemainingMs = milliseconds;
 		this.generation += 1;
 	}
 	start() {
-		if (this.running || this.expired) return;
-		this.running = true;
+		if (this.anchorMs !== null || this.remainingMs <= 0) return;
 		this.anchorMs = this.now();
 		this.schedule();
 	}
 	pause() {
 		this.commit();
-		this.running = false;
 		this.anchorMs = null;
 		this.generation += 1;
 		this.cancelScheduled();
@@ -1624,51 +1565,30 @@ var GameClock = class {
 		this.callbacks.onTick(snapshot);
 		return snapshot;
 	}
-	restartPuzzle(milliseconds) {
-		this.cancelScheduled();
-		this.config = {
-			kind: "puzzle",
-			initialMs: milliseconds,
-			limitMs: milliseconds
-		};
-		this.running = false;
-		this.anchorMs = null;
-		this.elapsedMs = 0;
-		this.remainingMs = milliseconds;
-		this.maxRemainingMs = milliseconds;
-		this.expired = false;
-		this.generation += 1;
+	restart(milliseconds) {
+		this.configure(milliseconds);
 		this.callbacks.onTick(this.snapshot());
 	}
-	extendPuzzle(milliseconds) {
-		const wasRunning = this.running;
+	extendTo(milliseconds) {
+		const wasRunning = this.anchorMs !== null;
 		this.commit();
-		this.config = {
-			kind: "puzzle",
-			initialMs: milliseconds,
-			limitMs: milliseconds
-		};
 		this.remainingMs = Math.max(0, milliseconds - this.elapsedMs);
 		this.maxRemainingMs = Math.max(this.maxRemainingMs, milliseconds);
-		this.expired = this.remainingMs === 0;
-		this.anchorMs = wasRunning && !this.expired ? this.now() : null;
-		this.running = wasRunning && !this.expired;
+		this.anchorMs = wasRunning && this.remainingMs > 0 ? this.now() : null;
 		this.generation += 1;
 		this.cancelScheduled();
-		if (this.running) this.schedule();
+		if (this.anchorMs !== null) this.schedule();
 		this.callbacks.onTick(this.snapshot());
 	}
 	adjust(milliseconds) {
 		this.commit();
 		this.remainingMs = Math.max(0, this.remainingMs + milliseconds);
 		this.maxRemainingMs = Math.max(this.maxRemainingMs, this.remainingMs);
-		this.expired = this.remainingMs === 0;
-		if (this.running && !this.expired) this.anchorMs = this.now();
-		if (this.expired) {
-			this.running = false;
+		if (this.anchorMs !== null && this.remainingMs > 0) this.anchorMs = this.now();
+		if (this.remainingMs <= 0) {
 			this.anchorMs = null;
 			this.cancelScheduled();
-		} else if (this.running) {
+		} else if (this.anchorMs !== null) {
 			this.generation += 1;
 			this.cancelScheduled();
 			this.schedule();
@@ -1680,51 +1600,45 @@ var GameClock = class {
 	snapshot() {
 		const projected = this.project(this.now());
 		return {
-			kind: this.config.kind,
-			running: this.running,
+			running: this.anchorMs !== null,
 			elapsedMs: projected.elapsedMs,
 			remainingMs: projected.remainingMs,
-			limitMs: this.config.limitMs,
-			maxRemainingMs: this.maxRemainingMs,
-			expired: this.expired || projected.remainingMs <= 0
+			maxRemainingMs: this.maxRemainingMs
 		};
 	}
 	project(at) {
-		if (!this.running || this.anchorMs === null) return {
+		if (this.anchorMs === null) return {
 			elapsedMs: this.elapsedMs,
 			remainingMs: this.remainingMs
 		};
 		const delta = Math.max(0, at - this.anchorMs);
 		return {
 			elapsedMs: this.elapsedMs + delta,
-			remainingMs: this.config.kind === "puzzle" ? Math.max(0, this.config.limitMs - (this.elapsedMs + delta)) : Math.max(0, this.remainingMs - delta)
+			remainingMs: Math.max(0, this.remainingMs - delta)
 		};
 	}
 	commit() {
-		if (!this.running || this.anchorMs === null) return;
+		if (this.anchorMs === null) return;
 		const now = this.now();
 		const projected = this.project(now);
 		this.elapsedMs = projected.elapsedMs;
 		this.remainingMs = projected.remainingMs;
 		this.anchorMs = now;
-		if (this.remainingMs <= 0) this.expired = true;
 	}
 	schedule() {
 		const generation = this.generation;
 		const tick = () => {
-			if (!this.running || generation !== this.generation) return;
+			if (this.anchorMs === null || generation !== this.generation) return;
 			const snapshot = this.snapshot();
 			this.callbacks.onTick(snapshot);
 			if (snapshot.remainingMs > 0) this.frame = this.scheduler.requestFrame(tick);
 		};
 		this.frame = this.scheduler.requestFrame(tick);
 		this.timer = this.scheduler.setTimer(() => {
-			if (!this.running || generation !== this.generation) return;
+			if (this.anchorMs === null || generation !== this.generation) return;
 			this.commit();
-			this.running = false;
 			this.anchorMs = null;
 			this.remainingMs = 0;
-			this.expired = true;
 			this.cancelScheduled();
 			const snapshot = this.snapshot();
 			this.callbacks.onTick(snapshot);
@@ -1747,21 +1661,23 @@ function parseDailyProgress(value) {
 	if (!isRecord(value) || typeof value.status !== "string") return emptyDailyProgress();
 	if (value.status === "none") return emptyDailyProgress();
 	const completed = value.status === "completed";
-	if (value.status !== "in-progress" && !completed || !hasExactKeys(value, completed ? [
+	const currentKeys = completed ? [
 		"status",
 		"outcome",
 		"date",
 		"dailyNumber",
-		"step",
 		"history"
 	] : [
 		"status",
 		"date",
 		"dailyNumber",
-		"step",
 		"history"
-	])) return emptyDailyProgress();
-	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || !isIntegerBetween(value.step, 0, 5) || !Array.isArray(value.history) || completed && value.outcome !== "won" && value.outcome !== "lost" || completed && value.history.length !== value.step + 1 || !completed && value.history.length !== value.step) return emptyDailyProgress();
+	];
+	const legacyKeys = [...currentKeys, "step"];
+	if (value.status !== "in-progress" && !completed || !hasExactKeys(value, currentKeys) && !hasExactKeys(value, legacyKeys)) return emptyDailyProgress();
+	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || !Array.isArray(value.history) || completed && value.outcome !== "won" && value.outcome !== "lost" || completed && !isIntegerBetween(value.history.length, 1, 6) || !completed && !isIntegerBetween(value.history.length, 0, 5)) return emptyDailyProgress();
+	const attempt = completed ? value.history.length - 1 : value.history.length;
+	if ("step" in value && value.step !== attempt) return emptyDailyProgress();
 	const history = [];
 	for (let index = 0; index < value.history.length; index += 1) {
 		const candidate = value.history[index];
@@ -1770,7 +1686,7 @@ function parseDailyProgress(value) {
 			"text",
 			"tone"
 		])) return emptyDailyProgress();
-		const expectedId = completed ? value.step + 1 - index : value.step - index;
+		const expectedId = completed ? attempt + 1 - index : attempt - index;
 		const validTone = completed && index === 0 ? value.outcome === "won" && candidate.tone === "correct" || value.outcome === "lost" && (candidate.tone === "wrong" || candidate.tone === "skip") : candidate.tone === "wrong" || candidate.tone === "skip";
 		if (candidate.id !== expectedId || typeof candidate.text !== "string" || candidate.text.trim() !== candidate.text || candidate.text.length < 1 || candidate.text.length > 500 || !validTone) return emptyDailyProgress();
 		history.push({
@@ -1782,7 +1698,6 @@ function parseDailyProgress(value) {
 	const common = {
 		date: value.date,
 		dailyNumber: value.dailyNumber,
-		step: value.step,
 		history
 	};
 	return completed ? {
@@ -2004,10 +1919,10 @@ var AudioPlayer = class {
 	standby = null;
 	generation = 0;
 	lastActiveSlotId = null;
-	status = "empty";
+	activity = "idle";
 	suspension = null;
 	operation = null;
-	watchdogOwner = null;
+	nextOperationId = 0;
 	watchdogTimer = 0;
 	volume = 1;
 	constructor(elements, sourceForRound, callbacks, timing = browserTiming, playbackTimeoutMs = 1e4) {
@@ -2019,13 +1934,10 @@ var AudioPlayer = class {
 			id,
 			element,
 			round: null,
-			role: "empty",
 			generation: 0,
-			playGeneration: 0,
 			controller: null,
 			failed: false,
 			ready: false,
-			playRequested: false,
 			hasRequestedPlayback: false
 		}));
 	}
@@ -2041,41 +1953,21 @@ var AudioPlayer = class {
 	}
 	promote(round) {
 		const slot = this.standby;
-		if (!slot || slot.round?.id !== round.id) {
-			this.callbacks.onFailure({
-				role: "standby",
-				stage: "standby-promotion",
-				round,
-				generation: slot?.generation ?? this.generation,
-				error: /* @__PURE__ */ new Error("Prepared audio is unavailable.")
-			});
-			return false;
-		}
+		if (!slot || slot.round?.id !== round.id) return false;
 		const mediaError = slot.element.error;
 		if (slot.failed || mediaError) {
 			this.standby = null;
-			const failure = {
-				role: "standby",
-				stage: "standby-promotion",
-				round,
-				generation: slot.generation,
-				error: mediaErrorToError(mediaError, "Prepared audio failed before promotion.")
-			};
 			slot.failed = true;
 			this.releaseSlot(slot);
-			this.emitFailure(failure);
 			return false;
 		}
 		this.cancelPlaybackWatchdog();
 		const previous = this.active;
 		this.active = slot;
 		this.standby = null;
-		slot.role = "active";
-		slot.playGeneration += 1;
-		slot.playRequested = false;
 		slot.hasRequestedPlayback = false;
 		this.operation = null;
-		this.status = slot.ready ? "ready" : "loading";
+		this.activity = "idle";
 		if (previous && previous !== slot) {
 			this.lastActiveSlotId = previous.id;
 			this.releaseSlot(previous);
@@ -2085,25 +1977,19 @@ var AudioPlayer = class {
 	playPrepared(round, restart) {
 		const slot = this.active;
 		if (!slot || slot.round?.id !== round.id || slot.failed || this.suspension) return false;
-		const operation = {
-			slotId: slot.id,
-			slotGeneration: slot.generation,
-			roundId: round.id,
-			playGeneration: ++slot.playGeneration
-		};
-		slot.playRequested = true;
+		const operation = { id: ++this.nextOperationId };
 		slot.hasRequestedPlayback = true;
 		this.operation = operation;
 		if (restart) {
 			slot.element.pause();
 			this.seek(slot);
 		} else this.correctLateSeek(slot);
-		this.status = "starting";
+		this.activity = "starting";
 		let playPromise;
 		try {
 			playPromise = slot.element.play();
-		} catch (error) {
-			if (this.isCurrentPlaybackOperation(slot, operation)) this.fail(slot, "active", "active-playback", normalizeError(error));
+		} catch {
+			if (this.isCurrentPlaybackOperation(slot, operation)) this.fail(slot, "active", "active-playback");
 			return false;
 		}
 		if (this.isCurrentPlaybackOperation(slot, operation)) this.startPlaybackWatchdog(slot, operation);
@@ -2112,13 +1998,12 @@ var AudioPlayer = class {
 			if (isNamedError(error, "AbortError")) return;
 			if (isNamedError(error, "NotAllowedError")) {
 				this.cancelPlaybackWatchdog(operation);
-				slot.playRequested = false;
 				this.operation = null;
-				this.status = "blocked";
+				this.activity = "idle";
 				this.callbacks.onBlocked(round);
 				return;
 			}
-			this.fail(slot, "active", "active-playback", normalizeError(error));
+			this.fail(slot, "active", "active-playback");
 		});
 		return true;
 	}
@@ -2127,11 +2012,9 @@ var AudioPlayer = class {
 		if (!slot || slot.round?.id !== round.id || slot.failed || this.suspension) return false;
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
-		slot.playGeneration += 1;
-		slot.playRequested = false;
 		slot.element.pause();
 		this.seek(slot, true);
-		this.status = "paused";
+		this.activity = "idle";
 		return true;
 	}
 	pause() {
@@ -2139,9 +2022,7 @@ var AudioPlayer = class {
 		this.operation = null;
 		const active = this.active;
 		if (!active) return;
-		active.playGeneration += 1;
-		active.playRequested = false;
-		this.status = "paused";
+		this.activity = "idle";
 		active.element.pause();
 	}
 	releaseActive() {
@@ -2153,7 +2034,7 @@ var AudioPlayer = class {
 		this.active = null;
 		this.suspension = null;
 		this.releaseSlot(slot);
-		this.status = this.standby ? "paused" : "empty";
+		this.activity = "idle";
 	}
 	stop() {
 		this.cancelPlaybackWatchdog();
@@ -2167,7 +2048,7 @@ var AudioPlayer = class {
 			this.releaseSlot(active);
 		}
 		this.discardStandby();
-		this.status = "empty";
+		this.activity = "idle";
 	}
 	discardStandby() {
 		if (!this.standby) return;
@@ -2184,40 +2065,31 @@ var AudioPlayer = class {
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
 		for (const slot of this.slots) {
-			if (slot.role === "empty") continue;
-			slot.playGeneration += 1;
-			slot.playRequested = false;
+			if (!slot.round) continue;
 			slot.element.pause();
 		}
-		if (this.active) this.status = "paused";
+		if (this.active) this.activity = "idle";
 	}
 	restore() {
 		const suspension = this.suspension;
 		this.suspension = null;
 		if (!suspension) return;
 		for (const failure of suspension.standbyFailures) this.callbacks.onFailure(failure);
-		if (suspension.terminal) this.callbacks.onFailure(suspension.terminal.failure);
+		if (suspension.terminal) this.callbacks.onFailure(suspension.terminal);
 		if (this.active?.ready && !this.active.failed && this.active.round) this.callbacks.onReady?.({
 			role: "active",
-			round: this.active.round,
-			generation: this.active.generation
+			round: this.active.round
 		});
 		if (this.standby?.ready && !this.standby.failed && this.standby.round) this.callbacks.onReady?.({
 			role: "standby",
-			round: this.standby.round,
-			generation: this.standby.generation
+			round: this.standby.round
 		});
 	}
 	snapshot() {
 		return {
-			status: this.status,
-			generation: this.generation,
 			activeRoundId: this.active?.round?.id ?? null,
-			activeGeneration: this.active?.generation ?? null,
 			activeReady: this.active?.ready ?? false,
-			standbyRoundId: this.standby?.round?.id ?? null,
-			standbyGeneration: this.standby?.generation ?? null,
-			suspended: this.suspension !== null
+			playRequested: Boolean(this.active && this.operation && this.isCurrentPlaybackOperation(this.active, this.operation))
 		};
 	}
 	assign(round, role) {
@@ -2236,25 +2108,22 @@ var AudioPlayer = class {
 		const candidates = this.slots.filter((slot) => slot !== protectedSlot);
 		const slot = candidates.find((candidate) => candidate.id !== this.lastActiveSlotId) ?? candidates[0] ?? null;
 		if (!slot) return false;
-		if (slot.role !== "empty") this.releaseSlot(slot);
+		if (slot.round) this.releaseSlot(slot);
 		slot.round = round;
-		slot.role = role;
 		slot.generation = ++this.generation;
-		slot.playGeneration = 0;
 		slot.failed = false;
 		slot.ready = false;
-		slot.playRequested = false;
 		slot.hasRequestedPlayback = false;
 		if (role === "active") {
 			this.active = slot;
-			this.status = "loading";
+			this.activity = "idle";
 		} else this.standby = slot;
 		this.bind(slot);
 		slot.element.preload = "auto";
 		slot.element.src = this.sourceForRound(round);
 		slot.element.load();
 		if (slot.element.error) {
-			this.fail(slot, role, role === "active" ? "active-preload" : "standby-preload", mediaErrorToError(slot.element.error, "Audio failed while being staged."));
+			this.fail(slot, role, role === "active" ? "active-preload" : "standby-preload");
 			return false;
 		}
 		if (slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
@@ -2283,68 +2152,61 @@ var AudioPlayer = class {
 			if (live() && slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("playing", () => {
-			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
+			if (!live() || slot !== this.active || this.suspension) return;
 			if (!this.operation || !this.isCurrentPlaybackOperation(slot, this.operation)) return;
 			this.correctLateSeek(slot);
 			this.cancelPlaybackWatchdog(this.operation);
-			this.status = "playing";
+			this.activity = "playing";
 			this.markReady(slot);
 			this.callbacks.onPlaying(round);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("timeupdate", () => {
-			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
+			if (!live() || slot !== this.active || !this.operation || this.suspension) return;
 			this.correctLateSeek(slot);
 		}, { signal: controller.signal });
 		const wait = () => {
-			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
+			if (!live() || slot !== this.active || this.suspension) return;
 			if (!this.operation || !this.isCurrentPlaybackOperation(slot, this.operation)) return;
-			const wasPlaying = this.status === "playing";
-			if (this.status === "buffering") return;
-			this.status = "buffering";
+			const wasPlaying = this.activity === "playing";
+			if (this.activity === "buffering") return;
+			this.activity = "buffering";
 			if (wasPlaying) this.startPlaybackWatchdog(slot, this.operation);
 			this.callbacks.onWaiting(round);
 		};
 		slot.element.addEventListener("waiting", wait, { signal: controller.signal });
 		slot.element.addEventListener("stalled", wait, { signal: controller.signal });
 		slot.element.addEventListener("ended", () => {
-			if (!live() || slot !== this.active || !slot.playRequested || this.suspension) return;
+			if (!live() || slot !== this.active || this.suspension) return;
 			const operation = this.operation;
 			if (!operation || !this.isCurrentPlaybackOperation(slot, operation)) return;
 			this.cancelPlaybackWatchdog(operation);
 			this.operation = null;
-			slot.playRequested = false;
-			this.status = "ended";
+			this.activity = "idle";
 			this.callbacks.onEnded(round);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("error", () => {
 			if (!live() || !slot.element.error) return;
 			const currentRole = slot === this.standby ? "standby" : "active";
 			const stage = currentRole === "standby" ? "standby-preload" : slot.hasRequestedPlayback ? "active-playback" : "active-preload";
-			this.fail(slot, currentRole, stage, mediaErrorToError(slot.element.error, "Audio element reported an error."));
+			this.fail(slot, currentRole, stage);
 		}, { signal: controller.signal });
 	}
 	markReady(slot) {
 		if (slot.ready || slot.failed || !slot.round) return;
 		slot.ready = true;
 		this.seek(slot);
-		if (slot === this.active && this.status === "loading") this.status = "ready";
 		if (!this.suspension) this.callbacks.onReady?.({
 			role: slot === this.standby ? "standby" : "active",
-			round: slot.round,
-			generation: slot.generation
+			round: slot.round
 		});
 	}
-	fail(slot, role, stage, error) {
+	fail(slot, role, stage) {
 		if (slot.failed || !slot.round) return;
 		slot.failed = true;
-		slot.playGeneration += 1;
-		slot.playRequested = false;
 		const failure = {
 			role,
 			stage,
-			round: slot.round,
-			generation: slot.generation,
-			error
+			round: slot.round
 		};
 		if (role === "standby") {
 			if (this.standby === slot) this.standby = null;
@@ -2354,7 +2216,7 @@ var AudioPlayer = class {
 		}
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
-		this.status = "failed";
+		this.activity = "idle";
 		this.emitFailure(failure);
 	}
 	emitFailure(failure) {
@@ -2363,26 +2225,20 @@ var AudioPlayer = class {
 			return;
 		}
 		if (failure.role === "standby") this.suspension.standbyFailures.push(failure);
-		else this.suspension.terminal = {
-			type: "failed",
-			failure
-		};
+		else this.suspension.terminal = failure;
 	}
 	startPlaybackWatchdog(slot, operation) {
 		this.cancelPlaybackWatchdog();
-		this.watchdogOwner = operation;
 		this.watchdogTimer = this.timing.setTimeout(() => {
-			if (!samePlaybackOperation(this.watchdogOwner, operation) || !this.isCurrentPlaybackOperation(slot, operation) || !["starting", "buffering"].includes(this.status)) return;
+			if (!this.isCurrentPlaybackOperation(slot, operation) || !["starting", "buffering"].includes(this.activity)) return;
 			this.watchdogTimer = 0;
-			this.watchdogOwner = null;
-			this.fail(slot, "active", "active-playback", /* @__PURE__ */ new Error(`Audio playback did not start within ${this.playbackTimeoutMs} ms.`));
+			this.fail(slot, "active", "active-playback");
 		}, this.playbackTimeoutMs);
 	}
 	cancelPlaybackWatchdog(operation) {
-		if (operation && !samePlaybackOperation(this.watchdogOwner, operation)) return;
+		if (operation && !samePlaybackOperation(this.operation, operation)) return;
 		if (this.watchdogTimer) this.timing.clearTimeout(this.watchdogTimer);
 		this.watchdogTimer = 0;
-		this.watchdogOwner = null;
 	}
 	seek(slot, force = false) {
 		if (!slot.round || slot.element.readyState < HTMLMediaElement.HAVE_METADATA || !force && slot.element.seeking) return;
@@ -2399,14 +2255,13 @@ var AudioPlayer = class {
 		if (slot.element.currentTime + .35 < slot.round.clipStart) this.seek(slot);
 	}
 	isLive(slot, generation, roundId) {
-		return slot.generation === generation && slot.role !== "empty" && slot.round?.id === roundId;
+		return slot.generation === generation && (slot === this.active || slot === this.standby) && slot.round?.id === roundId;
 	}
 	isCurrentPlaybackOperation(slot, operation) {
-		return slot === this.active && slot.id === operation.slotId && slot.playGeneration === operation.playGeneration && samePlaybackOperation(this.operation, operation) && this.isLive(slot, operation.slotGeneration, operation.roundId);
+		return slot === this.active && samePlaybackOperation(this.operation, operation);
 	}
 	releaseSlot(slot) {
 		const replaceFailedElement = slot.failed;
-		slot.playGeneration += 1;
 		slot.controller?.abort();
 		slot.controller = null;
 		const element = slot.element;
@@ -2420,31 +2275,16 @@ var AudioPlayer = class {
 			slot.element = replacement;
 		}
 		slot.round = null;
-		slot.role = "empty";
 		slot.failed = false;
 		slot.ready = false;
-		slot.playRequested = false;
 		slot.hasRequestedPlayback = false;
 	}
 };
-function normalizeError(error) {
-	return error instanceof Error ? error : new Error(String(error));
-}
-function mediaErrorToError(error, fallback) {
-	if (!error) return new Error(fallback);
-	const descriptions = {
-		[MediaError.MEDIA_ERR_ABORTED]: "Audio loading was aborted.",
-		[MediaError.MEDIA_ERR_NETWORK]: "A network error interrupted audio loading.",
-		[MediaError.MEDIA_ERR_DECODE]: "The audio file could not be decoded.",
-		[MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED]: "The audio source is not supported."
-	};
-	return new Error(descriptions[error.code] ?? error.message ?? fallback);
-}
 function isNamedError(error, name) {
 	return typeof error === "object" && error !== null && "name" in error && error.name === name;
 }
 function samePlaybackOperation(left, right) {
-	return Boolean(left && left.slotId === right.slotId && left.slotGeneration === right.slotGeneration && left.roundId === right.roundId && left.playGeneration === right.playGeneration);
+	return left?.id === right.id;
 }
 var browserScheduler = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
@@ -2463,17 +2303,13 @@ var Playback = class {
 	standby = null;
 	active = null;
 	retryRound = null;
-	promotionCandidate = null;
 	mode = null;
 	factory = null;
 	previousTrackId = null;
 	failedTrackIds = /* @__PURE__ */ new Set();
-	heardPuzzleRoundId = null;
-	activeRecoveryAttempts = 0;
-	standbyRecoveryAttempts = 0;
-	automaticRecoveryBlocked = false;
-	standbyRecoveryBlocked = false;
-	status = "empty";
+	activeRecoveryFailures = 0;
+	standbyRecoveryFailures = 0;
+	manualRetryRequired = false;
 	suspended = false;
 	operationGeneration = 0;
 	lifecycleGeneration = 0;
@@ -2492,19 +2328,11 @@ var Playback = class {
 	}
 	get snapshot() {
 		return {
-			status: this.status,
-			generation: this.operationGeneration,
-			mode: this.mode,
 			pendingRoundId: this.pending?.id ?? null,
 			activeRoundId: this.active?.id ?? null,
-			standbyRoundId: this.standby?.id ?? null,
-			retryRoundId: this.retryRound?.id ?? null,
-			loading: this.loadingSignal(this.loadingVisible),
-			suspended: this.suspended,
-			activeRecoveryAttempts: this.activeRecoveryAttempts,
-			standbyRecoveryAttempts: this.standbyRecoveryAttempts,
-			automaticRecoveryBlocked: this.automaticRecoveryBlocked,
-			standbyRecoveryBlocked: this.standbyRecoveryBlocked
+			playRequested: this.audio.snapshot().playRequested,
+			retryNeeded: this.manualRetryRequired,
+			loading: this.loadingVisible
 		};
 	}
 	configure(mode, factory) {
@@ -2514,7 +2342,6 @@ var Playback = class {
 		this.factory = factory;
 		if (changingMode) this.previousTrackId = null;
 		this.failedTrackIds.clear();
-		this.heardPuzzleRoundId = null;
 		this.resetRecoveryCircuits();
 	}
 	prime() {
@@ -2522,16 +2349,16 @@ var Playback = class {
 		const round = this.factory(this.failedTrackIds, this.previousTrackId);
 		if (!round) return;
 		this.prepared = round;
-		this.status = "prepared";
-		if (!this.audio.prepare(round) && this.prepared?.id === round.id) this.handleRejected(round, "active-preload", "Audio could not be staged before Play.");
+		if (!this.audio.prepare(round) && this.prepared?.id === round.id) this.handleRejected(round, "active-preload");
 	}
-	start(options = {}) {
+	start(manualRetry = false) {
 		if (!this.mode || !this.factory || this.suspended) return false;
-		if (options.manualRetry) {
+		if (manualRetry) {
 			this.resetRecoveryCircuits();
+			this.manualRetryRequired = false;
 			if (!this.retryRound) this.failedTrackIds.clear();
 		}
-		if (!options.manualRetry && this.automaticRecoveryBlocked) {
+		if (!manualRetry && this.manualRetryRequired) {
 			this.callbacks.onRecovery("manual-retry");
 			return false;
 		}
@@ -2540,9 +2367,8 @@ var Playback = class {
 			round = this.retryRound;
 			this.retryRound = null;
 			this.prepared = round;
-			this.status = "prepared";
 			if (!this.audio.prepare(round)) {
-				if (this.prepared?.id === round.id) this.handleRejected(round, "active-preload", "Audio could not be staged for retry.");
+				if (this.prepared?.id === round.id) this.handleRejected(round, "active-preload");
 				return false;
 			}
 			this.prepared = null;
@@ -2551,57 +2377,56 @@ var Playback = class {
 			this.prepared = null;
 		} else if (this.standby) {
 			round = this.standby;
-			this.promotionCandidate = round;
 			if (!this.audio.promote(round)) {
-				if (this.promotionCandidate?.id === round.id) this.handleRejected(round, "standby-promotion", "Prepared standby audio could not be promoted.", "standby");
-				this.promotionCandidate = null;
+				this.standby = null;
+				this.handleActiveFailure({
+					role: "standby",
+					stage: "standby-promotion",
+					round
+				}, true);
 				return false;
 			}
-			this.promotionCandidate = null;
 			this.standby = null;
 		} else {
 			round = this.factory(this.failedTrackIds, this.previousTrackId);
 			if (!round) {
-				this.status = "retry";
+				this.manualRetryRequired = true;
 				this.callbacks.onRecovery("manual-retry");
 				return false;
 			}
 			this.prepared = round;
-			this.status = "prepared";
 			if (!this.audio.prepare(round)) {
-				if (this.prepared?.id === round.id) this.handleRejected(round, "active-preload", "Audio could not be staged.");
+				if (this.prepared?.id === round.id) this.handleRejected(round, "active-preload");
 				return false;
 			}
 			this.prepared = null;
 		}
 		this.active = null;
 		this.pending = round;
-		this.status = "starting";
 		const operation = ++this.operationGeneration;
 		this.cancelLoadingTimerOnly();
 		if (!this.audio.playPrepared(round, false)) {
-			if (this.pending?.id === round.id) this.handleRejected(round, "active-playback", "Audio could not start.");
+			if (this.pending?.id === round.id) this.handleRejected(round, "active-playback");
 			return false;
 		}
 		if (this.pending?.id !== round.id || operation !== this.operationGeneration) return true;
 		this.clearLoading();
 		this.callbacks.onPending(round);
-		this.beginLoadingNotice(round, "starting", operation);
+		this.beginLoadingNotice(round, operation);
 		if (this.audio.snapshot().activeReady) this.prefetch();
 		return true;
 	}
 	replay(round, restart) {
 		if (this.suspended || !this.owns(round)) return false;
-		this.status = "starting";
 		const operation = ++this.operationGeneration;
 		this.cancelLoadingTimerOnly();
 		if (!this.audio.playPrepared(round, restart)) {
-			if (this.owns(round)) this.handleRejected(round, "active-playback", "Prepared audio could not restart.");
+			if (this.owns(round)) this.handleRejected(round, "active-playback");
 			return false;
 		}
 		if (operation !== this.operationGeneration || !this.owns(round)) return true;
 		this.clearLoading();
-		this.beginLoadingNotice(round, "starting", operation);
+		this.beginLoadingNotice(round, operation);
 		if (this.audio.snapshot().activeReady) this.prefetch();
 		return true;
 	}
@@ -2609,20 +2434,16 @@ var Playback = class {
 		if (this.suspended || !this.owns(round)) return false;
 		this.operationGeneration += 1;
 		this.clearLoading();
-		const rewound = this.audio.rewind(round);
-		if (rewound) this.status = "paused";
-		return rewound;
+		return this.audio.rewind(round);
 	}
 	pause() {
 		this.operationGeneration += 1;
 		this.clearLoading();
 		this.audio.pause();
-		if (this.ownedRound) this.status = "paused";
 	}
 	suspend() {
 		if (this.suspended) return;
 		this.suspended = true;
-		this.status = this.inactiveStatus();
 		this.operationGeneration += 1;
 		this.clearLoading();
 		this.audio.suspend();
@@ -2630,7 +2451,6 @@ var Playback = class {
 	restore() {
 		if (!this.suspended) return;
 		this.suspended = false;
-		this.status = this.inactiveStatus();
 		this.restoringFromSuspension = true;
 		try {
 			this.audio.restore();
@@ -2648,9 +2468,8 @@ var Playback = class {
 		this.standby = null;
 		this.active = null;
 		this.retryRound = null;
-		this.promotionCandidate = null;
+		this.manualRetryRequired = false;
 		this.suspended = false;
-		this.status = "empty";
 	}
 	reset() {
 		this.stop();
@@ -2658,20 +2477,17 @@ var Playback = class {
 		this.factory = null;
 		this.previousTrackId = null;
 		this.failedTrackIds.clear();
-		this.heardPuzzleRoundId = null;
 		this.resetRecoveryCircuits();
 	}
 	handleReady(event) {
 		if (this.suspended) return;
-		const audio = this.audio.snapshot();
 		if (event.role === "active") {
-			if (audio.activeRoundId !== event.round.id || audio.activeGeneration !== event.generation || !this.owns(event.round)) return;
+			if (!this.owns(event.round)) return;
 			this.prefetch();
 			return;
 		}
-		if (this.standby?.id !== event.round.id || audio.standbyRoundId !== event.round.id || audio.standbyGeneration !== event.generation) return;
-		this.standbyRecoveryAttempts = 0;
-		this.standbyRecoveryBlocked = false;
+		if (this.standby?.id !== event.round.id) return;
+		this.standbyRecoveryFailures = 0;
 	}
 	handlePlaying(round) {
 		if (this.suspended) return;
@@ -2679,8 +2495,7 @@ var Playback = class {
 			this.pending = null;
 			this.active = round;
 			this.retryRound = null;
-			this.status = "playing";
-			if (this.mode === "classic") this.heardPuzzleRoundId = round.id;
+			this.manualRetryRequired = false;
 			this.previousTrackId = this.mode === "daily" ? this.previousTrackId : round.track.dailyNumber;
 			if (this.mode === "speedrun") this.failedTrackIds.clear();
 			this.resetActiveRecovery();
@@ -2690,8 +2505,6 @@ var Playback = class {
 			return;
 		}
 		if (this.active?.id === round.id) {
-			this.status = "playing";
-			if (this.mode === "classic") this.heardPuzzleRoundId = round.id;
 			this.resetActiveRecovery();
 			this.clearLoading();
 			this.callbacks.onPlaying(round, false);
@@ -2700,40 +2513,27 @@ var Playback = class {
 	}
 	handleWaiting(round) {
 		if (this.suspended || !this.owns(round)) return;
-		const alreadyWaiting = this.status === "waiting";
-		this.status = "waiting";
-		if (this.loadingOwner?.roundId === round.id && this.loadingOwner.generation === this.operationGeneration) this.loadingOwner.stage = "waiting";
-		else if (!alreadyWaiting) this.beginLoadingNotice(round, "waiting", this.operationGeneration);
+		if (this.loadingOwner?.roundId !== round.id || this.loadingOwner.generation !== this.operationGeneration) this.beginLoadingNotice(round, this.operationGeneration);
 		this.callbacks.onWaiting(round);
 	}
 	handleBlocked(round) {
 		if (this.suspended || !this.owns(round)) return;
-		this.status = "blocked";
 		this.clearLoading();
 		this.callbacks.onBlocked(round);
 	}
 	handleEnded(round) {
 		if (this.suspended || this.active?.id !== round.id) return;
-		this.status = "ended";
 		this.clearLoading();
 		this.callbacks.onEnded(round);
 	}
 	handleFailure(failure) {
 		if (this.suspended) return;
-		if (failure.stage === "standby-promotion" && this.promotionCandidate?.id === failure.round.id) {
-			this.standby = null;
-			this.promotionCandidate = null;
-			this.handleActiveFailure(failure, true);
-			return;
-		}
 		if (failure.role === "standby") {
 			if (this.standby?.id !== failure.round.id) return;
 			this.standby = null;
 			if (this.mode && MODE_RULES[this.mode].failurePolicy !== "fixed") this.failedTrackIds.add(failure.round.track.dailyNumber);
-			if (this.standbyRecoveryAttempts < MAXIMUM_STANDBY_RECOVERIES) {
-				this.standbyRecoveryAttempts += 1;
-				this.defer(() => this.prefetch());
-			} else this.standbyRecoveryBlocked = true;
+			this.standbyRecoveryFailures += 1;
+			if (this.standbyRecoveryFailures <= MAXIMUM_STANDBY_RECOVERIES) this.defer(() => this.prefetch());
 			return;
 		}
 		if (!this.owns(failure.round)) return;
@@ -2742,52 +2542,47 @@ var Playback = class {
 	handleActiveFailure(failure, promotionFailure, requireExplicitPlay = false) {
 		const round = failure.round;
 		const wasPrepared = this.prepared?.id === round.id;
-		const shouldResume = promotionFailure || this.pending?.id === round.id || [
-			"starting",
-			"playing",
-			"waiting"
-		].includes(this.status);
+		const shouldResume = promotionFailure || this.pending?.id === round.id || failure.stage === "active-playback";
 		const failurePolicy = this.mode ? MODE_RULES[this.mode].failurePolicy : "replace";
-		const preserveIdentity = failurePolicy === "fixed" || failurePolicy === "heard-fixed" && this.heardPuzzleRoundId === round.id;
+		const wasHeard = this.active?.id === round.id;
+		const preserveIdentity = failurePolicy === "fixed" || failurePolicy === "heard-fixed" && wasHeard;
 		this.operationGeneration += 1;
 		this.clearLoading();
 		if (failurePolicy !== "fixed") this.failedTrackIds.add(round.track.dailyNumber);
 		this.prepared = null;
 		this.pending = null;
 		this.active = null;
-		this.promotionCandidate = null;
 		this.audio.releaseActive();
 		if (requireExplicitPlay) {
-			this.automaticRecoveryBlocked = true;
 			this.retryRound = round;
-			this.status = "retry";
+			this.manualRetryRequired = true;
 			this.callbacks.onRecovery("selected-track-retry");
 			return;
 		}
-		if (!preserveIdentity && this.activeRecoveryAttempts < MAXIMUM_AUTOMATIC_RECOVERIES) {
-			this.activeRecoveryAttempts += 1;
-			this.status = "empty";
-			if (wasPrepared || !shouldResume) this.defer(() => this.prime());
-			else {
-				this.callbacks.onRecovery("automatic-replacement");
-				this.defer(() => this.start());
+		if (!preserveIdentity) {
+			this.activeRecoveryFailures += 1;
+			if (this.activeRecoveryFailures <= MAXIMUM_AUTOMATIC_RECOVERIES) {
+				if (wasPrepared || !shouldResume) this.defer(() => this.prime());
+				else {
+					this.callbacks.onRecovery("automatic-replacement");
+					this.defer(() => this.start());
+				}
+				return;
 			}
-			return;
 		}
-		this.automaticRecoveryBlocked = true;
 		this.retryRound = round;
-		this.status = "retry";
+		this.manualRetryRequired = true;
 		this.callbacks.onRecovery("selected-track-retry");
 	}
 	prefetch() {
-		if (!isTimedMode(this.mode) || !this.factory || this.suspended || this.standby || this.standbyRecoveryBlocked) return;
+		if (!isTimedMode(this.mode) || !this.factory || this.suspended || this.standby || this.standbyRecoveryFailures > MAXIMUM_STANDBY_RECOVERIES) return;
 		const owned = this.active ?? this.pending ?? this.prepared;
 		const audio = this.audio.snapshot();
 		if (!owned || audio.activeRoundId !== owned.id || !audio.activeReady) return;
 		const round = this.factory(this.failedTrackIds, owned.track.dailyNumber);
 		if (!round) return;
 		this.standby = round;
-		if (!this.audio.preload(round) && this.standby?.id === round.id) this.handleRejected(round, "standby-preload", "Standby audio could not be staged.", "standby");
+		if (!this.audio.preload(round) && this.standby?.id === round.id) this.handleRejected(round, "standby-preload", "standby");
 	}
 	owns(round) {
 		return [
@@ -2797,29 +2592,19 @@ var Playback = class {
 			this.retryRound
 		].some((item) => item?.id === round.id);
 	}
-	inactiveStatus() {
-		if (this.prepared) return "prepared";
-		if (this.retryRound) return "retry";
-		if (this.pending || this.active) return "paused";
-		return "empty";
-	}
-	handleRejected(round, stage, message, role = "active") {
+	handleRejected(round, stage, role = "active") {
 		this.handleFailure({
 			role,
 			stage,
-			round,
-			generation: role === "standby" ? this.audio.snapshot().standbyGeneration ?? 0 : this.audio.snapshot().activeGeneration ?? 0,
-			error: new Error(message)
+			round
 		});
 	}
 	resetRecoveryCircuits() {
 		this.resetActiveRecovery();
-		this.standbyRecoveryAttempts = 0;
-		this.standbyRecoveryBlocked = false;
+		this.standbyRecoveryFailures = 0;
 	}
 	resetActiveRecovery() {
-		this.activeRecoveryAttempts = 0;
-		this.automaticRecoveryBlocked = false;
+		this.activeRecoveryFailures = 0;
 	}
 	defer(callback) {
 		const lifecycle = this.lifecycleGeneration;
@@ -2827,27 +2612,25 @@ var Playback = class {
 			if (lifecycle === this.lifecycleGeneration && !this.suspended) callback();
 		});
 	}
-	beginLoadingNotice(round, stage, generation) {
+	beginLoadingNotice(round, generation) {
 		this.cancelLoadingTimerOnly();
 		this.loadingOwner = {
 			roundId: round.id,
-			stage,
 			generation
 		};
 		this.loadingTimer = this.scheduler.setTimeout(() => {
 			this.loadingTimer = 0;
 			const owner = this.loadingOwner;
-			if (!owner || owner.roundId !== round.id || owner.generation !== generation || generation !== this.operationGeneration || !this.owns(round) || !["starting", "waiting"].includes(this.status)) return;
+			if (!owner || owner.roundId !== round.id || owner.generation !== generation || generation !== this.operationGeneration || !this.owns(round) || !this.audio.snapshot().playRequested) return;
 			this.loadingVisible = true;
-			const signal = this.loadingSignal(true);
-			this.callbacks.onLoading(true, signal);
+			this.callbacks.onLoading(true);
 		}, this.loadingGraceMs);
 	}
 	clearLoading() {
 		this.cancelLoadingTimerOnly();
 		if (this.loadingVisible) {
 			this.loadingVisible = false;
-			this.callbacks.onLoading(false, this.loadingSignal(false));
+			this.callbacks.onLoading(false);
 		}
 		this.loadingOwner = null;
 	}
@@ -2855,20 +2638,6 @@ var Playback = class {
 		if (this.loadingTimer) this.scheduler.clearTimeout(this.loadingTimer);
 		this.loadingTimer = 0;
 	}
-	loadingSignal(visible) {
-		return {
-			visible,
-			roundId: this.loadingOwner?.roundId ?? null,
-			stage: this.loadingOwner?.stage ?? null,
-			operationGeneration: this.loadingOwner?.generation ?? this.operationGeneration
-		};
-	}
-};
-var browserUiScheduler = {
-	requestFrame: (callback) => window.requestAnimationFrame(callback),
-	cancelFrame: (handle) => window.cancelAnimationFrame(handle),
-	setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
-	clearTimer: (handle) => window.clearTimeout(handle)
 };
 var AttemptHistoryView = class {
 	elements;
@@ -2886,7 +2655,7 @@ var AttemptHistoryView = class {
 	collapseTarget = null;
 	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
-	constructor(elements, durations, reducedMotion, scheduler = browserUiScheduler) {
+	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
 		this.reducedMotion = reducedMotion;
@@ -3621,7 +3390,7 @@ var ModalController = class {
 	transitionGeneration = 0;
 	closeListener = null;
 	lockedScroll = null;
-	constructor(root, elements, durations, reducedMotion, announce, scheduler = browserUiScheduler) {
+	constructor(root, elements, durations, reducedMotion, announce, scheduler = browserAnimationScheduler) {
 		this.root = root;
 		this.elements = elements;
 		this.durations = durations;
@@ -3873,7 +3642,7 @@ function rows(bests, daily, dailyDate) {
 	const standard = [
 		{
 			mode: "DAILY",
-			value: dailyComplete ? dailyWon(daily, dailyDate) ? `${daily.step + 1}/6` : "FAILED" : EMPTY_RECORD_VALUE,
+			value: dailyComplete ? dailyWon(daily, dailyDate) ? `${dailyAttempt(daily) + 1}/6` : "FAILED" : EMPTY_RECORD_VALUE,
 			detail: dailyComplete ? formatOrdinalDate(daily.date) : EMPTY_RECORD_DETAIL
 		},
 		{
@@ -3910,11 +3679,10 @@ var TimelineView = class {
 	motionGeneration = 0;
 	progressTimer = 0;
 	progressListener = null;
-	rewindActive = false;
 	survivalTimer = 0;
 	survivalListener = null;
 	survivalGeneration = 0;
-	constructor(elements, durations, reducedMotion, scheduler = browserUiScheduler) {
+	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
 		this.reducedMotion = reducedMotion;
@@ -3927,7 +3695,7 @@ var TimelineView = class {
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
 	}
 	beginReset(rewindPlayback = false) {
-		if (rewindPlayback && this.rewindActive) return;
+		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
 		const previousScale = this.progressScale();
 		this.cancelProgressMotion();
 		const generation = ++this.motionGeneration;
@@ -3936,7 +3704,6 @@ var TimelineView = class {
 			if (this.reducedMotion.matches || this.durations.rewind <= 0 || previousScale <= 1e-4) return;
 			this.elements.timeline.style.setProperty("--rewind-from", String(previousScale));
 			this.elements.timeline.offsetWidth;
-			this.rewindActive = true;
 			this.elements.timeline.classList.add("progress-rewinding");
 			this.waitForProgressMotion("animationend", this.elements.timeline, this.durations.rewind, generation, (event) => {
 				const animation = event;
@@ -4019,7 +3786,6 @@ var TimelineView = class {
 			this.elements.fill.removeEventListener("transitionend", this.progressListener);
 		}
 		this.progressListener = null;
-		this.rewindActive = false;
 		this.elements.timeline.classList.remove("progress-rewinding");
 		this.elements.timeline.style.removeProperty("--rewind-from");
 		this.elements.fill.style.transition = "";
@@ -4089,7 +3855,6 @@ var GameView = class {
 	resultSignature = "";
 	resultCopyFeedbackTimer = 0;
 	resultCopyFeedbackGeneration = 0;
-	resetConfirmationOpen = false;
 	rulesSignature = "";
 	announcementFrame = 0;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
@@ -4189,7 +3954,6 @@ var GameView = class {
 		this.sessionKey = sessionKey;
 		if (sessionChanged) this.timeline.beginReset();
 		if (sessionChanged || openingOverlay) this.resetTransientUi();
-		this.root.dataset.appStatus = state.appStatus;
 		const transportVisible = state.transportText !== "";
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
 		this.root.classList.toggle("timed", isTimedMode(state.mode));
@@ -4356,14 +4120,12 @@ var GameView = class {
 	}
 	showResetConfirmation() {
 		if (this.resetConfirmationOpen) return;
-		this.resetConfirmationOpen = true;
 		this.elements.discoveryActions.hidden = true;
 		this.elements.resetConfirmation.hidden = false;
 		this.elements.resetCancel.focus({ preventScroll: true });
 	}
 	hideResetConfirmation(returnFocus) {
 		if (!this.resetConfirmationOpen) return;
-		this.resetConfirmationOpen = false;
 		this.elements.resetConfirmation.hidden = true;
 		this.elements.discoveryActions.hidden = false;
 		if (returnFocus) this.elements.discoveryReset.focus({ preventScroll: true });
@@ -4440,6 +4202,9 @@ var GameView = class {
 	}
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
+	}
+	get resetConfirmationOpen() {
+		return !this.elements.resetConfirmation.hidden;
 	}
 	handleRootKeydown(event) {
 		if (!this.handlers || !this.state) return;
@@ -4683,7 +4448,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 		clearTimeout: (handle) => window.clearTimeout(handle)
 	});
-	const progress = new Progress(new ProgressStorage(), { onPersistenceFailure: (failure) => controller?.onProgressPersistenceFailure(failure) });
+	const progress = new Progress(new ProgressStorage(), { onPersistenceFailure: () => controller?.onProgressPersistenceFailure() });
 	const clock = new GameClock({
 		onTick: (snapshot) => controller?.onClockTick(snapshot),
 		onExpired: () => controller?.onClockExpired()
