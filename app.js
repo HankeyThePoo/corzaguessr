@@ -247,11 +247,11 @@ var GameSession = class {
 			result: this.resultState ? { ...this.resultState } : null
 		};
 	}
-	reset(mode, seed = { attempts: [] }) {
+	reset(mode, attempts = []) {
 		this.modeState = mode;
 		this.roundState = null;
 		this.roundNumberState = 0;
-		this.attemptsState = seed.attempts.map((attempt) => ({ ...attempt }));
+		this.attemptsState = attempts.map((attempt) => ({ ...attempt }));
 		this.resultState = null;
 	}
 	setRound(round) {
@@ -1029,9 +1029,9 @@ var GameController = class {
 		this.dailyCountdownMs = 0;
 		this.resultPersistenceFailed = false;
 		this.sessionNumber += 1;
-		const seed = mode === "daily" ? this.progress.dailySessionSeed(this.dailyDate) : void 0;
-		const resumed = seed?.attempts.length ?? 0;
-		this.session.reset(mode, seed);
+		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
+		const resumed = attempts.length;
+		this.session.reset(mode, attempts);
 		const milliseconds = MODE_RULES[mode].initialTimeMs ?? snippetSeconds(resumed) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
@@ -1116,7 +1116,6 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 			mode,
 			won,
 			track: round.track,
-			attempt: state.attempt,
 			dailyDate,
 			attempts: state.attempts
 		};
@@ -1175,10 +1174,9 @@ var Progress = class {
 	dailyInProgress(date) {
 		return dailyInProgress(this.dailyState, date);
 	}
-	dailySessionSeed(date) {
+	dailyAttempts(date) {
 		const daily = this.dailyState;
-		if (daily.status === "none" || daily.date !== date) return { attempts: [] };
-		return { attempts: daily.attempts.map((attempt) => ({ ...attempt })) };
+		return daily.status === "none" || daily.date !== date ? [] : daily.attempts.map((attempt) => ({ ...attempt }));
 	}
 	markDailyStarted(date, track) {
 		if (this.dailyInProgress(date)) return;
@@ -1232,7 +1230,7 @@ var Progress = class {
 				won: run.won,
 				trackTitle: run.track.title,
 				spotify: run.track.spotify,
-				attempts: run.attempt + 1
+				attempts: run.attempts.length
 			};
 		}
 		if (run.mode === "classic") {
