@@ -548,21 +548,20 @@ function composeGameViewModel(input) {
 	const { session, transport } = input;
 	const requested = transport.playRequested;
 	const tracksLeft = Math.max(0, input.tracks.length - session.speedrunFoundTrackIds.size);
-	const slots = (isTimedMode(session.mode) ? session.attempts.slice(0, MAX_VISIBLE_TIMED_ATTEMPTS) : session.attempts).map((attempt) => attemptSlot(attempt, session.mode, input.tracks));
+	const attemptSlots = (isTimedMode(session.mode) ? session.attempts.slice(0, MAX_VISIBLE_TIMED_ATTEMPTS) : session.attempts).map((attempt) => attemptSlot(attempt, session.mode, input.tracks));
 	const completedDaily = session.mode === "daily" && dailyCompleted(input.dailyProgress, input.dailyDate);
-	const completedPuzzle = (session.mode === "daily" || session.mode === "classic") && (!!session.result || completedDaily);
-	const history = completedPuzzle ? slots.slice(1) : slots;
-	let currentSlot = completedPuzzle ? slots[0] ?? null : promptSlot(session, tracksLeft);
-	if (session.result && isTimedMode(session.mode)) currentSlot = {
+	let headSlot = (session.mode === "daily" || session.mode === "classic") && (!!session.result || completedDaily) ? null : promptSlot(session, tracksLeft);
+	if (session.result && isTimedMode(session.mode)) headSlot = {
 		id: session.roundNumber,
 		text: session.result.mode === "speedrun" && session.result.won ? "SPEEDRUN COMPLETE" : "TIME'S UP",
 		tone: "neutral"
 	};
-	else if (transport.retryNeeded && currentSlot) currentSlot = {
-		...currentSlot,
+	else if (transport.retryNeeded && headSlot) headSlot = {
+		...headSlot,
 		text: COPY.trackError,
 		tone: "technical"
 	};
+	const slots = headSlot ? [headSlot, ...attemptSlots] : attemptSlots;
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
@@ -582,8 +581,7 @@ function composeGameViewModel(input) {
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: snippetSeconds(session.attempt),
 		skipText: skipLabel(session.mode, session.attempt),
-		currentSlot,
-		history,
+		slots,
 		unavailableGuessIds: session.guessedTrackIds,
 		clock: input.clock,
 		result: session.result,
@@ -2595,8 +2593,7 @@ var AttemptHistoryView = class {
 	durations;
 	reducedMotion;
 	scheduler;
-	renderedHistory = [];
-	currentSignature = "";
+	renderedSlots = [];
 	sessionKey = "";
 	renderGeneration = 0;
 	nodeMotionGeneration = 0;
@@ -2612,54 +2609,47 @@ var AttemptHistoryView = class {
 		this.reducedMotion = reducedMotion;
 		this.scheduler = scheduler;
 	}
-	render(current, history, sessionKey) {
+	render(slots, sessionKey) {
 		const snapshot = {
-			current,
-			history: [...history],
+			slots: [...slots],
 			sessionKey
 		};
 		if (this.pendingSnapshot) {
 			this.pendingSnapshot = snapshot;
 			return;
 		}
-		if (this.sessionKey !== "" && sessionKey !== this.sessionKey && this.hasRenderedAttempts()) {
+		if (this.sessionKey !== "" && sessionKey !== this.sessionKey && this.hasRenderedSlots()) {
 			this.pendingSnapshot = snapshot;
-			this.collapseAttempts();
+			this.collapseSlots();
 			return;
 		}
-		this.applySnapshot(snapshot, !this.hasRenderedAttempts() && this.snapshotHasAttempts(snapshot));
+		this.applySnapshot(snapshot, !this.hasRenderedSlots() && snapshot.slots.length > 0);
 	}
 	applySnapshot(snapshot, reveal = false) {
 		this.sessionKey = snapshot.sessionKey;
-		this.renderCurrent(snapshot.current, snapshot.sessionKey);
-		this.renderHistory(snapshot.history, snapshot.sessionKey);
+		this.renderSlots(snapshot.slots, snapshot.sessionKey);
 		if (reveal) this.revealAttempts();
 	}
-	snapshotHasAttempts(snapshot) {
-		return snapshot.current !== null || snapshot.history.length > 0;
-	}
-	renderHistory(entries, sessionKey) {
+	renderSlots(entries, sessionKey) {
 		const rendered = entries.map((entry) => ({
 			key: `${sessionKey}:${entry.id}`,
 			text: entry.text,
 			tone: entry.tone,
 			speedrunMilestone: entry.speedrunMilestone === true
 		}));
-		if (rendered.length === this.renderedHistory.length && rendered.every((entry, index) => {
-			const previous = this.renderedHistory[index];
+		if (rendered.length === this.renderedSlots.length && rendered.every((entry, index) => {
+			const previous = this.renderedSlots[index];
 			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone && previous.speedrunMilestone === entry.speedrunMilestone;
 		})) return;
-		this.renderedHistory = rendered;
+		const previousSlots = this.renderedSlots;
+		this.renderedSlots = rendered;
 		this.renderGeneration += 1;
 		this.cancelCollapse();
-		if (!rendered.length) {
-			this.collapseHistory();
-			return;
-		}
-		const existing = new Map([...this.elements.history.children].map((child) => {
+		const existing = new Map([...this.elements.list.children].map((child) => {
 			const element = child;
-			return [element.dataset.historyKey ?? "", element];
+			return [element.dataset.slotKey ?? "", element];
 		}));
+		const previousIndexes = new Map(previousSlots.map((entry, index) => [entry.key, index]));
 		const fadeNodes = [];
 		const wiggleNodes = [];
 		const nodes = rendered.map((entry) => {
@@ -2668,56 +2658,38 @@ var AttemptHistoryView = class {
 			if (!element) {
 				element = document.createElement("div");
 				element.className = "slot fade";
-				element.dataset.historyKey = entry.key;
+				element.dataset.slotKey = entry.key;
 			}
 			existing.delete(entry.key);
 			const previousTone = element.dataset.tone ?? "";
+			const previousText = element.dataset.slotText ?? "";
+			const wasMilestone = element.classList.contains("speedrun-milestone");
+			const changedHead = (isNew || previousText !== entry.text || previousTone !== entry.tone || wasMilestone !== entry.speedrunMilestone) && previousIndexes.get(entry.key) === 0;
 			this.applyTone(element, previousTone, entry.tone);
+			element.dataset.slotText = entry.text;
 			element.textContent = entry.text;
-			this.applySpeedrunMilestone(element, entry.speedrunMilestone === true, entry.text);
+			this.applySpeedrunMilestone(element, entry.speedrunMilestone, entry.text);
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
-			if (isNew) fadeNodes.push(element);
+			if (isNew || changedHead) fadeNodes.push(element);
 			return element;
 		});
-		for (const removed of existing.values()) this.cancelWiggle(removed);
-		this.elements.history.style.height = "";
-		this.elements.history.replaceChildren(...nodes);
+		for (const removed of existing.values()) {
+			this.fadeGenerations.delete(removed);
+			this.cancelWiggle(removed);
+		}
+		this.elements.list.replaceChildren(...nodes);
 		for (const element of fadeNodes) this.fadeIn(element);
 		for (const element of wiggleNodes) this.startWiggle(element);
 	}
-	renderCurrent(slot, sessionKey) {
-		const signature = slot ? `${sessionKey}:${slot.id}|${slot.text}|${slot.tone}|${Number(slot.speedrunMilestone)}` : "";
-		if (signature === this.currentSignature) return;
-		this.currentSignature = signature;
-		const element = this.elements.current;
-		const previousTone = element.dataset.tone ?? "";
-		this.applyTone(element, previousTone, slot?.tone ?? "");
-		if (!slot) {
-			this.fadeGenerations.delete(element);
-			this.cancelWiggle(element);
-			element.classList.remove("fade");
-			element.dataset.currentKey = "";
-			element.textContent = "";
-			this.applySpeedrunMilestone(element, false, "");
-			element.hidden = true;
-			return;
-		}
-		element.dataset.currentKey = `${sessionKey}:${slot.id}`;
-		element.textContent = slot.text;
-		this.applySpeedrunMilestone(element, slot.speedrunMilestone === true, slot.text);
-		element.hidden = false;
-		this.fadeIn(element);
+	hasRenderedSlots() {
+		return this.elements.list.children.length > 0;
 	}
-	hasRenderedAttempts() {
-		return !this.elements.current.hidden || this.elements.history.children.length > 0;
-	}
-	collapseAttempts() {
-		const fading = [...!this.elements.current.hidden ? [this.elements.current] : [], ...[...this.elements.history.children]];
-		this.startCollapse(this.elements.container, fading, this.durations.collapse(), () => {
+	collapseSlots() {
+		this.startCollapse(this.elements.container, [...this.elements.list.children], this.durations.collapse(), () => {
 			const pending = this.pendingSnapshot;
 			this.pendingSnapshot = null;
-			this.clearRenderedAttempts();
-			if (pending) this.applySnapshot(pending, this.snapshotHasAttempts(pending));
+			this.clearRenderedSlots();
+			if (pending) this.applySnapshot(pending, pending.slots.length > 0);
 		});
 	}
 	revealAttempts() {
@@ -2745,14 +2717,6 @@ var AttemptHistoryView = class {
 		};
 		container.addEventListener("transitionend", this.collapseListener);
 		this.collapseTimer = this.scheduler.setTimer(finish, duration);
-	}
-	collapseHistory() {
-		const container = this.elements.history;
-		if (!container.children.length) {
-			container.style.height = "";
-			return;
-		}
-		this.startCollapse(container, [...container.children], this.durations.collapse(), () => this.finishHistoryCollapse());
 	}
 	startCollapse(container, fading, duration, onFinished) {
 		this.cancelCollapse();
@@ -2798,11 +2762,6 @@ var AttemptHistoryView = class {
 		container.addEventListener("transitionend", this.collapseListener);
 		this.collapseTimer = this.scheduler.setTimer(finish, duration);
 	}
-	finishHistoryCollapse() {
-		for (const child of this.elements.history.children) this.cancelWiggle(child);
-		this.elements.history.replaceChildren();
-		this.elements.history.style.height = "";
-	}
 	cancelCollapse(resetHeight = true) {
 		if (this.collapseTimer) this.scheduler.clearTimer(this.collapseTimer);
 		this.collapseTimer = 0;
@@ -2811,22 +2770,16 @@ var AttemptHistoryView = class {
 		if (resetHeight && this.collapseTarget) this.collapseTarget.style.height = "";
 		this.collapseTarget = null;
 	}
-	clearRenderedAttempts() {
-		this.renderedHistory = [];
-		this.currentSignature = "";
+	clearRenderedSlots() {
+		this.renderedSlots = [];
 		this.renderGeneration += 1;
-		this.fadeGenerations.delete(this.elements.current);
-		this.cancelWiggle(this.elements.current);
-		for (const child of this.elements.history.children) this.cancelWiggle(child);
-		this.applyTone(this.elements.current, this.elements.current.dataset.tone ?? "", "");
-		this.elements.current.classList.remove("fade", "wiggle");
-		this.applySpeedrunMilestone(this.elements.current, false, "");
-		this.elements.current.dataset.currentKey = "";
-		this.elements.current.textContent = "";
-		this.elements.current.hidden = true;
+		for (const child of this.elements.list.children) {
+			const element = child;
+			this.fadeGenerations.delete(element);
+			this.cancelWiggle(element);
+		}
 		this.elements.container.style.height = "";
-		this.elements.history.replaceChildren();
-		this.elements.history.style.height = "";
+		this.elements.list.replaceChildren();
 	}
 	applyTone(element, previous, next) {
 		if (previous === next) return;
@@ -3833,8 +3786,7 @@ var GameView = class {
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
-			current: this.elements.currentSlot,
-			history: this.elements.slots
+			list: this.elements.slots
 		}, {
 			slot: this.durations.slot,
 			wiggle: this.durations.wiggle,
@@ -3916,7 +3868,6 @@ var GameView = class {
 		this.elements.headerAction.inert = overlay;
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
-		this.elements.currentSlot.inert = overlay || blockedBoard;
 		this.elements.slots.inert = overlay || blockedBoard;
 		for (const [mode, button] of Object.entries(this.modeButtons)) {
 			const selected = mode === state.mode;
@@ -3928,7 +3879,7 @@ var GameView = class {
 		this.elements.skip.textContent = state.skipText;
 		this.elements.snippet.style.width = `${state.snippetSeconds / SNIPPET_SECONDS.at(-1) * 100}%`;
 		this.renderRules();
-		this.attempts.render(state.currentSlot, state.history, sessionKey);
+		this.attempts.render(state.slots, sessionKey);
 		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds);
 		if (state.overlay === "discovery") {
 			this.renderDiscovery(state);
@@ -4285,7 +4236,6 @@ var GameView = class {
 			headerAction: this.required(".header-action"),
 			modes: this.required(".modes"),
 			board: this.required(".board"),
-			currentSlot: this.required(".current-slot"),
 			slots: this.required(".slots"),
 			card: this.required(".card"),
 			play: this.required(".play"),
@@ -4350,7 +4300,7 @@ function markup() {
 		`<div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i></div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${COPY.modePrompt}</span><span class="ruleset-copy">${COPY.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
-		`<div class="attempt-area"><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div></div>`,
+		`<div class="attempt-area"><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions discovery-actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div><section class="reset-confirmation" role="group" aria-labelledby="corzaguessr-reset-title" aria-describedby="corzaguessr-reset-warning" hidden><strong id="corzaguessr-reset-title">RESET ALL PROGRESS?</strong><span id="corzaguessr-reset-warning">THIS ERASES DISCOVERY, DAILY PROGRESS, AND RECORDS.</span><div class="actions"><button type="button" class="button reset-cancel">CANCEL</button><button type="button" class="button reset-confirm">RESET</button></div></section></div></div></div>`,
