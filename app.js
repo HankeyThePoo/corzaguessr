@@ -231,7 +231,6 @@ var GameSession = class {
 	guessesState = 0;
 	correctState = 0;
 	attemptsState = [];
-	guessedTrackIdsState = /* @__PURE__ */ new Set();
 	speedrunCorrectTrackIdsState = /* @__PURE__ */ new Set();
 	resultState = null;
 	get snapshot() {
@@ -243,42 +242,27 @@ var GameSession = class {
 			guesses: this.guessesState,
 			correct: this.correctState,
 			attempts: this.attemptsState.map((attempt) => ({ ...attempt })),
-			guessedTrackIds: new Set(this.guessedTrackIdsState),
+			guessedTrackIds: this.puzzleGuessedTrackIds(),
 			speedrunCorrectTrackIds: new Set(this.speedrunCorrectTrackIdsState),
 			result: this.resultState ? { ...this.resultState } : null
 		};
 	}
-	reset(mode, seed = {
-		attempts: [],
-		guessedTrackIds: /* @__PURE__ */ new Set()
-	}) {
+	reset(mode, seed = { attempts: [] }) {
 		this.modeState = mode;
 		this.roundState = null;
 		this.roundNumberState = 0;
 		this.guessesState = 0;
 		this.correctState = 0;
 		this.attemptsState = seed.attempts.map((attempt) => ({ ...attempt }));
-		this.guessedTrackIdsState.clear();
-		for (const trackId of seed.guessedTrackIds) this.guessedTrackIdsState.add(trackId);
 		this.speedrunCorrectTrackIdsState.clear();
 		this.resultState = null;
 	}
-	selectRound(round) {
+	setRound(round) {
 		if (this.roundNumberState === 0) this.roundNumberState = 1;
 		this.roundState = this.copyRound(round);
-	}
-	startRound(round) {
-		if (this.roundNumberState === 0) this.roundNumberState = 1;
-		this.roundState = this.copyRound(round);
-		if (isTimedMode(this.modeState)) this.guessedTrackIdsState.clear();
 	}
 	clearRound() {
 		this.roundState = null;
-	}
-	recordGuess(trackNumber) {
-		if (this.guessedTrackIdsState.has(trackNumber)) return false;
-		this.guessedTrackIdsState.add(trackNumber);
-		return true;
 	}
 	resolvePuzzleAttempt(outcome, guessed) {
 		if (!isPuzzleMode(this.modeState)) throw new Error("Puzzle attempts require Daily or Classic mode.");
@@ -310,6 +294,10 @@ var GameSession = class {
 	puzzleAttempt() {
 		if (!isPuzzleMode(this.modeState)) return 0;
 		return this.attemptsState[0]?.outcome === "correct" || this.attemptsState.length === 6 ? Math.max(0, this.attemptsState.length - 1) : this.attemptsState.length;
+	}
+	puzzleGuessedTrackIds() {
+		if (!isPuzzleMode(this.modeState)) return /* @__PURE__ */ new Set();
+		return new Set(this.attemptsState.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
 	}
 	createAttempt(id, outcome, guessed, speedrunMilestone) {
 		const attempt = {
@@ -739,7 +727,6 @@ var GameController = class {
 		if (!round || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay || state.guessedTrackIds.has(dailyNumber)) return;
 		const guessed = this.tracks.find((track) => track.dailyNumber === dailyNumber);
 		if (!guessed) return;
-		if (!this.session.recordGuess(dailyNumber)) return;
 		this.resolveAttempt(dailyNumber === round.track.dailyNumber ? "correct" : "wrong", guessed);
 	}
 	resultAction() {
@@ -860,13 +847,13 @@ var GameController = class {
 		if (wasRequested) this.render();
 	}
 	onPending(round) {
-		this.session.selectRound(round);
+		this.session.setRound(round);
 		if (this.session.snapshot.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track);
 		this.render();
 	}
 	onAudioPlaying(round, startedNewRound) {
 		if (startedNewRound) {
-			this.session.startRound(round);
+			this.session.setRound(round);
 			if (!isTimedMode(this.session.snapshot.mode)) this.clock.restart(snippetSeconds(this.session.snapshot.attempt) * 1e3);
 			this.clock.start();
 			this.render();
@@ -1196,15 +1183,8 @@ var Progress = class {
 	}
 	dailySessionSeed(date) {
 		const daily = this.dailyState;
-		if (daily.status === "none" || daily.date !== date) return {
-			attempts: [],
-			guessedTrackIds: /* @__PURE__ */ new Set()
-		};
-		const guessedTrackIds = new Set(daily.attempts.filter((attempt) => attempt.outcome === "wrong").map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
-		return {
-			attempts: daily.attempts.map((attempt) => ({ ...attempt })),
-			guessedTrackIds
-		};
+		if (daily.status === "none" || daily.date !== date) return { attempts: [] };
+		return { attempts: daily.attempts.map((attempt) => ({ ...attempt })) };
 	}
 	markDailyStarted(date, track) {
 		if (this.dailyInProgress(date)) return;
