@@ -186,6 +186,7 @@
 }
 
 #corzaguessr .stack {
+  gap: 0;
   isolation: isolate;
 }
 
@@ -200,6 +201,10 @@
 #corzaguessr .history {
   display: grid;
   gap: var(--space-4);
+}
+
+#corzaguessr .history {
+  padding-top: var(--space-4);
 }
 
 #corzaguessr .attempt-area {
