@@ -136,7 +136,7 @@ function isPuzzleMode(mode) {
 	return mode !== null && MODE_RULES[mode].gameplay === "puzzle";
 }
 function clockKindForMode(mode) {
-	return MODE_RULES[mode].gameplay;
+	return MODE_RULES[mode].gameplay === "puzzle" ? "puzzle" : "timed";
 }
 function clockDisplayForMode(mode) {
 	const gameplay = MODE_RULES[mode].gameplay;
@@ -603,29 +603,11 @@ function formatShareDate(value) {
 	const monthName = month ? MONTHS$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
-function presentationPhase(session, transport) {
-	if (session.result) return "result";
-	if (transport.status === "retry") return "retry";
-	const round = session.round;
-	if (!round) return "idle";
-	switch (transport.status) {
-		case "playing": return "playing";
-		case "waiting": return "buffering";
-		case "starting": return transport.pendingRoundId === round.id ? "preparing" : "paused";
-		case "paused":
-		case "ended": return "paused";
-		case "blocked":
-		case "suspended":
-		case "empty":
-		case "prepared": return session.roundHeard ? "paused" : "preparing";
-	}
-}
 function playbackRequested(transport) {
 	return transport.status === "starting" || transport.status === "playing" || transport.status === "waiting";
 }
 function acceptsAttempt(session, transport) {
-	const phase = presentationPhase(session, transport);
-	return phase === "playing" || (phase === "paused" || phase === "preparing" || phase === "buffering") && session.roundHeard;
+	return !!session.round && !session.result && transport.status !== "retry" && session.roundHeard;
 }
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
@@ -641,7 +623,7 @@ function rulesText(input) {
 	if (input.appStatus === "loading") return input.catalogLoadingVisible ? COPY.loadingCatalog : COPY.modePrompt;
 	if (input.appStatus === "error") return COPY.catalogError;
 	if (!session.mode) return COPY.modePrompt;
-	if (presentationPhase(session, input.transport) === "retry") return COPY.trackError;
+	if (input.transport.status === "retry") return COPY.trackError;
 	if (session.mode === "daily") {
 		if (dailyCatalogPending(session.mode, input.tracks, dailyDate, dailyProgress)) return COPY.trackUnavailable;
 		if (dailyInProgress(dailyProgress, dailyDate)) return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${dailyProgress.step + 1}`;
@@ -658,7 +640,6 @@ function formatDailyCountdown(milliseconds) {
 }
 function composeGameViewModel(input) {
 	const { session, transport } = input;
-	const phase = presentationPhase(session, transport);
 	const requested = playbackRequested(transport);
 	const speedrunTracksLeft = Math.max(0, input.tracks.length - session.speedrunCorrectTrackIds.size);
 	const currentSlot = session.mode === "speedrun" && session.currentSlot?.tone === "prompt" ? {
@@ -667,19 +648,9 @@ function composeGameViewModel(input) {
 	} : session.currentSlot;
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
-	const playPhase = [
-		"idle",
-		"playing",
-		"paused",
-		"buffering",
-		"retry"
-	].includes(phase) || phase === "preparing" && transport.pendingRoundId !== null && !requested;
-	const inputVisible = !!session.round && ![
-		"idle",
-		"retry",
-		"result"
-	].includes(phase);
-	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && !["retry", "result"].includes(phase));
+	const playControlAvailable = !session.round || transport.status === "retry" || session.roundHeard || transport.pendingRoundId === session.round.id && !requested;
+	const inputVisible = !!session.round && !session.result && transport.status !== "retry";
+	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay);
 	const attemptEnabled = !!(guessEnabled && session.round && acceptsAttempt(session, transport));
 	return {
 		appStatus: input.appStatus,
@@ -687,7 +658,7 @@ function composeGameViewModel(input) {
 		rulesText: rulesText(input),
 		transportText: transport.loading.visible ? COPY.loadingTrack : "",
 		inputVisible,
-		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playPhase),
+		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playControlAvailable),
 		guessEnabled,
 		attemptEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
@@ -818,7 +789,6 @@ var GameController = class {
 			this.view.closeResult("play");
 			return;
 		}
-		this.resetForMode(mode);
 	}
 	openDiscovery() {
 		if (this.overlay === "discovery") {
@@ -1003,24 +973,19 @@ var GameController = class {
 		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
 		const state = this.session.snapshot;
 		const transport = this.playback.snapshot;
-		const phase = presentationPhase(state, transport);
 		const requested = playbackRequested(transport);
 		if (this.appStatus !== "ready" || !state.mode || this.activeOverlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
-		if (phase === "idle" || phase === "retry") {
-			this.playback.start({ manualRetry: phase === "retry" });
+		if (!state.round || transport.status === "retry") {
+			this.playback.start({ manualRetry: transport.status === "retry" });
 			return;
 		}
-		if (phase === "preparing" && state.round && transport.pendingRoundId === state.round.id && !requested) {
+		if (!state.roundHeard && transport.pendingRoundId === state.round.id && !requested) {
 			this.playback.replay(state.round, false);
 			this.render();
 			return;
 		}
 		const round = state.round;
-		if (!round || ![
-			"playing",
-			"paused",
-			"buffering"
-		].includes(phase)) return;
+		if (!round || !state.roundHeard) return;
 		if (isTimedMode(state.mode)) {
 			if (requested) {
 				this.clock.pause();
@@ -2510,7 +2475,6 @@ var Playback = class {
 	standbyRecoveryBlocked = false;
 	status = "empty";
 	suspended = false;
-	statusBeforeSuspend = "empty";
 	operationGeneration = 0;
 	lifecycleGeneration = 0;
 	loadingTimer = 0;
@@ -2657,9 +2621,8 @@ var Playback = class {
 	}
 	suspend() {
 		if (this.suspended) return;
-		this.statusBeforeSuspend = this.status;
 		this.suspended = true;
-		this.status = "suspended";
+		this.status = this.inactiveStatus();
 		this.operationGeneration += 1;
 		this.clearLoading();
 		this.audio.suspend();
@@ -2667,7 +2630,7 @@ var Playback = class {
 	restore() {
 		if (!this.suspended) return;
 		this.suspended = false;
-		this.status = this.prepared ? "prepared" : this.retryRound ? "retry" : this.pending || this.active ? "paused" : this.statusBeforeSuspend === "empty" ? "empty" : "paused";
+		this.status = this.inactiveStatus();
 		this.restoringFromSuspension = true;
 		try {
 			this.audio.restore();
@@ -2833,6 +2796,12 @@ var Playback = class {
 			this.active,
 			this.retryRound
 		].some((item) => item?.id === round.id);
+	}
+	inactiveStatus() {
+		if (this.prepared) return "prepared";
+		if (this.retryRound) return "retry";
+		if (this.pending || this.active) return "paused";
+		return "empty";
 	}
 	handleRejected(round, stage, message, role = "active") {
 		this.handleFailure({
@@ -3668,9 +3637,7 @@ var ModalController = class {
 	}
 	openResult() {
 		if (this.kind) return;
-		this.beginOpen();
 		this.kind = "result";
-		this.closing = false;
 		this.captureReturnFocus();
 		this.lockScroll();
 		this.elements.card.classList.add("result-open");
@@ -3709,10 +3676,7 @@ var ModalController = class {
 		}
 	}
 	closeResult(fallbackFocus) {
-		if (this.kind !== "result") return false;
-		this.scheduler.cancelFrame(this.openFrame);
-		this.openFrame = 0;
-		this.cancelCloseWait();
+		if (this.kind !== "result") return;
 		this.elements.card.classList.remove("result-open");
 		this.elements.result.setAttribute("aria-hidden", "true");
 		this.kind = null;
@@ -3720,7 +3684,6 @@ var ModalController = class {
 		this.unlockScroll();
 		this.returnFocus = null;
 		if (this.canFocus(fallbackFocus)) fallbackFocus.focus({ preventScroll: true });
-		return true;
 	}
 	closeDiscovery(fallbackFocus, onClosed, focusOverride = null) {
 		if (this.closing || this.kind !== "discovery") return false;
@@ -3826,10 +3789,7 @@ var ModalController = class {
 	cancelCloseWait() {
 		if (this.closeTimer) this.scheduler.clearTimer(this.closeTimer);
 		this.closeTimer = 0;
-		if (this.closeListener) {
-			this.elements.result.removeEventListener("transitionend", this.closeListener);
-			this.elements.discoveryShell.removeEventListener("transitionend", this.closeListener);
-		}
+		if (this.closeListener) this.elements.discoveryShell.removeEventListener("transitionend", this.closeListener);
 		this.closeListener = null;
 	}
 };
@@ -4334,7 +4294,7 @@ var GameView = class {
 	}
 	closeResult(focus) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
-		return this.modal.closeResult(target);
+		this.modal.closeResult(target);
 	}
 	beginDiscoveryClose(request) {
 		return this.modal.closeDiscovery(this.elements.discoveryButton, () => queueMicrotask(() => {
