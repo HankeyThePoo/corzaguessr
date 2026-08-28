@@ -932,12 +932,12 @@
   background: var(--success-surface);
 }
 
-#corzaguessr .slot.correct.speedrun-milestone {
+#corzaguessr .slot.correct.gauntlet-milestone {
   border-color: transparent;
   background: var(--gradient-background-soft);
 }
 
-#corzaguessr .slot.correct.speedrun-milestone::after {
+#corzaguessr .slot.correct.gauntlet-milestone::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1119,7 +1119,7 @@
   gap: var(--space-2);
 }
 
-#corzaguessr .progress-bests.has-speedrun-best {
+#corzaguessr .progress-bests.has-gauntlet-best {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
@@ -1169,7 +1169,7 @@
   line-height: 1.2;
 }
 
-#corzaguessr .discovery-speedrun {
+#corzaguessr .discovery-gauntlet {
   appearance: none;
   padding: 0;
   outline: 0;
@@ -1538,19 +1538,19 @@
     gap: var(--space-1);
   }
 
-  #corzaguessr .progress-bests.has-speedrun-best {
+  #corzaguessr .progress-bests.has-gauntlet-best {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  #corzaguessr .progress-bests.has-speedrun-best .progress-best {
+  #corzaguessr .progress-bests.has-gauntlet-best .progress-best {
     grid-column: span 2;
   }
 
-  #corzaguessr .progress-bests.has-speedrun-best .progress-best:nth-child(4) {
+  #corzaguessr .progress-bests.has-gauntlet-best .progress-best:nth-child(4) {
     grid-column: 2 / span 2;
   }
 
-  #corzaguessr .progress-best-speedrun {
+  #corzaguessr .progress-best-gauntlet {
     width: auto;
     justify-self: stretch;
   }
