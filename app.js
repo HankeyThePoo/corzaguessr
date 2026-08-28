@@ -485,6 +485,35 @@ var copy = {
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
 };
+function composeClockViewModel(input) {
+	const { mode, clock } = input;
+	if (!mode) return {
+		currentText: "0:00",
+		endText: "0:01",
+		progress: 0
+	};
+	if (isTimedMode(mode)) {
+		const initial = modeRules[mode].initialTimeMs;
+		const survival = clockDisplayForMode(mode) === "survival";
+		const seconds = (survival ? clock.elapsedMs : clock.remainingMs) / 1e3;
+		const denominator = survival ? clock.maxRemainingMs : initial;
+		return {
+			currentText: formatClock(seconds),
+			endText: formatClock(survival ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3),
+			progress: denominator ? clock.remainingMs / denominator : 0
+		};
+	}
+	const seconds = mode === "daily" && !input.inputVisible && input.dailyStarted ? input.snippetSeconds : clock.elapsedMs / 1e3;
+	return {
+		currentText: formatClock(seconds),
+		endText: `0:${String(input.snippetSeconds).padStart(2, "0")}`,
+		progress: seconds ? seconds / snippetDurations.at(-1) + .0025 : 0
+	};
+}
+function formatClock(seconds) {
+	const safe = Math.max(0, seconds);
+	return `${Math.floor(safe / 60)}:${String(Math.floor(safe) % 60).padStart(2, "0")}`;
+}
 var shareUrl = "https://stolenvalorhq.com/corzaguessr";
 var months$1 = [
 	"January",
@@ -511,9 +540,63 @@ function formatShareDate(value) {
 	const monthName = month ? months$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
+function composeResultViewModel(result, persistenceFailed) {
+	if (!result) return null;
+	const rows = resultRows(result);
+	const announcement = resultAnnouncement(result, rows);
+	const daily = result.mode === "daily";
+	const timedOut = result.mode === "blitz" || result.mode === "survival" || result.mode === "gauntlet" && !result.won;
+	return {
+		titleHtml: result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
+		primaryLabel: daily ? "CLOSE" : "NEW GAME",
+		rows,
+		highlightPersonalBest: !daily && result.newPersonalBest,
+		announcement: persistenceFailed ? `${announcement} PROGRESS COULD NOT BE SAVED IN THIS BROWSER.` : announcement,
+		secondary: daily ? {
+			action: "share",
+			label: "SHARE",
+			ariaLabel: "SHARE DAILY RESULT"
+		} : result.mode === "classic" && result.spotify ? {
+			action: "spotify",
+			label: "SPOTIFY",
+			ariaLabel: "OPEN RESULT TRACK ON SPOTIFY"
+		} : null
+	};
+}
+function resultRows(result) {
+	if (result.mode === "daily") return [["TRACK:", result.trackTitle], ["RUN:", formatAttempts(result.attempts)]];
+	if (result.mode === "classic") return [
+		["TRACK:", result.trackTitle],
+		["RUN:", `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}`],
+		[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}`]
+	];
+	if (result.mode === "blitz") return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
+	if (result.mode === "gauntlet") {
+		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
+		return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+	}
+	return [["RUN:", `TIME SURVIVED: ${formatClock(result.elapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `TIME SURVIVED: ${formatClock(result.bestElapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
+}
+function resultAnnouncement(result, rows = resultRows(result)) {
+	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" || result.mode === "survival" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+}
+function formatAccuracy(value) {
+	return Number.isSafeInteger(value) ? `${value}%` : "--";
+}
+function formatAttempts(value) {
+	return value ? `ATTEMPTS: ${value}` : "ATTEMPTS: --";
+}
+function formatAverage(value) {
+	if (!Number.isFinite(value) || value <= 0) return "--";
+	const rounded = Math.round(value * 10) / 10;
+	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
+}
 var maxVisibleTimedAttempts = 19;
 function acceptsAttempt(session, transport) {
 	return !!session.round && !session.result && !transport.retryNeeded && transport.activeRoundId === session.round.id;
+}
+function guessInputVisible(session, transport) {
+	return !!session.round && !session.result && !transport.retryNeeded;
 }
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
@@ -566,7 +649,7 @@ function composeGameViewModel(input) {
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
 	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
-	const inputVisible = !!session.round && !session.result && !transport.retryNeeded;
+	const inputVisible = guessInputVisible(session, transport);
 	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay);
 	const attemptEnabled = !!(guessEnabled && session.round && acceptsAttempt(session, transport));
 	return {
@@ -583,9 +666,14 @@ function composeGameViewModel(input) {
 		skipText: skipLabel(session.mode, session.attempt),
 		slots,
 		unavailableGuessIds: session.guessedTrackIds,
-		clock: input.clock,
-		result: session.result,
-		resultPersistenceFailed: input.resultPersistenceFailed,
+		clock: composeClockViewModel({
+			mode: session.mode,
+			snippetSeconds: snippetSeconds(session.attempt),
+			inputVisible,
+			clock: input.clock,
+			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
+		}),
+		result: composeResultViewModel(session.result, input.resultPersistenceFailed),
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
@@ -905,7 +993,15 @@ var GameController = class {
 		});
 	}
 	onClockTick(snapshot) {
-		this.view.renderClock(snapshot);
+		const session = this.session.snapshot;
+		const transport = this.playback.snapshot;
+		this.view.renderClock(composeClockViewModel({
+			mode: session.mode,
+			snippetSeconds: snippetSeconds(session.attempt),
+			inputVisible: guessInputVisible(session, transport),
+			clock: snapshot,
+			dailyStarted: this.progress.dailyInProgress(this.dailyDate) || this.progress.dailyDone(this.dailyDate)
+		}));
 	}
 	onClockExpired() {
 		const state = this.session.snapshot;
@@ -1602,6 +1698,49 @@ var GameClock = class {
 		this.timer = 0;
 	}
 };
+function browserStorage() {
+	try {
+		return window.localStorage;
+	} catch {
+		return null;
+	}
+}
+var JsonStorage = class {
+	storage;
+	constructor(storage) {
+		this.storage = storage;
+	}
+	read(key) {
+		try {
+			if (!this.storage) return void 0;
+			const value = this.storage.getItem(key);
+			return value === null ? void 0 : JSON.parse(value);
+		} catch {
+			return;
+		}
+	}
+	write(key, value) {
+		try {
+			if (!this.storage) return false;
+			this.storage.setItem(key, JSON.stringify(value));
+			return true;
+		} catch {
+			return false;
+		}
+	}
+	remove(key) {
+		return this.removeMany([key]);
+	}
+	removeMany(keys) {
+		try {
+			if (!this.storage) return false;
+			for (const key of keys) this.storage.removeItem(key);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+};
 var storageKeys = {
 	discoveries: "corzaguessr:discoveries",
 	daily: "corzaguessr:daily",
@@ -1730,70 +1869,30 @@ function isNonNegativeInteger(value) {
 function isIntegerBetween(value, minimum, maximum) {
 	return Number.isSafeInteger(value) && Number(value) >= minimum && Number(value) <= maximum;
 }
-function browserStorage$1() {
-	try {
-		return window.localStorage;
-	} catch {
-		return null;
-	}
-}
 var ProgressStorage = class {
 	storage;
-	constructor(storage = browserStorage$1()) {
-		this.storage = storage;
+	constructor(storage = browserStorage()) {
+		this.storage = new JsonStorage(storage);
 	}
 	load() {
 		return {
-			discoveries: parseDiscoveries(this.readUnknown(storageKeys.discoveries)),
-			daily: parseDailyProgress(this.readUnknown(storageKeys.daily)),
-			personalBests: parsePersonalBests(this.readUnknown(storageKeys.personalBests))
+			discoveries: parseDiscoveries(this.storage.read(storageKeys.discoveries)),
+			daily: parseDailyProgress(this.storage.read(storageKeys.daily)),
+			personalBests: parsePersonalBests(this.storage.read(storageKeys.personalBests))
 		};
 	}
 	saveDiscoveries(discoveries) {
 		const values = [...discoveries].sort((left, right) => left - right);
-		try {
-			if (!this.storage) return false;
-			if (values.length) this.storage.setItem(storageKeys.discoveries, JSON.stringify(values));
-			else this.storage.removeItem(storageKeys.discoveries);
-			return true;
-		} catch {
-			return false;
-		}
+		return values.length ? this.storage.write(storageKeys.discoveries, values) : this.storage.remove(storageKeys.discoveries);
 	}
 	clearProgress() {
-		try {
-			if (!this.storage) return false;
-			this.storage.removeItem(storageKeys.discoveries);
-			this.storage.removeItem(storageKeys.daily);
-			this.storage.removeItem(storageKeys.personalBests);
-			return true;
-		} catch {
-			return false;
-		}
+		return this.storage.removeMany(Object.values(storageKeys));
 	}
 	saveDaily(progress) {
-		return this.write(storageKeys.daily, progress);
+		return this.storage.write(storageKeys.daily, progress);
 	}
 	savePersonalBests(bests) {
-		return this.write(storageKeys.personalBests, bests);
-	}
-	readUnknown(key) {
-		try {
-			if (!this.storage) return void 0;
-			const value = this.storage.getItem(key);
-			return value === null ? void 0 : JSON.parse(value);
-		} catch {
-			return;
-		}
-	}
-	write(key, value) {
-		try {
-			if (!this.storage) return false;
-			this.storage.setItem(key, JSON.stringify(value));
-			return true;
-		} catch {
-			return false;
-		}
+		return this.storage.write(storageKeys.personalBests, bests);
 	}
 };
 var ShareClipboard = class {
@@ -1820,39 +1919,19 @@ var volumeStorageKey = "corzaguessr:volume";
 var VolumeSettings = class {
 	storage;
 	constructor(storage = browserStorage()) {
-		this.storage = storage;
+		this.storage = new JsonStorage(storage);
 	}
 	load() {
-		try {
-			if (!this.storage) return 100;
-			const raw = this.storage.getItem(volumeStorageKey);
-			if (raw === null) return 100;
-			const value = JSON.parse(raw);
-			return isVolume(value) ? value : 100;
-		} catch {
-			return 100;
-		}
+		const value = this.storage.read(volumeStorageKey);
+		return isVolume(value) ? value : 100;
 	}
 	save(volume) {
 		if (!isVolume(volume)) return false;
-		try {
-			if (!this.storage) return false;
-			this.storage.setItem(volumeStorageKey, JSON.stringify(volume));
-			return true;
-		} catch {
-			return false;
-		}
+		return this.storage.write(volumeStorageKey, volume);
 	}
 };
 function isVolume(value) {
 	return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 100;
-}
-function browserStorage() {
-	try {
-		return window.localStorage;
-	} catch {
-		return null;
-	}
 }
 var browserTiming = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
@@ -3463,50 +3542,6 @@ var ModalController = class {
 		this.closeListener = null;
 	}
 };
-function formatClock(seconds) {
-	const safe = Math.max(0, seconds);
-	return `${Math.floor(safe / 60)}:${String(Math.floor(safe) % 60).padStart(2, "0")}`;
-}
-function formatAccuracy(value) {
-	return Number.isSafeInteger(value) ? `${value}%` : "--";
-}
-function formatAttempts(value) {
-	return value ? `ATTEMPTS: ${value}` : "ATTEMPTS: --";
-}
-function formatAverage(value) {
-	if (!Number.isFinite(value) || value <= 0) return "--";
-	const rounded = Math.round(value * 10) / 10;
-	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
-}
-function resultRows(result) {
-	if (result.mode === "daily") return [["TRACK:", result.trackTitle], ["RUN:", formatAttempts(result.attempts)]];
-	if (result.mode === "classic") return [
-		["TRACK:", result.trackTitle],
-		["RUN:", `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}`],
-		[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}`]
-	];
-	if (result.mode === "blitz") return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
-	if (result.mode === "gauntlet") {
-		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
-		return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
-	}
-	return [["RUN:", `TIME SURVIVED: ${formatClock(result.elapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `TIME SURVIVED: ${formatClock(result.bestElapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
-}
-function resultAnnouncement(result, rows = resultRows(result)) {
-	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" || result.mode === "survival" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
-}
-function createResultRow(row, newPersonalBest) {
-	const module = document.createElement("div");
-	module.className = "result-module";
-	module.replaceChildren(...row.map((value, index) => {
-		const span = document.createElement("span");
-		span.className = index ? "result-value" : "result-label";
-		if (!index && newPersonalBest && value === "NEW PERSONAL BEST:") span.classList.add("blink");
-		span.textContent = value;
-		return span;
-	}));
-	return module;
-}
 var emptyRecordValue = "---";
 var emptyRecordDetail = "NO RECORD";
 var ProgressSummaryView = class {
@@ -3571,6 +3606,18 @@ function rows(bests, daily, dailyDate) {
 }
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+function createResultRow(row, newPersonalBest) {
+	const module = document.createElement("div");
+	module.className = "result-module";
+	module.replaceChildren(...row.map((value, index) => {
+		const span = document.createElement("span");
+		span.className = index ? "result-value" : "result-label";
+		if (!index && newPersonalBest && value === "NEW PERSONAL BEST:") span.classList.add("blink");
+		span.textContent = value;
+		return span;
+	}));
+	return module;
 }
 var TimelineView = class {
 	elements;
@@ -3819,8 +3866,9 @@ var GameView = class {
 		this.elements.skip.addEventListener("click", handlers.skip);
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
 		this.elements.resultSecondary.addEventListener("click", () => {
-			if (this.state?.result?.mode === "daily") handlers.shareDaily();
-			else handlers.openSpotify();
+			const action = this.state?.result?.secondary?.action;
+			if (action === "share") handlers.shareDaily();
+			else if (action === "spotify") handlers.openSpotify();
 		});
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
@@ -3885,7 +3933,7 @@ var GameView = class {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
 		}
-		this.renderResult(state.result, state.resultPersistenceFailed);
+		this.renderResult(state.result);
 		this.renderClock(state.clock);
 		if (openingOverlay === "result") this.modal.openResult();
 		else if (openingOverlay === "discovery") {
@@ -3895,27 +3943,8 @@ var GameView = class {
 		}
 	}
 	renderClock(clock) {
-		const state = this.state;
-		if (!state) return;
-		const mode = state.mode;
-		let display = "0:00";
-		let progress = 0;
-		if (!mode) this.elements.endtime.textContent = "0:01";
-		else if (isTimedMode(mode)) {
-			const rule = modeRules[mode];
-			const survival = clockDisplayForMode(mode) === "survival";
-			const initial = rule.initialTimeMs;
-			this.elements.endtime.textContent = formatClock(survival ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3);
-			display = formatClock((survival ? clock.elapsedMs : clock.remainingMs) / 1e3);
-			const denominator = survival ? clock.maxRemainingMs : initial;
-			progress = denominator ? clock.remainingMs / denominator : 0;
-		} else {
-			const seconds = mode === "daily" && !state.inputVisible && dailyStarted(state.dailyProgress, state.dailyDate) ? state.snippetSeconds : clock.elapsedMs / 1e3;
-			this.elements.endtime.textContent = `0:${String(state.snippetSeconds).padStart(2, "0")}`;
-			display = formatClock(seconds);
-			progress = seconds ? seconds / snippetDurations.at(-1) + .0025 : 0;
-		}
-		this.timeline.setProgress(display, progress);
+		this.elements.endtime.textContent = clock.endText;
+		this.timeline.setProgress(clock.currentText, clock.progress);
 	}
 	announce(message) {
 		cancelAnimationFrame(this.announcementFrame);
@@ -3953,14 +3982,14 @@ var GameView = class {
 		}));
 	}
 	showDailyShareCopied() {
-		if (this.state?.overlay !== "result" || this.state.result?.mode !== "daily") return;
+		if (this.state?.overlay !== "result" || this.state.result?.secondary?.action !== "share") return;
 		if (this.resultCopyFeedbackTimer) window.clearTimeout(this.resultCopyFeedbackTimer);
 		const generation = ++this.resultCopyFeedbackGeneration;
 		this.elements.resultSecondaryLabel.classList.remove("fading");
 		this.elements.resultSecondaryLabel.textContent = "COPIED";
 		this.resultCopyFeedbackTimer = window.setTimeout(() => {
 			this.resultCopyFeedbackTimer = 0;
-			if (this.state?.overlay === "result" && this.state.result?.mode === "daily") this.swapResultSecondaryLabel("SHARE", generation);
+			if (this.state?.overlay === "result" && this.state.result?.secondary?.action === "share") this.swapResultSecondaryLabel("SHARE", generation);
 		}, this.durations.shareVisible);
 	}
 	resetTransientUi() {
@@ -4016,8 +4045,8 @@ var GameView = class {
 		this.elements.discoveryActions.hidden = false;
 		if (returnFocus) this.elements.discoveryReset.focus({ preventScroll: true });
 	}
-	renderResult(result, persistenceFailed) {
-		const signature = result ? JSON.stringify([result, persistenceFailed]) : "";
+	renderResult(result) {
+		const signature = result ? JSON.stringify(result) : "";
 		if (signature === this.resultSignature) return;
 		this.resultSignature = signature;
 		if (this.resultCopyFeedbackTimer) {
@@ -4032,18 +4061,14 @@ var GameView = class {
 			this.elements.resultSecondary.hidden = true;
 			return;
 		}
-		const timedOut = result.mode === "blitz" || result.mode === "survival" || result.mode === "gauntlet" && !result.won;
-		this.elements.resultAction.textContent = result.mode === "daily" ? "CLOSE" : "NEW GAME";
-		this.elements.resultTitle.innerHTML = result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`;
-		const rows = resultRows(result);
-		const newPersonalBest = result.mode !== "daily" && result.newPersonalBest;
-		this.elements.resultMeta.replaceChildren(...rows.map((row) => createResultRow(row, newPersonalBest)));
-		const announcement = resultAnnouncement(result, rows);
-		this.elements.resultMeta.dataset.announcement = persistenceFailed ? `${announcement} PROGRESS COULD NOT BE SAVED IN THIS BROWSER.` : announcement;
-		const daily = result.mode === "daily";
-		this.elements.resultSecondaryLabel.textContent = daily ? "SHARE" : "SPOTIFY";
-		this.elements.resultSecondary.setAttribute("aria-label", daily ? "SHARE DAILY RESULT" : "OPEN RESULT TRACK ON SPOTIFY");
-		this.elements.resultSecondary.hidden = !daily && (result.mode !== "classic" || !result.spotify);
+		this.elements.resultAction.textContent = result.primaryLabel;
+		this.elements.resultTitle.innerHTML = result.titleHtml;
+		this.elements.resultMeta.replaceChildren(...result.rows.map((row) => createResultRow(row, result.highlightPersonalBest)));
+		this.elements.resultMeta.dataset.announcement = result.announcement;
+		this.elements.resultSecondaryLabel.textContent = result.secondary?.label ?? "";
+		if (result.secondary) this.elements.resultSecondary.setAttribute("aria-label", result.secondary.ariaLabel);
+		else this.elements.resultSecondary.removeAttribute("aria-label");
+		this.elements.resultSecondary.hidden = result.secondary === null;
 	}
 	bindPreview(element, preview) {
 		element.addEventListener("pointerenter", () => {
