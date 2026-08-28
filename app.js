@@ -233,7 +233,7 @@ var GameSession = class {
 	get snapshot() {
 		const timedAttempts = isTimedMode(this.modeState) ? this.attemptsState : [];
 		const correctAttempts = timedAttempts.filter((attempt) => attempt.outcome === "correct");
-		const speedrunCorrectTrackIds = this.modeState === "speedrun" ? new Set(correctAttempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null)) : /* @__PURE__ */ new Set();
+		const speedrunFoundTrackIds = this.modeState === "speedrun" ? new Set(correctAttempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null)) : /* @__PURE__ */ new Set();
 		return {
 			mode: this.modeState,
 			round: this.roundState ? this.copyRound(this.roundState) : null,
@@ -243,7 +243,7 @@ var GameSession = class {
 			correct: correctAttempts.length,
 			attempts: this.attemptsState.map((attempt) => ({ ...attempt })),
 			guessedTrackIds: this.puzzleGuessedTrackIds(),
-			speedrunCorrectTrackIds,
+			speedrunFoundTrackIds,
 			result: this.resultState ? { ...this.resultState } : null
 		};
 	}
@@ -547,12 +547,12 @@ function formatDailyCountdown(milliseconds) {
 function composeGameViewModel(input) {
 	const { session, transport } = input;
 	const requested = transport.playRequested;
-	const speedrunTracksLeft = Math.max(0, input.tracks.length - session.speedrunCorrectTrackIds.size);
+	const tracksLeft = Math.max(0, input.tracks.length - session.speedrunFoundTrackIds.size);
 	const slots = (isTimedMode(session.mode) ? session.attempts.slice(0, MAX_VISIBLE_TIMED_ATTEMPTS) : session.attempts).map((attempt) => attemptSlot(attempt, session.mode, input.tracks));
 	const completedDaily = session.mode === "daily" && dailyCompleted(input.dailyProgress, input.dailyDate);
 	const completedPuzzle = (session.mode === "daily" || session.mode === "classic") && (!!session.result || completedDaily);
 	const history = completedPuzzle ? slots.slice(1) : slots;
-	let currentSlot = completedPuzzle ? slots[0] ?? null : promptSlot(session, speedrunTracksLeft);
+	let currentSlot = completedPuzzle ? slots[0] ?? null : promptSlot(session, tracksLeft);
 	if (session.result && isTimedMode(session.mode)) currentSlot = {
 		id: session.roundNumber,
 		text: session.result.mode === "speedrun" && session.result.won ? "SPEEDRUN COMPLETE" : "TIME'S UP",
@@ -596,13 +596,13 @@ function composeGameViewModel(input) {
 		overlay: input.overlay
 	};
 }
-function promptSlot(session, speedrunTracksLeft) {
+function promptSlot(session, tracksLeft) {
 	if (!session.mode) return null;
 	if (isTimedMode(session.mode)) {
 		if (session.roundNumber === 0) return null;
 		return {
 			id: session.roundNumber,
-			text: session.mode === "speedrun" ? `${speedrunTracksLeft} ${speedrunTracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${session.roundNumber}`,
+			text: session.mode === "speedrun" ? `${tracksLeft} ${tracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${session.roundNumber}`,
 			tone: "prompt"
 		};
 	}
@@ -823,7 +823,7 @@ var GameController = class {
 			this.resetForMode("daily");
 		}
 	}
-	handleVisibilityVisible() {
+	handlePageVisible() {
 		this.pageVisible = true;
 		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
 		if (this.activeOverlay) return;
@@ -831,7 +831,7 @@ var GameController = class {
 		this.prime();
 		this.render();
 	}
-	handleVisibilityHidden() {
+	handlePageHidden() {
 		this.pageVisible = false;
 		const state = this.session.snapshot;
 		if (!this.playback.ownedRound || state.result) return;
@@ -975,7 +975,7 @@ var GameController = class {
 		if (isTimedMode(mode)) {
 			this.playback.pause();
 			this.session.resolveTimed(outcome, guessed);
-			const speedrunComplete = mode === "speedrun" && outcome === "correct" && this.session.snapshot.speedrunCorrectTrackIds.size === this.tracks.length;
+			const speedrunComplete = mode === "speedrun" && outcome === "correct" && this.session.snapshot.speedrunFoundTrackIds.size === this.tracks.length;
 			this.view.announce(speedrunComplete ? "CORRECT. SPEEDRUN COMPLETE." : outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
 			if (speedrunComplete) {
 				this.finishGame(true, round);
@@ -1140,7 +1140,7 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 			mode,
 			won,
 			elapsedMs: clock.elapsedMs,
-			completedTrackCount: state.speedrunCorrectTrackIds.size,
+			completedTrackCount: state.speedrunFoundTrackIds.size,
 			catalogTrackCount
 		};
 	}
@@ -4439,12 +4439,12 @@ if (root && !root.dataset.corzaguessrReady) {
 		}
 	});
 	controller.bootstrap(dailySchedule.current());
-	if (document.hidden) controller.handleVisibilityHidden();
+	if (document.hidden) controller.handlePageHidden();
 	document.addEventListener("visibilitychange", () => {
-		if (document.hidden) controller.handleVisibilityHidden();
-		else controller.handleVisibilityVisible();
+		if (document.hidden) controller.handlePageHidden();
+		else controller.handlePageVisible();
 	});
 	window.addEventListener("pageshow", () => {
-		if (!document.hidden) controller.handleVisibilityVisible();
+		if (!document.hidden) controller.handlePageVisible();
 	});
 }
