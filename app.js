@@ -625,7 +625,7 @@ function composeGameViewModel(input) {
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
-	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id && !requested;
+	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
 	const inputVisible = !!session.round && !session.result && !transport.retryNeeded;
 	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay);
 	const attemptEnabled = !!(guessEnabled && session.round && acceptsAttempt(session, transport));
@@ -635,7 +635,7 @@ function composeGameViewModel(input) {
 		rulesText: rulesText(input),
 		transportText: transport.loading ? COPY.loadingTrack : "",
 		inputVisible,
-		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && playControlAvailable),
+		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && !transport.loading && playControlAvailable),
 		guessEnabled,
 		attemptEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
