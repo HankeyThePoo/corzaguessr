@@ -216,18 +216,11 @@
 #corzaguessr .slots {
   display: grid;
   gap: var(--space-4);
-}
-
-#corzaguessr .attempt-area,
-#corzaguessr .history {
-  display: grid;
-}
-
-#corzaguessr .history {
   padding-top: var(--space-4);
 }
 
 #corzaguessr .attempt-area {
+  display: grid;
   overflow: hidden;
   transition: height var(--duration-slot) ease;
 }
