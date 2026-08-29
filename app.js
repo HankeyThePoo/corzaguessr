@@ -1008,17 +1008,18 @@ var GameController = class {
 		this.render();
 		if (visible) this.view.announce(copy.loadingTrack);
 	}
-	onProgressPersistenceFailure() {
-		this.resultPersistenceFailed = true;
+	onProgressPersistenceStatusChanged(pending) {
+		this.resultPersistenceFailed = pending;
+		if (!pending) return;
 		if (this.persistenceFailureQueued) return;
 		this.persistenceFailureQueued = true;
 		queueMicrotask(() => {
 			this.persistenceFailureQueued = false;
+			if (!this.resultPersistenceFailed) return;
 			if (this.session.result) {
 				this.render();
 				return;
 			}
-			this.resultPersistenceFailed = false;
 			this.view.announce("PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
 		});
 	}
@@ -1297,100 +1298,139 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 var Progress = class {
 	storage;
 	options;
-	discoveriesState = /* @__PURE__ */ new Set();
-	dailyState;
-	bestsState;
+	state;
+	pendingPersistence = emptyPendingPersistence();
+	persistencePendingReported = false;
 	constructor(storage, options = {}) {
 		this.storage = storage;
 		this.options = options;
 		const loaded = storage.load();
-		this.discoveriesState = new Set(loaded.discoveries);
-		this.dailyState = cloneDaily(loaded.daily);
-		this.bestsState = cloneBests(loaded.personalBests);
+		this.state = {
+			discoveries: new Set(loaded.discoveries),
+			daily: cloneDaily(loaded.daily),
+			personalBests: cloneBests(loaded.personalBests)
+		};
 	}
 	get discoveries() {
-		return new Set(this.discoveriesState);
+		return new Set(this.state.discoveries);
 	}
 	get daily() {
-		return cloneDaily(this.dailyState);
+		return cloneDaily(this.state.daily);
 	}
 	get personalBests() {
-		return cloneBests(this.bestsState);
+		return cloneBests(this.state.personalBests);
 	}
 	dailyDone(date) {
-		return dailyCompleted(this.dailyState, date);
+		return dailyCompleted(this.state.daily, date);
 	}
 	dailyInProgress(date) {
-		return dailyInProgress(this.dailyState, date);
+		return dailyInProgress(this.state.daily, date);
 	}
 	dailyAttempts(date) {
-		const daily = this.dailyState;
+		const daily = this.state.daily;
 		return daily.status === "none" || daily.date !== date ? [] : daily.attempts.map((attempt) => ({ ...attempt }));
 	}
 	markDailyStarted(date, track) {
 		if (this.dailyInProgress(date)) return;
-		const next = {
-			status: "in-progress",
-			date,
-			dailyNumber: track.dailyNumber,
-			attempts: []
+		this.state = {
+			...this.state,
+			daily: {
+				status: "in-progress",
+				date,
+				dailyNumber: track.dailyNumber,
+				attempts: []
+			}
 		};
-		this.dailyState = next;
-		if (!this.storage.saveDaily(next)) this.persistenceFailed();
+		this.pendingPersistence.daily = true;
+		this.persistPendingProgress();
 	}
 	updateDailyAttempt(attempts) {
-		if (this.dailyState.status !== "in-progress") return;
-		const next = {
-			...this.dailyState,
-			attempts: attempts.map((attempt) => ({ ...attempt }))
+		if (this.state.daily.status !== "in-progress") return;
+		this.state = {
+			...this.state,
+			daily: {
+				...this.state.daily,
+				attempts: attempts.map((attempt) => ({ ...attempt }))
+			}
 		};
-		this.dailyState = next;
-		if (!this.storage.saveDaily(next)) this.persistenceFailed();
+		this.pendingPersistence.daily = true;
+		this.persistPendingProgress();
 	}
 	recordDiscovery(trackNumber) {
-		if (this.discoveriesState.has(trackNumber)) return;
-		const next = new Set(this.discoveriesState).add(trackNumber);
-		if (!this.storage.saveDiscoveries(next)) {
-			this.persistenceFailed();
-			return;
-		}
-		this.discoveriesState = next;
+		if (this.state.discoveries.has(trackNumber)) return;
+		this.state = {
+			...this.state,
+			discoveries: new Set(this.state.discoveries).add(trackNumber)
+		};
+		this.pendingPersistence.discoveries = true;
+		this.persistPendingProgress();
 	}
 	resetProgress() {
 		if (!this.storage.clearProgress()) return false;
-		this.discoveriesState.clear();
-		this.dailyState = emptyDailyProgress();
-		this.bestsState = emptyPersonalBests();
+		this.state = {
+			discoveries: /* @__PURE__ */ new Set(),
+			daily: emptyDailyProgress(),
+			personalBests: emptyPersonalBests()
+		};
+		this.pendingPersistence = emptyPendingPersistence();
+		this.reportPersistenceStatus();
 		return true;
 	}
 	finish(run) {
-		if (run.mode === "daily") {
-			const nextDaily = {
-				status: "completed",
-				outcome: run.won ? "won" : "lost",
-				date: run.dailyDate,
-				dailyNumber: run.track.dailyNumber,
-				attempts: run.attempts.map((attempt) => ({ ...attempt }))
-			};
-			this.dailyState = nextDaily;
-			if (!this.storage.saveDaily(nextDaily)) this.persistenceFailed();
-			return {
+		const transition = finishRun(this.state, run);
+		this.state = transition.state;
+		if (transition.changedSection) this.pendingPersistence[transition.changedSection] = true;
+		this.persistPendingProgress();
+		return transition.result;
+	}
+	persistPendingProgress() {
+		if (this.pendingPersistence.daily && this.storage.saveDaily(this.state.daily)) this.pendingPersistence.daily = false;
+		if (this.pendingPersistence.discoveries && this.storage.saveDiscoveries(this.state.discoveries)) this.pendingPersistence.discoveries = false;
+		if (this.pendingPersistence.personalBests && this.storage.savePersonalBests(this.state.personalBests)) this.pendingPersistence.personalBests = false;
+		this.reportPersistenceStatus();
+	}
+	reportPersistenceStatus() {
+		const pending = Object.values(this.pendingPersistence).some(Boolean);
+		if (pending || this.persistencePendingReported) this.options.onPersistenceStatusChanged?.(pending);
+		this.persistencePendingReported = pending;
+	}
+};
+function finishRun(state, run) {
+	if (run.mode === "daily") {
+		const daily = {
+			status: "completed",
+			outcome: run.won ? "won" : "lost",
+			date: run.dailyDate,
+			dailyNumber: run.track.dailyNumber,
+			attempts: run.attempts.map((attempt) => ({ ...attempt }))
+		};
+		return {
+			state: {
+				...state,
+				daily
+			},
+			changedSection: "daily",
+			result: {
 				mode: "daily",
 				won: run.won,
 				trackTitle: run.track.title,
 				spotify: run.track.spotify,
 				attempts: run.attempts.length
-			};
-		}
-		if (run.mode === "classic") {
-			const nextBests = cloneBests(this.bestsState);
-			const update = updateClassicBest(nextBests, run.won, run.attempt);
-			if (update.changed) {
-				this.saveBests(nextBests);
-				this.bestsState = nextBests;
 			}
-			const best = this.bestsState.classic;
-			return {
+		};
+	}
+	if (run.mode === "classic") {
+		const personalBests = cloneBests(state.personalBests);
+		const update = updateClassicBest(personalBests, run.won, run.attempt);
+		const nextState = update.changed ? {
+			...state,
+			personalBests
+		} : state;
+		const best = nextState.personalBests.classic;
+		return {
+			state: nextState,
+			changedSection: update.changed ? "personalBests" : null,
+			result: {
 				mode: "classic",
 				won: run.won,
 				trackTitle: run.track.title,
@@ -1400,67 +1440,87 @@ var Progress = class {
 				average: update.average,
 				bestStreak: best.best,
 				bestAverage: best.best ? best.bestSnippetTotal / best.best : 0
-			};
-		}
-		if (run.mode === "blitz") {
-			const runAccuracy = accuracy(run.correct, run.guesses);
-			const nextBests = cloneBests(this.bestsState);
-			const update = updateTimedBest(nextBests, "blitz", run.correct, runAccuracy);
-			const bestPersisted = !update.changed || this.saveBests(nextBests);
-			if (update.changed && bestPersisted) this.bestsState = nextBests;
-			return {
+			}
+		};
+	}
+	if (run.mode === "blitz") {
+		const runAccuracy = accuracy(run.correct, run.guesses);
+		const personalBests = cloneBests(state.personalBests);
+		const update = updateTimedBest(personalBests, "blitz", run.correct, runAccuracy);
+		const nextState = update.changed ? {
+			...state,
+			personalBests
+		} : state;
+		const best = nextState.personalBests.blitz;
+		return {
+			state: nextState,
+			changedSection: update.changed ? "personalBests" : null,
+			result: {
 				mode: "blitz",
-				newPersonalBest: update.newPersonalBest && bestPersisted,
+				newPersonalBest: update.newPersonalBest,
 				correct: run.correct,
 				accuracy: runAccuracy,
-				bestCorrect: this.bestsState.blitz.score,
-				bestAccuracy: this.bestsState.blitz.accuracy
-			};
-		}
-		if (run.mode === "gauntlet") {
-			const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
-			const completedTracks = run.completedTrackCount;
-			const catalogTrackCount = run.catalogTrackCount;
-			const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
-			const nextBests = cloneBests(this.bestsState);
-			const update = updateGauntletBest(nextBests, completed, elapsedMs, catalogTrackCount);
-			const bestPersisted = !update.changed || this.saveBests(nextBests);
-			if (update.changed && bestPersisted) this.bestsState = nextBests;
-			return {
+				bestCorrect: best.score,
+				bestAccuracy: best.accuracy
+			}
+		};
+	}
+	if (run.mode === "gauntlet") {
+		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
+		const completedTracks = run.completedTrackCount;
+		const catalogTrackCount = run.catalogTrackCount;
+		const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
+		const personalBests = cloneBests(state.personalBests);
+		const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
+		const nextState = update.changed ? {
+			...state,
+			personalBests
+		} : state;
+		const best = nextState.personalBests.gauntlet;
+		return {
+			state: nextState,
+			changedSection: update.changed ? "personalBests" : null,
+			result: {
 				mode: "gauntlet",
 				won: completed,
-				newPersonalBest: update.newPersonalBest && bestPersisted,
+				newPersonalBest: update.newPersonalBest,
 				elapsedMs,
 				completedTracks,
 				catalogTrackCount,
-				bestElapsedMs: this.bestsState.gauntlet.timeMs,
-				bestTrackCount: this.bestsState.gauntlet.trackCount
-			};
-		}
-		const runAccuracy = accuracy(run.correct, run.guesses);
-		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
-		const nextBests = cloneBests(this.bestsState);
-		const update = updateTimedBest(nextBests, "survival", elapsedMs, runAccuracy);
-		const bestPersisted = !update.changed || this.saveBests(nextBests);
-		if (update.changed && bestPersisted) this.bestsState = nextBests;
-		return {
-			mode: "survival",
-			newPersonalBest: update.newPersonalBest && bestPersisted,
-			elapsedMs,
-			accuracy: runAccuracy,
-			bestElapsedMs: this.bestsState.survival.score,
-			bestAccuracy: this.bestsState.survival.accuracy
+				bestElapsedMs: best.timeMs,
+				bestTrackCount: best.trackCount
+			}
 		};
 	}
-	saveBests(next) {
-		if (this.storage.savePersonalBests(next)) return true;
-		return this.persistenceFailed();
-	}
-	persistenceFailed() {
-		this.options.onPersistenceFailure?.();
-		return false;
-	}
-};
+	const runAccuracy = accuracy(run.correct, run.guesses);
+	const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
+	const personalBests = cloneBests(state.personalBests);
+	const update = updateTimedBest(personalBests, "survival", elapsedMs, runAccuracy);
+	const nextState = update.changed ? {
+		...state,
+		personalBests
+	} : state;
+	const best = nextState.personalBests.survival;
+	return {
+		state: nextState,
+		changedSection: update.changed ? "personalBests" : null,
+		result: {
+			mode: "survival",
+			newPersonalBest: update.newPersonalBest,
+			elapsedMs,
+			accuracy: runAccuracy,
+			bestElapsedMs: best.score,
+			bestAccuracy: best.accuracy
+		}
+	};
+}
+function emptyPendingPersistence() {
+	return {
+		daily: false,
+		discoveries: false,
+		personalBests: false
+	};
+}
 function cloneDaily(progress) {
 	return progress.status === "none" ? progress : {
 		...progress,
@@ -4433,7 +4493,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 		clearTimeout: (handle) => window.clearTimeout(handle)
 	});
-	const progress = new Progress(new ProgressStorage(), { onPersistenceFailure: () => controller?.onProgressPersistenceFailure() });
+	const progress = new Progress(new ProgressStorage(), { onPersistenceStatusChanged: (pending) => controller?.onProgressPersistenceStatusChanged(pending) });
 	const clock = new GameClock({
 		onTick: (snapshot) => controller?.onClockTick(snapshot),
 		onExpired: () => controller?.onClockExpired()
