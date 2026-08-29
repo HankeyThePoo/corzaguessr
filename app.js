@@ -521,14 +521,15 @@ function formatShareDate(value) {
 	const monthName = month ? months$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
-function composeResultViewModel(result, persistenceFailed) {
+function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	if (!result) return null;
 	const rows = resultRows(result);
-	const announcement = resultAnnouncement(result, rows);
+	const announcement = resultAnnouncement(result, rows, attempts);
 	const daily = result.mode === "daily";
 	const timedOut = result.mode === "blitz" || result.mode === "gauntlet" && !result.won;
+	const puzzleMessage = puzzleResultMessage(result, attempts);
 	return {
-		titleHtml: result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
+		titleHtml: result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${puzzleMessage}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
 		primaryLabel: daily ? "CLOSE" : "NEW GAME",
 		rows,
 		highlightPersonalBest: !daily && result.newPersonalBest,
@@ -562,8 +563,13 @@ function resultRows(result) {
 	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
 	return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 }
-function resultAnnouncement(result, rows = resultRows(result)) {
-	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+function resultAnnouncement(result, rows = resultRows(result), attempts = []) {
+	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : `${puzzleResultMessage(result, attempts)}.`} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+}
+function puzzleResultMessage(result, attempts) {
+	if (result.mode !== "daily" && result.mode !== "classic") return "";
+	if (result.won) return "YOU GOT IT";
+	return attempts[0]?.outcome === "skip" ? "YOU GAVE UP" : "YOU GOT IT ALL WRONG";
 }
 function formatAccuracy(value) {
 	return Number.isSafeInteger(value) ? `${value}%` : "--";
@@ -662,7 +668,7 @@ function composeGameViewModel(input) {
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
 		}),
-		result: composeResultViewModel(session.result, input.progressPersistencePending),
+		result: composeResultViewModel(session.result, input.progressPersistencePending, session.attempts),
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
@@ -959,6 +965,7 @@ var GameController = class {
 		this.clock.pause();
 		this.view.announce("PRESS PLAY TO START THE AUDIO.");
 		this.render();
+		this.view.focusPlay();
 	}
 	onAudioEnded(round) {
 		const state = this.session;
@@ -1430,7 +1437,7 @@ function puzzleTrack(session) {
 }
 function timedStats(attempts) {
 	return {
-		guesses: attempts.filter((attempt) => attempt.outcome !== "skip").length,
+		guesses: attempts.length,
 		correct: attempts.filter((attempt) => attempt.outcome === "correct").length
 	};
 }
