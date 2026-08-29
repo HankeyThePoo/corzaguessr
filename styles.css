@@ -283,7 +283,6 @@
 
 #corzaguessr .time:first-child,
 #corzaguessr .time:last-child {
-  align-self: center;
   text-align: center;
 }
 
