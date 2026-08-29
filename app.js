@@ -641,7 +641,7 @@ function composeGameViewModel(input) {
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
 	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
 	const inputVisible = guessInputVisible(session, transport);
-	const attemptEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && acceptsAttempt(session, transport));
+	const attemptEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
