@@ -946,6 +946,7 @@ var GameController = class {
 		if (this.session.round?.id === round.id) {
 			this.clock.start();
 			this.render();
+			this.view.focusGuess();
 		}
 	}
 	onAudioWaiting(round) {
@@ -3197,10 +3198,8 @@ var DiscoveryListView = class {
 			gauntlet.type = "button";
 			gauntlet.className = "discovery-gauntlet";
 			gauntlet.textContent = "✦";
-			gauntlet.tabIndex = -1;
-			gauntlet.setAttribute("aria-label", "START GAUNTLET");
+			gauntlet.setAttribute("aria-label", "SECRET MODE");
 			gauntlet.addEventListener("pointerdown", (event) => event.preventDefault());
-			gauntlet.addEventListener("focus", () => gauntlet.blur());
 			gauntlet.addEventListener("click", () => this.startGauntlet?.());
 			this.count.append(gauntlet);
 		}
