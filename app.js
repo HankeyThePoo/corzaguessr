@@ -3588,7 +3588,6 @@ var ProgressSummaryView = class {
 		this.container.replaceChildren(...summaryRows.map((row) => {
 			const item = document.createElement("div");
 			item.className = "progress-best";
-			if (row.mode === "GAUNTLET") item.classList.add("progress-best-gauntlet");
 			const mode = document.createElement("span");
 			mode.className = "progress-best-mode";
 			mode.textContent = row.mode;
