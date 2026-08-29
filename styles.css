@@ -57,7 +57,6 @@
   --duration-timeline-rewind: 200ms;
   --duration-share-fade: 200ms;
   --duration-time-adjustment-flash: 520ms;
-  --slot-motion-duration: var(--duration-slot);
   --control-height: 46px;
   --play-size: 68px;
   --volume-height: 30px;
@@ -109,13 +108,19 @@
 
 #corzaguessr .button,
 #corzaguessr .play,
-#corzaguessr .mode {
+#corzaguessr .mode,
+#corzaguessr .auto,
+#corzaguessr .discovery-item-toggle,
+#corzaguessr .discovery-gauntlet {
   position: relative;
 }
 
 #corzaguessr .button::after,
 #corzaguessr .play::after,
-#corzaguessr .mode::after {
+#corzaguessr .mode::after,
+#corzaguessr .auto::after,
+#corzaguessr .discovery-item-toggle::after,
+#corzaguessr .discovery-gauntlet::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -132,8 +137,25 @@
 
 #corzaguessr.keyboard-input .button:focus::after,
 #corzaguessr.keyboard-input .play:focus::after,
-#corzaguessr.keyboard-input .mode:not(:disabled):focus::after {
+#corzaguessr.keyboard-input .mode:not(:disabled):focus::after,
+#corzaguessr.keyboard-input .discovery-item-toggle:focus::after,
+#corzaguessr.keyboard-input .discovery-gauntlet:focus::after {
   opacity: 1;
+}
+
+#corzaguessr input,
+#corzaguessr .ruleset,
+#corzaguessr .slot {
+  border: var(--line-width) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-dark);
+}
+
+#corzaguessr .progress-best,
+#corzaguessr .discovery-item {
+  border: var(--line-width) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-glass);
 }
 
 #corzaguessr .modes,
@@ -207,7 +229,7 @@
 
 #corzaguessr .attempt-area {
   overflow: hidden;
-  transition: height var(--slot-motion-duration) ease;
+  transition: height var(--duration-slot) ease;
 }
 
 #corzaguessr .attempt-area:has(.slots:empty) {
@@ -319,7 +341,6 @@
 
 #corzaguessr .discovery-button {
   width: min(180px, 25%);
-  max-width: none;
   margin: 0 auto;
   padding: 0 var(--space-3);
 }
@@ -694,8 +715,7 @@
   transform: scaleX(1);
 }
 
-#corzaguessr.timed .tick,
-#corzaguessr.timed .snippet {
+#corzaguessr.timed .tick {
   display: none;
 }
 
@@ -745,25 +765,12 @@
 }
 
 #corzaguessr .auto {
-  position: relative;
   z-index: 1;
   isolation: isolate;
 }
 
 #corzaguessr .auto::after {
-  content: "";
-  position: absolute;
-  inset: 0;
   z-index: 2;
-  padding: var(--gradient-border-width);
-  border-radius: var(--radius);
-  background: var(--gradient);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--duration-fast) ease;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
 }
 
 #corzaguessr .auto:focus-within::after {
@@ -774,10 +781,7 @@
   width: 100%;
   height: var(--control-height);
   padding: var(--space-3);
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--radius);
   outline: 0;
-  background: var(--surface-dark);
   color: var(--off-white);
   font: inherit;
   line-height: 20px;
@@ -787,7 +791,7 @@
   transition:
     background var(--duration-fast) ease,
     border-color var(--duration-fast) ease,
-    text-indent var(--slot-motion-duration) ease;
+    text-indent var(--duration-slot) ease;
 }
 
 #corzaguessr input::placeholder {
@@ -802,9 +806,6 @@
   align-items: center;
   overflow: hidden;
   padding: var(--space-3);
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-dark);
   color: var(--off-white);
   font: inherit;
   line-height: 20px;
@@ -819,7 +820,7 @@
   min-width: 100%;
   opacity: 1;
   translate: 0 0;
-  transition: translate var(--slot-motion-duration) ease;
+  transition: translate var(--duration-slot) ease;
   white-space: nowrap;
 }
 
@@ -847,19 +848,6 @@
 @keyframes corzaguessr-ruleset-scroll {
   to {
     transform: translateX(calc(-50% - 1.25rem));
-  }
-}
-
-@media (max-width: 600px) {
-  #corzaguessr .ruleset.scroll .ruleset-track {
-    justify-content: flex-start;
-    min-width: max-content;
-    gap: 2.5rem;
-    animation: corzaguessr-ruleset-scroll 11s linear infinite;
-  }
-
-  #corzaguessr .ruleset.scroll .ruleset-copy {
-    display: inline;
   }
 }
 
@@ -908,17 +896,14 @@
   min-height: var(--control-height);
   padding: var(--space-3);
   overflow: hidden;
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-dark);
   line-height: 20px;
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
   white-space: normal;
   transition:
-    opacity var(--slot-motion-duration) ease,
-    translate var(--slot-motion-duration) ease;
+    opacity var(--duration-slot) ease,
+    translate var(--duration-slot) ease;
   translate: 0 0;
 }
 
@@ -1130,9 +1115,6 @@
   min-width: 0;
   min-height: 74px;
   padding: var(--space-2);
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-glass);
   overflow-wrap: anywhere;
   text-align: center;
   text-transform: uppercase;
@@ -1235,9 +1217,6 @@
   justify-content: center;
   min-height: 42px;
   padding: var(--space-2) var(--space-3);
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-glass);
   font-size: var(--text-body);
   line-height: 20px;
   text-align: center;
@@ -1253,9 +1232,7 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
-  transition:
-    height var(--duration-discovery-card) ease,
-    background var(--duration-fast) ease;
+  transition: height var(--duration-discovery-card) ease;
 }
 
 #corzaguessr .discovery-item-known::before,
@@ -1306,11 +1283,9 @@
     + var(--discovery-row-gap)
     + var(--discovery-row-gap)
   );
-  background: var(--surface-glass);
 }
 
 #corzaguessr .discovery-item-toggle {
-  position: relative;
   display: block;
   width: 100%;
   height: 100%;
@@ -1325,23 +1300,8 @@
 }
 
 #corzaguessr .discovery-item-toggle::after {
-  content: "";
-  position: absolute;
   z-index: 3;
-  inset: 0;
-  padding: var(--gradient-border-width);
   border-radius: inherit;
-  background: var(--gradient);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--duration-fast) ease;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-#corzaguessr.keyboard-input .discovery-item-toggle:focus::after {
-  opacity: 1;
 }
 
 #corzaguessr .discovery-item-compact {
@@ -1485,14 +1445,6 @@
   white-space: nowrap;
 }
 
-@media (forced-colors: active) {
-  #corzaguessr .discovery-new {
-    background: none;
-    color: CanvasText;
-    -webkit-text-fill-color: currentColor;
-  }
-}
-
 @media (hover: hover) {
   #corzaguessr:not(.keyboard-input) .discovery-item-toggle:hover::after {
     opacity: 1;
@@ -1516,6 +1468,17 @@
 }
 
 @media (max-width: 600px) {
+  #corzaguessr .ruleset.scroll .ruleset-track {
+    justify-content: flex-start;
+    min-width: max-content;
+    gap: 2.5rem;
+    animation: corzaguessr-ruleset-scroll 11s linear infinite;
+  }
+
+  #corzaguessr .ruleset.scroll .ruleset-copy {
+    display: inline;
+  }
+
   #corzaguessr .result-modal,
   #corzaguessr .discovery-modal {
     position: fixed;
@@ -1534,46 +1497,30 @@
   }
 
   #corzaguessr .progress-bests {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-1);
   }
 
-  #corzaguessr .progress-bests.has-gauntlet-best {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  #corzaguessr .progress-bests.has-gauntlet-best .progress-best {
-    grid-column: auto;
-  }
-
-  #corzaguessr .progress-best-gauntlet {
-    width: auto;
-    justify-self: stretch;
-  }
-
   #corzaguessr .progress-best {
+    grid-column: span 2;
     gap: 0;
     min-height: 50px;
     padding: var(--space-1);
   }
 
-  #corzaguessr .progress-best-mode {
-    font-size: var(--text-meta);
+  #corzaguessr .progress-best:last-child:nth-child(odd) {
+    grid-column: 2 / span 2;
   }
 
   #corzaguessr .progress-best strong {
     font-size: var(--text-small);
   }
 
-  #corzaguessr .progress-best small {
-    font-size: var(--text-meta);
-  }
-
   #corzaguessr .discovery-item-known,
   #corzaguessr .discovery-item-known.expanded {
     height: auto;
     min-height: var(--discovery-row-height);
-    transition: background var(--duration-fast) ease;
+    transition: none;
   }
 
   #corzaguessr .discovery-item-known.expanded {
@@ -1593,11 +1540,7 @@
   #corzaguessr .discovery-track-details {
     position: static;
     display: none;
-    grid-template-columns: 116px minmax(0, 1fr);
     min-height: 140px;
-    padding: var(--space-3);
-    opacity: 1;
-    visibility: visible;
     transition: none;
   }
 
@@ -1616,19 +1559,13 @@
   #corzaguessr .discovery-artist {
     display: block;
     overflow: visible;
-    font-size: var(--text-label);
     -webkit-line-clamp: unset;
   }
 
   #corzaguessr .discovery-song-title {
     display: block;
     overflow: visible;
-    font-size: var(--text-body);
     -webkit-line-clamp: unset;
-  }
-
-  #corzaguessr .discovery-release-date {
-    font-size: var(--text-meta);
   }
 
   #corzaguessr .discovery-track-spotify {
@@ -1637,8 +1574,6 @@
     right: auto;
     bottom: auto;
     margin: 0 var(--space-3) 0 auto;
-    opacity: 1;
-    visibility: visible;
     transition: filter var(--duration-fast) ease;
   }
 
@@ -1654,7 +1589,6 @@
 
   #corzaguessr .discovery-button {
     width: min(136px, 100%);
-    max-width: none;
   }
 
   #corzaguessr .volume-control {
@@ -1750,6 +1684,12 @@
 }
 
 @media (forced-colors: active) {
+  #corzaguessr .discovery-new {
+    background: none;
+    color: CanvasText;
+    -webkit-text-fill-color: currentColor;
+  }
+
   #corzaguessr .discovery-item-known::before,
   #corzaguessr .discovery-item-known::after {
     display: none;
