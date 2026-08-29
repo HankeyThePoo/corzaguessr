@@ -546,12 +546,19 @@ function composeResultViewModel(result, persistenceFailed) {
 }
 function resultRows(result) {
 	if (result.mode === "daily") return [["TRACK:", result.trackTitle], ["RUN:", formatAttempts(result.attempts)]];
-	if (result.mode === "classic") return [
-		["TRACK:", result.trackTitle],
-		["RUN:", `${result.won ? "STREAK" : "STREAK ENDED"}: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}`],
-		[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}`]
-	];
-	if (result.mode === "blitz") return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
+	if (result.mode === "classic") {
+		const run = result.won ? `STREAK: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}` : result.streak ? `STREAK ENDED: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}` : "NO RECORD";
+		const personalBest = result.bestStreak ? `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}` : "NO RECORD";
+		return [
+			["TRACK:", result.trackTitle],
+			["RUN:", run],
+			[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]
+		];
+	}
+	if (result.mode === "blitz") {
+		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
+		return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+	}
 	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
 	return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 }
@@ -1020,8 +1027,10 @@ var GameController = class {
 			this.playback.start(transport.retryNeeded);
 			return;
 		}
-		if (!roundHeard && transport.pendingRoundId === state.round.id && !requested) {
-			this.playback.replay(state.round, false);
+		if (!roundHeard && transport.pendingRoundId === state.round.id) {
+			if (requested) if (isTimedMode(state.mode)) this.playback.pause();
+			else this.playback.rewind(state.round);
+			else this.playback.replay(state.round, false);
 			this.render();
 			return;
 		}
