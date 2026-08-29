@@ -3584,7 +3584,6 @@ var ProgressSummaryView = class {
 		const signature = JSON.stringify(summaryRows);
 		if (signature === this.signature) return;
 		this.signature = signature;
-		this.container.classList.toggle("has-gauntlet-best", bests.gauntlet.trackCount > 0);
 		this.container.replaceChildren(...summaryRows.map((row) => {
 			const item = document.createElement("div");
 			item.className = "progress-best";
@@ -4025,7 +4024,7 @@ var GameView = class {
 		this.elements.icon.setAttribute("d", icons[state.playbackIcon]);
 		this.elements.play.setAttribute("aria-label", state.playbackIcon === "play" ? "PLAY" : state.playbackIcon === "pause" ? "PAUSE" : "STOP");
 		this.elements.skip.textContent = state.skipText;
-		this.elements.snippet.style.width = `${state.snippetSeconds / snippetDurations.at(-1) * 100}%`;
+		this.elements.snippet.style.width = snippetPercentage(state.snippetSeconds);
 		this.renderRules();
 		this.attempts.render(state.slots, sessionKey);
 		this.autocomplete.setDependencies(state.suggestionTracks, state.unavailableGuessIds);
@@ -4362,7 +4361,11 @@ function duration(styles, name) {
 	const value = styles.getPropertyValue(name).trim();
 	return value.endsWith("ms") ? Number.parseFloat(value) || 0 : value.endsWith("s") ? (Number.parseFloat(value) || 0) * 1e3 : 0;
 }
+function snippetPercentage(seconds) {
+	return `${seconds / snippetDurations.at(-1) * 100}%`;
+}
 function markup() {
+	const snippetTicks = snippetDurations.slice(0, -1).map((seconds) => `<i class="tick" style="left:${snippetPercentage(seconds)}"></i>`).join("");
 	return [
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
@@ -4373,7 +4376,7 @@ function markup() {
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
-		`<div class="timeline"><div class="snippet"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div><i class="tick" style="left:3.125%"></i><i class="tick" style="left:6.25%"></i><i class="tick" style="left:12.5%"></i><i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i></div>`,
+		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${copy.modePrompt}</span><span class="ruleset-copy">${copy.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
 		`<div class="attempt-area"><div class="history" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div></div>`,
