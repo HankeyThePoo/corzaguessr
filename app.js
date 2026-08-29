@@ -641,8 +641,7 @@ function composeGameViewModel(input) {
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
 	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
 	const inputVisible = guessInputVisible(session, transport);
-	const guessEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay);
-	const attemptEnabled = !!(guessEnabled && session.round && acceptsAttempt(session, transport));
+	const attemptEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && acceptsAttempt(session, transport));
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
@@ -650,7 +649,6 @@ function composeGameViewModel(input) {
 		transportText: transport.loading ? copy.loadingTrack : "",
 		inputVisible,
 		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && !transport.loading && playControlAvailable),
-		guessEnabled,
 		attemptEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: snippetSeconds(attempt),
@@ -4002,8 +4000,8 @@ var GameView = class {
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
 		this.elements.skip.disabled = !state.attemptEnabled;
-		this.elements.guess.disabled = !state.guessEnabled || transportVisible;
-		this.autocomplete.setSuspended(!state.attemptEnabled || transportVisible);
+		this.elements.guess.disabled = !state.attemptEnabled;
+		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
 		this.elements.headerAction.inert = overlay;
@@ -4165,7 +4163,7 @@ var GameView = class {
 	handleRootKeydown(event) {
 		if (!this.handlers || !this.state) return;
 		const pointerAnchor = this.inputModality === "pointer-fine" && this.hoveredButton && this.canNavigateTo(this.hoveredButton) ? this.hoveredButton : null;
-		const guessOwnsInput = this.state.guessEnabled && document.activeElement === this.elements.guess;
+		const guessOwnsInput = this.state.attemptEnabled && document.activeElement === this.elements.guess;
 		const hoveredAction = pointerAnchor && !guessOwnsInput && (event.key === "Enter" || event.key === " ") ? pointerAnchor : null;
 		this.setInputModality("keyboard");
 		if (hoveredAction) {
@@ -4198,7 +4196,7 @@ var GameView = class {
 		if (this.isArrowKey(event.key)) {
 			if (target === this.elements.volumeRange) return;
 			if (target === this.elements.guess && this.state.inputVisible) return;
-			if (this.state.inputVisible && this.state.guessEnabled) {
+			if (this.state.inputVisible && this.state.attemptEnabled) {
 				event.preventDefault();
 				this.focusGuess();
 				return;
@@ -4281,7 +4279,7 @@ var GameView = class {
 			this.focusPlay();
 			return;
 		}
-		if (!this.state.guessEnabled || this.state.overlay || target?.closest("button, input, a, .suggest")) return;
+		if (!this.state.attemptEnabled || this.state.overlay || target?.closest("button, input, a, .suggest")) return;
 		this.elements.guess.focus({ preventScroll: true });
 	}
 	setInputModality(modality) {
