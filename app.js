@@ -116,16 +116,10 @@ var modeRules = {
 		gameplay: "blitz",
 		failurePolicy: "replace"
 	},
-	survival: {
-		initialTimeMs: 3e4,
-		description: "CORRECT GUESSES ADD TIME; MISTAKES AND SKIPS DRAIN IT",
-		gameplay: "survival",
-		failurePolicy: "replace"
-	},
 	gauntlet: {
 		initialTimeMs: 3e4,
 		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
-		gameplay: "survival",
+		gameplay: "gauntlet",
 		failurePolicy: "replace"
 	}
 };
@@ -137,10 +131,7 @@ function isPuzzleMode(mode) {
 }
 function clockDisplayForMode(mode) {
 	const gameplay = modeRules[mode].gameplay;
-	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : "survival";
-}
-function modeAdjustsTime(mode) {
-	return modeRules[mode].gameplay === "survival";
+	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : "elapsed";
 }
 function snippetSeconds(attempt) {
 	return snippetDurations[Math.max(0, Math.min(snippetDurations.length - 1, attempt))];
@@ -150,7 +141,7 @@ function skipLabel(mode, attempt) {
 	if (attempt >= snippetDurations.length - 1) return "GIVE UP";
 	return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
 }
-function survivalAdjustment(outcome) {
+function gauntletTimeAdjustment(outcome) {
 	return outcome === "correct" ? 3e3 : outcome === "wrong" ? -1e3 : -2e3;
 }
 function accuracy(correct, guesses) {
@@ -186,15 +177,15 @@ function updateClassicBest(bests, won, attempt) {
 		average
 	};
 }
-function updateTimedBest(bests, mode, score, runAccuracy) {
-	const current = bests[mode];
+function updateBlitzBest(bests, score, runAccuracy) {
+	const current = bests.blitz;
 	const higherScore = score > current.score;
 	const strongerTie = score > 0 && score === current.score && runAccuracy > (current.accuracy ?? -1);
 	if (!higherScore && !strongerTie) return {
 		changed: false,
 		newPersonalBest: false
 	};
-	bests[mode] = {
+	bests.blitz = {
 		score,
 		accuracy: runAccuracy
 	};
@@ -273,7 +264,7 @@ function resolvePuzzleAttempt(state, outcome, guessed) {
 	};
 }
 function resolveTimedAttempt(state, outcome, guessed) {
-	if (!isTimedMode(state.mode)) throw new Error("Timed attempts require Blitz, Survival, or Gauntlet mode.");
+	if (!isTimedMode(state.mode)) throw new Error("Timed attempts require Blitz or Gauntlet mode.");
 	const gauntletMilestone = !!(outcome === "correct" && state.mode === "gauntlet" && state.round && !state.attempts.some((attempt) => attempt.outcome === "correct" && attempt.trackNumber === state.round?.track.dailyNumber));
 	return {
 		...state,
@@ -486,10 +477,6 @@ function emptyPersonalBests() {
 			score: 0,
 			accuracy: null
 		},
-		survival: {
-			score: 0,
-			accuracy: null
-		},
 		gauntlet: {
 			timeMs: 0,
 			trackCount: 0
@@ -516,12 +503,12 @@ function composeClockViewModel(input) {
 	};
 	if (isTimedMode(mode)) {
 		const initial = modeRules[mode].initialTimeMs;
-		const survival = clockDisplayForMode(mode) === "survival";
-		const seconds = (survival ? clock.elapsedMs : clock.remainingMs) / 1e3;
-		const denominator = survival ? clock.maxRemainingMs : initial;
+		const showsElapsed = clockDisplayForMode(mode) === "elapsed";
+		const seconds = (showsElapsed ? clock.elapsedMs : clock.remainingMs) / 1e3;
+		const denominator = showsElapsed ? clock.maxRemainingMs : initial;
 		return {
 			currentText: formatClock(seconds),
-			endText: formatClock(survival ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3),
+			endText: formatClock(showsElapsed ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3),
 			progress: denominator ? clock.remainingMs / denominator : 0
 		};
 	}
@@ -567,7 +554,7 @@ function composeResultViewModel(result, persistenceFailed) {
 	const rows = resultRows(result);
 	const announcement = resultAnnouncement(result, rows);
 	const daily = result.mode === "daily";
-	const timedOut = result.mode === "blitz" || result.mode === "survival" || result.mode === "gauntlet" && !result.won;
+	const timedOut = result.mode === "blitz" || result.mode === "gauntlet" && !result.won;
 	return {
 		titleHtml: result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${result.won ? "YOU GOT IT" : "YOU GOT IT ALL WRONG"}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
 		primaryLabel: daily ? "CLOSE" : "NEW GAME",
@@ -593,14 +580,11 @@ function resultRows(result) {
 		[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}`]
 	];
 	if (result.mode === "blitz") return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
-	if (result.mode === "gauntlet") {
-		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
-		return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
-	}
-	return [["RUN:", `TIME SURVIVED: ${formatClock(result.elapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `TIME SURVIVED: ${formatClock(result.bestElapsedMs / 1e3)} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}`]];
+	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
+	return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 }
 function resultAnnouncement(result, rows = resultRows(result)) {
-	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" || result.mode === "survival" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : result.won ? "YOU GOT IT." : "YOU GOT IT ALL WRONG."} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
 }
 function formatAccuracy(value) {
 	return Number.isSafeInteger(value) ? `${value}%` : "--";
@@ -1115,8 +1099,8 @@ var GameController = class {
 			this.finishGame(true, round);
 			return;
 		}
-		if (modeAdjustsTime(mode)) {
-			const adjustment = survivalAdjustment(outcome);
+		if (mode === "gauntlet") {
+			const adjustment = gauntletTimeAdjustment(outcome);
 			this.view.flashTimeChange(adjustment / 1e3);
 			if (this.clock.adjust(adjustment).remainingMs <= 0) {
 				this.finishGame(false, round);
@@ -1275,15 +1259,6 @@ function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCoun
 				mode,
 				correct: stats.correct,
 				guesses: stats.guesses
-			};
-		}
-		case "survival": {
-			const stats = timedStats(state);
-			return {
-				mode,
-				correct: stats.correct,
-				guesses: stats.guesses,
-				elapsedMs: clock.elapsedMs
 			};
 		}
 		case "gauntlet": return {
@@ -1446,7 +1421,7 @@ function finishRun(state, run) {
 	if (run.mode === "blitz") {
 		const runAccuracy = accuracy(run.correct, run.guesses);
 		const personalBests = cloneBests(state.personalBests);
-		const update = updateTimedBest(personalBests, "blitz", run.correct, runAccuracy);
+		const update = updateBlitzBest(personalBests, run.correct, runAccuracy);
 		const nextState = update.changed ? {
 			...state,
 			personalBests
@@ -1465,52 +1440,29 @@ function finishRun(state, run) {
 			}
 		};
 	}
-	if (run.mode === "gauntlet") {
-		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
-		const completedTracks = run.completedTrackCount;
-		const catalogTrackCount = run.catalogTrackCount;
-		const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
-		const personalBests = cloneBests(state.personalBests);
-		const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
-		const nextState = update.changed ? {
-			...state,
-			personalBests
-		} : state;
-		const best = nextState.personalBests.gauntlet;
-		return {
-			state: nextState,
-			changedSection: update.changed ? "personalBests" : null,
-			result: {
-				mode: "gauntlet",
-				won: completed,
-				newPersonalBest: update.newPersonalBest,
-				elapsedMs,
-				completedTracks,
-				catalogTrackCount,
-				bestElapsedMs: best.timeMs,
-				bestTrackCount: best.trackCount
-			}
-		};
-	}
-	const runAccuracy = accuracy(run.correct, run.guesses);
 	const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
+	const completedTracks = run.completedTrackCount;
+	const catalogTrackCount = run.catalogTrackCount;
+	const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
 	const personalBests = cloneBests(state.personalBests);
-	const update = updateTimedBest(personalBests, "survival", elapsedMs, runAccuracy);
+	const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
 	const nextState = update.changed ? {
 		...state,
 		personalBests
 	} : state;
-	const best = nextState.personalBests.survival;
+	const best = nextState.personalBests.gauntlet;
 	return {
 		state: nextState,
 		changedSection: update.changed ? "personalBests" : null,
 		result: {
-			mode: "survival",
+			mode: "gauntlet",
+			won: completed,
 			newPersonalBest: update.newPersonalBest,
 			elapsedMs,
-			accuracy: runAccuracy,
-			bestElapsedMs: best.score,
-			bestAccuracy: best.accuracy
+			completedTracks,
+			catalogTrackCount,
+			bestElapsedMs: best.timeMs,
+			bestTrackCount: best.trackCount
 		}
 	};
 }
@@ -1531,7 +1483,6 @@ function cloneBests(bests) {
 	return {
 		classic: { ...bests.classic },
 		blitz: { ...bests.blitz },
-		survival: { ...bests.survival },
 		gauntlet: { ...bests.gauntlet }
 	};
 }
@@ -1916,16 +1867,15 @@ function parsePersonalBests(value) {
 	if (!isRecord(value) || !hasExactKeys(value, [
 		"classic",
 		"blitz",
-		"survival",
 		"gauntlet"
 	])) return emptyPersonalBests();
-	const { classic, blitz, survival, gauntlet } = value;
+	const { classic, blitz, gauntlet } = value;
 	if (!isRecord(classic) || !hasExactKeys(classic, [
 		"current",
 		"best",
 		"snippetTotal",
 		"bestSnippetTotal"
-	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validScoreBest(blitz, false) || !validScoreBest(survival, true) || !validGauntletBest(gauntlet)) return emptyPersonalBests();
+	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validScoreBest(blitz) || !validGauntletBest(gauntlet)) return emptyPersonalBests();
 	return {
 		classic: {
 			current: classic.current,
@@ -1936,10 +1886,6 @@ function parsePersonalBests(value) {
 		blitz: {
 			score: blitz.score,
 			accuracy: blitz.accuracy
-		},
-		survival: {
-			score: survival.score,
-			accuracy: survival.accuracy
 		},
 		gauntlet: {
 			timeMs: gauntlet.timeMs,
@@ -1960,8 +1906,8 @@ function parseDiscoveries(value) {
 	}
 	return discoveries;
 }
-function validScoreBest(value, survival) {
-	if (!isRecord(value) || !hasExactKeys(value, ["score", "accuracy"]) || !isNonNegativeInteger(value.score) || survival && value.score % 1e3 !== 0) return false;
+function validScoreBest(value) {
+	if (!isRecord(value) || !hasExactKeys(value, ["score", "accuracy"]) || !isNonNegativeInteger(value.score)) return false;
 	if (value.score === 0) return value.accuracy === null;
 	return isIntegerBetween(value.accuracy, 0, 100);
 }
@@ -3417,8 +3363,7 @@ function splitTrackTitle(value) {
 var modes = [
 	"daily",
 	"classic",
-	"blitz",
-	"survival"
+	"blitz"
 ];
 function nextPrimaryFocus(state, key) {
 	const modeIndex = state.current && isMode(state.current) ? modes.indexOf(state.current) : -1;
@@ -3461,7 +3406,7 @@ function available(state, target) {
 	return state.enabled.has(target) ? target : null;
 }
 function isMode(target) {
-	return target === "daily" || target === "blitz" || target === "classic" || target === "survival";
+	return target === "daily" || target === "blitz" || target === "classic";
 }
 var ModalController = class {
 	root;
@@ -3695,11 +3640,6 @@ function rows(bests, daily, dailyDate) {
 			mode: "BLITZ",
 			value: bests.blitz.score ? `${bests.blitz.score} CORRECT` : emptyRecordValue,
 			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% ACCURACY` : emptyRecordDetail
-		},
-		{
-			mode: "SURVIVAL",
-			value: bests.survival.score ? `${formatClock(bests.survival.score / 1e3)} SURVIVED` : emptyRecordValue,
-			detail: bests.survival.score ? `${bests.survival.accuracy ?? 0}% ACCURACY` : emptyRecordDetail
 		}
 	];
 	if (bests.gauntlet.trackCount > 0) standard.push({
@@ -3801,9 +3741,9 @@ var TimelineView = class {
 	motionGeneration = 0;
 	progressTimer = 0;
 	progressListener = null;
-	survivalTimer = 0;
-	survivalListener = null;
-	survivalGeneration = 0;
+	timeAdjustmentTimer = 0;
+	timeAdjustmentListener = null;
+	timeAdjustmentGeneration = 0;
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
@@ -3842,42 +3782,42 @@ var TimelineView = class {
 			return !transition.propertyName || transition.propertyName === "transform";
 		});
 	}
-	flashSurvivalChange(seconds) {
+	flashTimeAdjustment(seconds) {
 		if (!seconds) return;
-		this.clearSurvivalFeedback();
+		this.clearTimeAdjustmentFeedback();
 		this.elements.timeChangeText.textContent = seconds > 0 ? `+${seconds}S` : `${seconds}S`;
-		if (this.durations.survivalFeedback <= 0) {
-			this.clearSurvivalFeedback();
+		if (this.durations.timeAdjustmentFeedback <= 0) {
+			this.clearTimeAdjustmentFeedback();
 			return;
 		}
-		if (this.reducedMotion.matches) this.elements.timeChange.classList.add("survival-change-static");
+		if (this.reducedMotion.matches) this.elements.timeChange.classList.add("time-adjustment-static");
 		else {
 			this.elements.feedback.offsetWidth;
-			this.elements.feedback.classList.add(seconds > 0 ? "survival-reward" : "survival-penalty");
-			this.elements.timeChange.classList.add("survival-change");
+			this.elements.feedback.classList.add(seconds > 0 ? "time-adjustment-reward" : "time-adjustment-penalty");
+			this.elements.timeChange.classList.add("time-adjustment-active");
 		}
-		const generation = ++this.survivalGeneration;
+		const generation = ++this.timeAdjustmentGeneration;
 		const finish = () => {
-			if (generation !== this.survivalGeneration) return;
-			this.clearSurvivalFeedback();
+			if (generation !== this.timeAdjustmentGeneration) return;
+			this.clearTimeAdjustmentFeedback();
 		};
 		if (!this.reducedMotion.matches) {
-			this.survivalListener = (event) => {
+			this.timeAdjustmentListener = (event) => {
 				const animation = event;
-				if (event.target === this.elements.timeChangeText && (!animation.animationName || animation.animationName === "corzaguessr-survival-hit")) finish();
+				if (event.target === this.elements.timeChangeText && (!animation.animationName || animation.animationName === "corzaguessr-time-adjustment-hit")) finish();
 			};
-			this.elements.timeChangeText.addEventListener("animationend", this.survivalListener);
+			this.elements.timeChangeText.addEventListener("animationend", this.timeAdjustmentListener);
 		}
-		this.survivalTimer = this.scheduler.setTimer(finish, this.durations.survivalFeedback);
+		this.timeAdjustmentTimer = this.scheduler.setTimer(finish, this.durations.timeAdjustmentFeedback);
 	}
-	clearSurvivalFeedback() {
-		this.survivalGeneration += 1;
-		if (this.survivalTimer) this.scheduler.clearTimer(this.survivalTimer);
-		this.survivalTimer = 0;
-		if (this.survivalListener) this.elements.timeChangeText.removeEventListener("animationend", this.survivalListener);
-		this.survivalListener = null;
-		this.elements.feedback.classList.remove("survival-reward", "survival-penalty");
-		this.elements.timeChange.classList.remove("survival-change", "survival-change-static");
+	clearTimeAdjustmentFeedback() {
+		this.timeAdjustmentGeneration += 1;
+		if (this.timeAdjustmentTimer) this.scheduler.clearTimer(this.timeAdjustmentTimer);
+		this.timeAdjustmentTimer = 0;
+		if (this.timeAdjustmentListener) this.elements.timeChangeText.removeEventListener("animationend", this.timeAdjustmentListener);
+		this.timeAdjustmentListener = null;
+		this.elements.feedback.classList.remove("time-adjustment-reward", "time-adjustment-penalty");
+		this.elements.timeChange.classList.remove("time-adjustment-active", "time-adjustment-static");
 		this.elements.timeChangeText.textContent = "";
 	}
 	progressScale() {
@@ -3987,12 +3927,11 @@ var GameView = class {
 		this.modeButtons = {
 			daily: this.required("[data-mode=\"daily\"]"),
 			blitz: this.required("[data-mode=\"blitz\"]"),
-			classic: this.required("[data-mode=\"classic\"]"),
-			survival: this.required("[data-mode=\"survival\"]")
+			classic: this.required("[data-mode=\"classic\"]")
 		};
 		const styles = getComputedStyle(root);
 		this.durations = {
-			survivalFeedback: duration(styles, "--duration-survival-feedback"),
+			timeAdjustmentFeedback: duration(styles, "--duration-time-adjustment-feedback"),
 			shareVisible: duration(styles, "--duration-share-visible"),
 			shareFade: duration(styles, "--duration-share-fade"),
 			wiggle: duration(styles, "--duration-wiggle"),
@@ -4031,7 +3970,7 @@ var GameView = class {
 		}, {
 			reset: this.durations.timelineReset,
 			rewind: this.durations.timelineRewind,
-			survivalFeedback: this.durations.survivalFeedback
+			timeAdjustmentFeedback: this.durations.timeAdjustmentFeedback
 		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
@@ -4152,7 +4091,7 @@ var GameView = class {
 		this.autocomplete.reset();
 	}
 	flashTimeChange(seconds) {
-		this.timeline.flashSurvivalChange(seconds);
+		this.timeline.flashTimeAdjustment(seconds);
 	}
 	closeResult(focus) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
@@ -4170,7 +4109,7 @@ var GameView = class {
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
 		this.elements.status.textContent = "";
-		this.timeline.clearSurvivalFeedback();
+		this.timeline.clearTimeAdjustmentFeedback();
 		this.preview = null;
 		this.autocomplete.reset();
 		this.renderRules();
@@ -4315,7 +4254,6 @@ var GameView = class {
 			daily: this.modeButtons.daily,
 			blitz: this.modeButtons.blitz,
 			classic: this.modeButtons.classic,
-			survival: this.modeButtons.survival,
 			play: this.elements.play
 		};
 		const entries = Object.entries(elements);
@@ -4451,7 +4389,7 @@ function markup() {
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
 		`<div class="row header-action"><button type="button" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
-    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="survival" aria-pressed="false">SURVIVAL</button></div>`,
+    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button></div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
