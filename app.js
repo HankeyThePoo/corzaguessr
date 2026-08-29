@@ -219,31 +219,16 @@ function createSession(mode = null, attempts = []) {
 	return {
 		mode,
 		round: null,
-		roundNumber: 0,
+		started: false,
 		attempts: attempts.map((attempt) => ({ ...attempt })),
 		result: null
-	};
-}
-function composeSessionViewState(state) {
-	const { guesses, correct } = timedStats(state);
-	return {
-		mode: state.mode,
-		round: state.round ? copyRound(state.round) : null,
-		roundNumber: state.roundNumber,
-		attempt: puzzleAttempt(state),
-		guesses,
-		correct,
-		attempts: state.attempts.map((attempt) => ({ ...attempt })),
-		guessedTrackIds: puzzleGuessedTrackIds(state),
-		gauntletFoundTrackIds: gauntletFoundTrackIds(state),
-		result: state.result ? { ...state.result } : null
 	};
 }
 function setRound(state, round) {
 	return {
 		...state,
 		round: copyRound(round),
-		roundNumber: state.roundNumber || 1
+		started: true
 	};
 }
 function clearRound(state) {
@@ -258,19 +243,17 @@ function resolvePuzzleAttempt(state, outcome, guessed) {
 	return {
 		state: {
 			...state,
-			attempts: [createAttempt(id, outcome, guessed, false), ...state.attempts]
+			attempts: [createAttempt(id, outcome, guessed), ...state.attempts]
 		},
 		finished: outcome === "correct" || id === 6
 	};
 }
 function resolveTimedAttempt(state, outcome, guessed) {
 	if (!isTimedMode(state.mode)) throw new Error("Timed attempts require Blitz or Gauntlet mode.");
-	const gauntletMilestone = !!(outcome === "correct" && state.mode === "gauntlet" && state.round && !state.attempts.some((attempt) => attempt.outcome === "correct" && attempt.trackNumber === state.round?.track.dailyNumber));
 	return {
 		...state,
 		round: null,
-		roundNumber: state.roundNumber + 1,
-		attempts: [createAttempt(state.roundNumber, outcome, guessed, gauntletMilestone), ...state.attempts]
+		attempts: [createAttempt(state.attempts.length + 1, outcome, guessed), ...state.attempts]
 	};
 }
 function finishSession(state, result) {
@@ -295,27 +278,16 @@ function puzzleGuessedTrackIds(state) {
 	if (!isPuzzleMode(state.mode)) return /* @__PURE__ */ new Set();
 	return new Set(state.attempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
 }
-function timedStats(state) {
-	const attempts = isTimedMode(state.mode) ? state.attempts : [];
-	return {
-		guesses: attempts.filter((attempt) => attempt.outcome !== "skip").length,
-		correct: attempts.filter((attempt) => attempt.outcome === "correct").length
-	};
-}
 function gauntletFoundTrackIds(state) {
 	if (state.mode !== "gauntlet") return /* @__PURE__ */ new Set();
 	return new Set(state.attempts.filter((attempt) => attempt.outcome === "correct").map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
 }
-function createAttempt(id, outcome, guessed, gauntletMilestone) {
-	const attempt = {
+function createAttempt(id, outcome, guessed) {
+	return {
 		id,
 		outcome,
 		trackNumber: outcome === "skip" ? null : guessed?.dailyNumber ?? null
 	};
-	return outcome === "correct" && gauntletMilestone ? {
-		...attempt,
-		gauntletMilestone: true
-	} : attempt;
 }
 function copyRound(round) {
 	return {
@@ -636,12 +608,18 @@ function formatDailyCountdown(milliseconds) {
 function composeGameViewModel(input) {
 	const { session, transport } = input;
 	const requested = transport.playRequested;
-	const tracksLeft = Math.max(0, input.tracks.length - session.gauntletFoundTrackIds.size);
-	const attemptSlots = (isTimedMode(session.mode) ? session.attempts.slice(0, maxVisibleTimedAttempts) : session.attempts).map((attempt) => attemptSlot(attempt, session.mode, input.tracks));
+	const attempt = puzzleAttempt(session);
+	const guessedTrackIds = puzzleGuessedTrackIds(session);
+	const foundTrackIds = gauntletFoundTrackIds(session);
+	const attemptNumber = session.attempts.length + 1;
+	const tracksLeft = Math.max(0, input.tracks.length - foundTrackIds.size);
+	const visibleAttempts = isTimedMode(session.mode) ? session.attempts.slice(0, maxVisibleTimedAttempts) : session.attempts;
+	const gauntletMilestones = gauntletMilestoneAttemptIds(session);
+	const attemptSlots = visibleAttempts.map((attempt) => attemptSlot(attempt, session.mode, input.tracks, gauntletMilestones.has(attempt.id)));
 	const completedDaily = session.mode === "daily" && dailyCompleted(input.dailyProgress, input.dailyDate);
 	let headSlot = (session.mode === "daily" || session.mode === "classic") && (!!session.result || completedDaily) ? null : promptSlot(session, tracksLeft);
 	if (session.result && isTimedMode(session.mode)) headSlot = {
-		id: session.roundNumber,
+		id: attemptNumber,
 		text: session.result.mode === "gauntlet" && session.result.won ? "GAUNTLET COMPLETE" : "TIME'S UP",
 		tone: "neutral"
 	};
@@ -668,18 +646,18 @@ function composeGameViewModel(input) {
 		guessEnabled,
 		attemptEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: snippetSeconds(session.attempt),
-		skipText: skipLabel(session.mode, session.attempt),
+		snippetSeconds: snippetSeconds(attempt),
+		skipText: skipLabel(session.mode, attempt),
 		slots,
-		unavailableGuessIds: session.guessedTrackIds,
+		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: snippetSeconds(session.attempt),
+			snippetSeconds: snippetSeconds(attempt),
 			inputVisible,
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
 		}),
-		result: composeResultViewModel(session.result, input.resultPersistenceFailed),
+		result: composeResultViewModel(session.result, input.progressPersistencePending),
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
@@ -691,21 +669,23 @@ function composeGameViewModel(input) {
 function promptSlot(session, tracksLeft) {
 	if (!session.mode) return null;
 	if (isTimedMode(session.mode)) {
-		if (session.roundNumber === 0) return null;
+		if (!session.started) return null;
+		const attemptNumber = session.attempts.length + 1;
 		return {
-			id: session.roundNumber,
-			text: session.mode === "gauntlet" ? `${tracksLeft} ${tracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${session.roundNumber}`,
+			id: attemptNumber,
+			text: session.mode === "gauntlet" ? `${tracksLeft} ${tracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${attemptNumber}`,
 			tone: "prompt"
 		};
 	}
 	if (!session.round && session.attempts.length === 0) return null;
+	const attempt = puzzleAttempt(session);
 	return {
-		id: session.attempt + 1,
-		text: session.attempt === snippetDurations.length - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${session.attempt + 1} OUT OF ${snippetDurations.length}`,
-		tone: session.attempt === snippetDurations.length - 1 ? "final-prompt" : "prompt"
+		id: attempt + 1,
+		text: attempt === snippetDurations.length - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${snippetDurations.length}`,
+		tone: attempt === snippetDurations.length - 1 ? "final-prompt" : "prompt"
 	};
 }
-function attemptSlot(attempt, mode, tracks) {
+function attemptSlot(attempt, mode, tracks, gauntletMilestone) {
 	let text = attempt.trackNumber === null ? "" : tracks.find((track) => track.dailyNumber === attempt.trackNumber)?.title ?? `TRACK #${attempt.trackNumber}`;
 	if (attempt.outcome === "skip") if (isTimedMode(mode)) text = "SKIPPED";
 	else if (attempt.id === 6) text = "FINAL GUESS SKIPPED";
@@ -718,10 +698,23 @@ function attemptSlot(attempt, mode, tracks) {
 		text,
 		tone: attempt.outcome
 	};
-	return attempt.gauntletMilestone ? {
+	return gauntletMilestone ? {
 		...slot,
 		gauntletMilestone: true
 	} : slot;
+}
+function gauntletMilestoneAttemptIds(session) {
+	if (session.mode !== "gauntlet") return /* @__PURE__ */ new Set();
+	const foundTrackIds = /* @__PURE__ */ new Set();
+	const milestoneAttemptIds = /* @__PURE__ */ new Set();
+	for (let index = session.attempts.length - 1; index >= 0; index -= 1) {
+		const attempt = session.attempts[index];
+		const trackNumber = attempt.trackNumber;
+		if (attempt.outcome !== "correct" || trackNumber === null || foundTrackIds.has(trackNumber)) continue;
+		foundTrackIds.add(trackNumber);
+		milestoneAttemptIds.add(attempt.id);
+	}
+	return milestoneAttemptIds;
 }
 var GameController = class {
 	catalog;
@@ -744,14 +737,7 @@ var GameController = class {
 	sessionNumber = 0;
 	nextRoundId = 0;
 	persistenceFailureQueued = false;
-	resultPersistenceFailed = false;
 	pageVisible = true;
-	clockViewContext = {
-		mode: null,
-		snippetSeconds: 1,
-		inputVisible: false,
-		dailyStarted: false
-	};
 	constructor(catalog, progress, clock, playback, view, dailySchedule, openSpotifyLink, copyToClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
@@ -829,7 +815,6 @@ var GameController = class {
 			if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
 				this.startDailyCountdown();
 				this.session = dismissResult(this.session);
-				this.resultPersistenceFailed = false;
 				this.render();
 				this.view.closeResult("classic");
 				return;
@@ -947,7 +932,6 @@ var GameController = class {
 		if (startedNewRound) {
 			this.session = setRound(this.session, round);
 			const session = this.session;
-			this.refreshClockViewContext(session, this.playback.snapshot);
 			if (!isTimedMode(session.mode)) this.clock.restart(snippetSeconds(puzzleAttempt(session)) * 1e3);
 			this.clock.start();
 			this.render();
@@ -992,14 +976,13 @@ var GameController = class {
 		this.render();
 		if (visible) this.view.announce(copy.loadingTrack);
 	}
-	onProgressPersistenceStatusChanged(pending) {
-		this.resultPersistenceFailed = pending;
-		if (!pending) return;
+	onProgressPersistenceFailure() {
+		if (!this.progress.persistencePending) return;
 		if (this.persistenceFailureQueued) return;
 		this.persistenceFailureQueued = true;
 		queueMicrotask(() => {
 			this.persistenceFailureQueued = false;
-			if (!this.resultPersistenceFailed) return;
+			if (!this.progress.persistencePending) return;
 			if (this.session.result) {
 				this.render();
 				return;
@@ -1008,15 +991,19 @@ var GameController = class {
 		});
 	}
 	onClockTick(snapshot) {
+		const session = this.session;
 		this.view.renderClock(composeClockViewModel({
-			...this.clockViewContext,
-			clock: snapshot
+			mode: session.mode,
+			snippetSeconds: snippetSeconds(puzzleAttempt(session)),
+			inputVisible: guessInputVisible(session, this.playback.snapshot),
+			clock: snapshot,
+			dailyStarted: this.progress.dailyInProgress(this.dailyDate) || this.progress.dailyDone(this.dailyDate)
 		}));
 	}
 	onClockExpired() {
 		const state = this.session;
 		if (state.result || !state.round) return;
-		if (isTimedMode(state.mode)) this.finishGame(false);
+		if (isTimedMode(state.mode)) this.finishGame();
 		else {
 			this.playback.pause();
 			this.render();
@@ -1076,34 +1063,33 @@ var GameController = class {
 		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
 		if (isTimedMode(mode)) {
 			if (this.clock.pause().remainingMs <= 0) {
-				this.finishGame(false);
+				this.finishGame();
 				return;
 			}
 		}
 		this.view.resetGuessInput();
 		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
 		if (isTimedMode(mode)) {
-			this.resolveTimedAttempt(mode, round, outcome, guessed);
+			this.resolveTimedAttempt(mode, outcome, guessed);
 			return;
 		}
 		this.resolvePuzzleAttempt(mode, round, outcome, guessed);
 	}
-	resolveTimedAttempt(mode, round, outcome, guessed) {
+	resolveTimedAttempt(mode, outcome, guessed) {
 		this.playback.pause();
 		this.session = resolveTimedAttempt(this.session, outcome, guessed);
 		const updated = this.session;
-		this.refreshClockViewContext(updated, this.playback.snapshot);
 		const gauntletComplete = mode === "gauntlet" && outcome === "correct" && gauntletFoundTrackIds(updated).size === this.tracks.length;
 		this.view.announce(gauntletComplete ? "CORRECT. GAUNTLET COMPLETE." : outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
 		if (gauntletComplete) {
-			this.finishGame(true, round);
+			this.finishGame();
 			return;
 		}
 		if (mode === "gauntlet") {
 			const adjustment = gauntletTimeAdjustment(outcome);
 			this.view.flashTimeChange(adjustment / 1e3);
 			if (this.clock.adjust(adjustment).remainingMs <= 0) {
-				this.finishGame(false, round);
+				this.finishGame();
 				return;
 			}
 		}
@@ -1114,10 +1100,9 @@ var GameController = class {
 		const resolution = resolvePuzzleAttempt(this.session, outcome, guessed);
 		this.session = resolution.state;
 		const updated = this.session;
-		this.refreshClockViewContext(updated, this.playback.snapshot);
 		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
-			this.finishGame(outcome === "correct");
+			this.finishGame();
 			return;
 		}
 		if (mode === "daily" && this.progress.dailyInProgress(this.dailyDate)) this.progress.updateDailyAttempt(updated.attempts);
@@ -1131,21 +1116,23 @@ var GameController = class {
 		this.render();
 		this.view.focusGuess();
 	}
-	finishGame(won, fallbackRound = null) {
+	finishGame() {
 		const state = this.session;
-		const round = state.round ?? fallbackRound;
-		const mode = state.mode;
-		if (!round || !mode || state.result) return;
+		if (!state.mode || state.result) return;
 		const clock = this.clock.pause();
 		this.playback.stop();
-		const result = this.progress.finish(finishedRun(mode, won, round, state, clock, this.dailyDate, this.tracks.length));
+		const result = this.progress.finish({
+			session: state,
+			elapsedMs: clock.elapsedMs,
+			dailyDate: this.dailyDate,
+			catalogTrackCount: this.tracks.length
+		});
 		this.session = finishSession(this.session, result);
 		this.render();
 	}
 	resetForMode(mode) {
 		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
-		this.resultPersistenceFailed = false;
 		this.sessionNumber += 1;
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
 		const resumed = attempts.length;
@@ -1159,7 +1146,6 @@ var GameController = class {
 	resetToModeSelection() {
 		this.dailySchedule.stop();
 		this.sessionNumber += 1;
-		this.resultPersistenceFailed = false;
 		this.playback.reset();
 		this.session = createSession();
 		this.clock.configure(1e3);
@@ -1196,13 +1182,11 @@ var GameController = class {
 		return summarizeDiscovery(this.tracks, this.progress.discoveries).complete;
 	}
 	render() {
-		const session = composeSessionViewState(this.session);
 		const transport = this.playback.snapshot;
-		this.refreshClockViewContext(this.session, transport);
 		const viewModel = composeGameViewModel({
 			appStatus: this.appStatus,
 			catalogLoadingVisible: this.catalogLoadingVisible,
-			session,
+			session: this.session,
 			transport,
 			clock: this.clock.snapshot(),
 			dailyProgress: this.progress.daily,
@@ -1212,17 +1196,9 @@ var GameController = class {
 			discoveries: this.progress.discoveries,
 			tracks: this.tracks,
 			overlay: this.activeOverlay,
-			resultPersistenceFailed: this.resultPersistenceFailed
+			progressPersistencePending: this.progress.persistencePending
 		});
 		this.view.render(viewModel, String(this.sessionNumber));
-	}
-	refreshClockViewContext(session, transport) {
-		this.clockViewContext = {
-			mode: session.mode,
-			snippetSeconds: snippetSeconds(puzzleAttempt(session)),
-			inputVisible: guessInputVisible(session, transport),
-			dailyStarted: this.progress.dailyInProgress(this.dailyDate) || this.progress.dailyDone(this.dailyDate)
-		};
 	}
 	startDailyCountdown() {
 		this.dailySchedule.startCountdown((remainingMs) => {
@@ -1238,44 +1214,11 @@ var GameController = class {
 		return this.catalogError ? "error" : "loading";
 	}
 };
-function finishedRun(mode, won, round, state, clock, dailyDate, catalogTrackCount) {
-	switch (mode) {
-		case "daily": return {
-			mode,
-			won,
-			track: round.track,
-			dailyDate,
-			attempts: state.attempts
-		};
-		case "classic": return {
-			mode,
-			won,
-			track: round.track,
-			attempt: puzzleAttempt(state)
-		};
-		case "blitz": {
-			const stats = timedStats(state);
-			return {
-				mode,
-				correct: stats.correct,
-				guesses: stats.guesses
-			};
-		}
-		case "gauntlet": return {
-			mode,
-			won,
-			elapsedMs: clock.elapsedMs,
-			completedTrackCount: gauntletFoundTrackIds(state).size,
-			catalogTrackCount
-		};
-	}
-}
 var Progress = class {
 	storage;
 	options;
 	state;
 	pendingPersistence = emptyPendingPersistence();
-	persistencePendingReported = false;
 	constructor(storage, options = {}) {
 		this.storage = storage;
 		this.options = options;
@@ -1294,6 +1237,9 @@ var Progress = class {
 	}
 	get personalBests() {
 		return cloneBests(this.state.personalBests);
+	}
+	get persistencePending() {
+		return Object.values(this.pendingPersistence).some(Boolean);
 	}
 	dailyDone(date) {
 		return dailyCompleted(this.state.daily, date);
@@ -1348,7 +1294,6 @@ var Progress = class {
 			personalBests: emptyPersonalBests()
 		};
 		this.pendingPersistence = emptyPendingPersistence();
-		this.reportPersistenceStatus();
 		return true;
 	}
 	finish(run) {
@@ -1362,22 +1307,23 @@ var Progress = class {
 		if (this.pendingPersistence.daily && this.storage.saveDaily(this.state.daily)) this.pendingPersistence.daily = false;
 		if (this.pendingPersistence.discoveries && this.storage.saveDiscoveries(this.state.discoveries)) this.pendingPersistence.discoveries = false;
 		if (this.pendingPersistence.personalBests && this.storage.savePersonalBests(this.state.personalBests)) this.pendingPersistence.personalBests = false;
-		this.reportPersistenceStatus();
-	}
-	reportPersistenceStatus() {
-		const pending = Object.values(this.pendingPersistence).some(Boolean);
-		if (pending || this.persistencePendingReported) this.options.onPersistenceStatusChanged?.(pending);
-		this.persistencePendingReported = pending;
+		if (this.persistencePending) this.options.onPersistenceFailure?.();
 	}
 };
 function finishRun(state, run) {
-	if (run.mode === "daily") {
+	const session = run.session;
+	const mode = session.mode;
+	if (!mode) throw new Error("A completed run requires an active game mode.");
+	const attempts = session.attempts;
+	const won = attempts[0]?.outcome === "correct";
+	if (mode === "daily") {
+		const track = puzzleTrack(session);
 		const daily = {
 			status: "completed",
-			outcome: run.won ? "won" : "lost",
+			outcome: won ? "won" : "lost",
 			date: run.dailyDate,
-			dailyNumber: run.track.dailyNumber,
-			attempts: run.attempts.map((attempt) => ({ ...attempt }))
+			dailyNumber: track.dailyNumber,
+			attempts: attempts.map((attempt) => ({ ...attempt }))
 		};
 		return {
 			state: {
@@ -1387,16 +1333,18 @@ function finishRun(state, run) {
 			changedSection: "daily",
 			result: {
 				mode: "daily",
-				won: run.won,
-				trackTitle: run.track.title,
-				spotify: run.track.spotify,
-				attempts: run.attempts.length
+				won,
+				trackTitle: track.title,
+				spotify: track.spotify,
+				attempts: attempts.length
 			}
 		};
 	}
-	if (run.mode === "classic") {
+	if (mode === "classic") {
+		const track = puzzleTrack(session);
+		const attempt = Math.max(0, attempts.length - 1);
 		const personalBests = cloneBests(state.personalBests);
-		const update = updateClassicBest(personalBests, run.won, run.attempt);
+		const update = updateClassicBest(personalBests, won, attempt);
 		const nextState = update.changed ? {
 			...state,
 			personalBests
@@ -1407,9 +1355,9 @@ function finishRun(state, run) {
 			changedSection: update.changed ? "personalBests" : null,
 			result: {
 				mode: "classic",
-				won: run.won,
-				trackTitle: run.track.title,
-				spotify: run.track.spotify,
+				won,
+				trackTitle: track.title,
+				spotify: track.spotify,
 				newPersonalBest: update.newPersonalBest,
 				streak: update.streak,
 				average: update.average,
@@ -1418,10 +1366,11 @@ function finishRun(state, run) {
 			}
 		};
 	}
-	if (run.mode === "blitz") {
-		const runAccuracy = accuracy(run.correct, run.guesses);
+	if (mode === "blitz") {
+		const { guesses, correct } = timedStats(attempts);
+		const runAccuracy = accuracy(correct, guesses);
 		const personalBests = cloneBests(state.personalBests);
-		const update = updateBlitzBest(personalBests, run.correct, runAccuracy);
+		const update = updateBlitzBest(personalBests, correct, runAccuracy);
 		const nextState = update.changed ? {
 			...state,
 			personalBests
@@ -1433,7 +1382,7 @@ function finishRun(state, run) {
 			result: {
 				mode: "blitz",
 				newPersonalBest: update.newPersonalBest,
-				correct: run.correct,
+				correct,
 				accuracy: runAccuracy,
 				bestCorrect: best.score,
 				bestAccuracy: best.accuracy
@@ -1441,9 +1390,9 @@ function finishRun(state, run) {
 		};
 	}
 	const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
-	const completedTracks = run.completedTrackCount;
+	const completedTracks = correctTrackIds(attempts).size;
 	const catalogTrackCount = run.catalogTrackCount;
-	const completed = run.won && catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
+	const completed = catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
 	const personalBests = cloneBests(state.personalBests);
 	const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
 	const nextState = update.changed ? {
@@ -1465,6 +1414,20 @@ function finishRun(state, run) {
 			bestTrackCount: best.trackCount
 		}
 	};
+}
+function puzzleTrack(session) {
+	const track = session.round?.track;
+	if (!track) throw new Error("A completed puzzle run requires its selected track.");
+	return track;
+}
+function timedStats(attempts) {
+	return {
+		guesses: attempts.filter((attempt) => attempt.outcome !== "skip").length,
+		correct: attempts.filter((attempt) => attempt.outcome === "correct").length
+	};
+}
+function correctTrackIds(attempts) {
+	return new Set(attempts.filter((attempt) => attempt.outcome === "correct").map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
 }
 function emptyPendingPersistence() {
 	return {
@@ -2000,7 +1963,6 @@ var AudioPlayer = class {
 	preloadSlot = null;
 	generation = 0;
 	lastPrimarySlotId = null;
-	activity = "idle";
 	suspension = null;
 	operation = null;
 	nextOperationId = 0;
@@ -2048,7 +2010,6 @@ var AudioPlayer = class {
 		this.preloadSlot = null;
 		slot.hasRequestedPlayback = false;
 		this.operation = null;
-		this.activity = "idle";
 		if (previous && previous !== slot) {
 			this.lastPrimarySlotId = previous.id;
 			this.releaseSlot(previous);
@@ -2058,14 +2019,16 @@ var AudioPlayer = class {
 	playPrimary(round, restart) {
 		const slot = this.primarySlot;
 		if (!slot || slot.round?.id !== round.id || slot.failed || this.suspension) return false;
-		const operation = { id: ++this.nextOperationId };
+		const operation = {
+			id: ++this.nextOperationId,
+			phase: "starting"
+		};
 		slot.hasRequestedPlayback = true;
 		this.operation = operation;
 		if (restart) {
 			slot.element.pause();
 			this.seek(slot);
 		} else this.correctLateSeek(slot);
-		this.activity = "starting";
 		let playPromise;
 		try {
 			playPromise = slot.element.play();
@@ -2080,7 +2043,6 @@ var AudioPlayer = class {
 			if (isNamedError(error, "NotAllowedError")) {
 				this.cancelPlaybackWatchdog(operation);
 				this.operation = null;
-				this.activity = "idle";
 				this.callbacks.onBlocked(round);
 				return;
 			}
@@ -2095,7 +2057,6 @@ var AudioPlayer = class {
 		this.operation = null;
 		slot.element.pause();
 		this.seek(slot, true);
-		this.activity = "idle";
 		return true;
 	}
 	pause() {
@@ -2103,7 +2064,6 @@ var AudioPlayer = class {
 		this.operation = null;
 		const primary = this.primarySlot;
 		if (!primary) return;
-		this.activity = "idle";
 		primary.element.pause();
 	}
 	releasePrimary() {
@@ -2115,7 +2075,6 @@ var AudioPlayer = class {
 		this.primarySlot = null;
 		this.suspension = null;
 		this.releaseSlot(slot);
-		this.activity = "idle";
 	}
 	stop() {
 		this.cancelPlaybackWatchdog();
@@ -2129,7 +2088,6 @@ var AudioPlayer = class {
 			this.releaseSlot(primary);
 		}
 		this.discardPreload();
-		this.activity = "idle";
 	}
 	discardPreload() {
 		if (!this.preloadSlot) return;
@@ -2149,7 +2107,6 @@ var AudioPlayer = class {
 			if (!slot.round) continue;
 			slot.element.pause();
 		}
-		if (this.primarySlot) this.activity = "idle";
 	}
 	restore() {
 		const suspension = this.suspension;
@@ -2195,10 +2152,8 @@ var AudioPlayer = class {
 		slot.failed = false;
 		slot.ready = false;
 		slot.hasRequestedPlayback = false;
-		if (channel === "primary") {
-			this.primarySlot = slot;
-			this.activity = "idle";
-		} else this.preloadSlot = slot;
+		if (channel === "primary") this.primarySlot = slot;
+		else this.preloadSlot = slot;
 		this.bind(slot);
 		slot.element.preload = "auto";
 		slot.element.src = this.sourceForRound(round);
@@ -2236,8 +2191,12 @@ var AudioPlayer = class {
 			if (!live() || slot !== this.primarySlot || this.suspension) return;
 			if (!this.operation || !this.isCurrentPlaybackOperation(slot, this.operation)) return;
 			this.correctLateSeek(slot);
-			this.cancelPlaybackWatchdog(this.operation);
-			this.activity = "playing";
+			const operation = this.operation;
+			this.cancelPlaybackWatchdog(operation);
+			this.operation = {
+				...operation,
+				phase: "playing"
+			};
 			this.markReady(slot);
 			this.callbacks.onPlaying(round);
 		}, { signal: controller.signal });
@@ -2247,11 +2206,16 @@ var AudioPlayer = class {
 		}, { signal: controller.signal });
 		const wait = () => {
 			if (!live() || slot !== this.primarySlot || this.suspension) return;
-			if (!this.operation || !this.isCurrentPlaybackOperation(slot, this.operation)) return;
-			const wasPlaying = this.activity === "playing";
-			if (this.activity === "buffering") return;
-			this.activity = "buffering";
-			if (wasPlaying) this.startPlaybackWatchdog(slot, this.operation);
+			const operation = this.operation;
+			if (!operation || !this.isCurrentPlaybackOperation(slot, operation)) return;
+			const wasPlaying = operation.phase === "playing";
+			if (operation.phase === "buffering") return;
+			const buffering = {
+				...operation,
+				phase: "buffering"
+			};
+			this.operation = buffering;
+			if (wasPlaying) this.startPlaybackWatchdog(slot, buffering);
 			this.callbacks.onWaiting(round);
 		};
 		slot.element.addEventListener("waiting", wait, { signal: controller.signal });
@@ -2262,7 +2226,6 @@ var AudioPlayer = class {
 			if (!operation || !this.isCurrentPlaybackOperation(slot, operation)) return;
 			this.cancelPlaybackWatchdog(operation);
 			this.operation = null;
-			this.activity = "idle";
 			this.callbacks.onEnded(round);
 		}, { signal: controller.signal });
 		slot.element.addEventListener("error", () => {
@@ -2297,7 +2260,6 @@ var AudioPlayer = class {
 		}
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
-		this.activity = "idle";
 		this.emitFailure(failure);
 	}
 	emitFailure(failure) {
@@ -2311,7 +2273,7 @@ var AudioPlayer = class {
 	startPlaybackWatchdog(slot, operation) {
 		this.cancelPlaybackWatchdog();
 		this.watchdogTimer = this.timing.setTimeout(() => {
-			if (!this.isCurrentPlaybackOperation(slot, operation) || !["starting", "buffering"].includes(this.activity)) return;
+			if (!this.isCurrentPlaybackOperation(slot, operation) || !this.operation || !["starting", "buffering"].includes(this.operation.phase)) return;
 			this.watchdogTimer = 0;
 			this.fail(slot, "primary", "primary-play");
 		}, this.playbackTimeoutMs);
@@ -4431,7 +4393,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
 		clearTimeout: (handle) => window.clearTimeout(handle)
 	});
-	const progress = new Progress(new ProgressStorage(), { onPersistenceStatusChanged: (pending) => controller?.onProgressPersistenceStatusChanged(pending) });
+	const progress = new Progress(new ProgressStorage(), { onPersistenceFailure: () => controller?.onProgressPersistenceFailure() });
 	const clock = new GameClock({
 		onTick: (snapshot) => controller?.onClockTick(snapshot),
 		onExpired: () => controller?.onClockExpired()
