@@ -3611,6 +3611,75 @@ function rows(bests, daily, dailyDate) {
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
+var ResultView = class {
+	elements;
+	durations;
+	reducedMotion;
+	current = null;
+	signature = "";
+	copyFeedbackTimer = 0;
+	copyFeedbackGeneration = 0;
+	constructor(elements, durations, reducedMotion) {
+		this.elements = elements;
+		this.durations = durations;
+		this.reducedMotion = reducedMotion;
+	}
+	get secondaryAction() {
+		return this.current?.secondary?.action ?? null;
+	}
+	render(result) {
+		const signature = result ? JSON.stringify(result) : "";
+		if (signature === this.signature) return;
+		this.signature = signature;
+		this.current = result;
+		if (this.copyFeedbackTimer) {
+			window.clearTimeout(this.copyFeedbackTimer);
+			this.copyFeedbackTimer = 0;
+		}
+		this.copyFeedbackGeneration += 1;
+		this.elements.secondaryLabel.classList.remove("fading");
+		if (!result) {
+			this.elements.title.textContent = "";
+			this.elements.meta.replaceChildren();
+			this.elements.secondary.hidden = true;
+			return;
+		}
+		this.elements.action.textContent = result.primaryLabel;
+		this.elements.title.innerHTML = result.titleHtml;
+		this.elements.meta.replaceChildren(...result.rows.map((row) => createResultRow(row, result.highlightPersonalBest)));
+		this.elements.meta.dataset.announcement = result.announcement;
+		this.elements.secondaryLabel.textContent = result.secondary?.label ?? "";
+		if (result.secondary) this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
+		else this.elements.secondary.removeAttribute("aria-label");
+		this.elements.secondary.hidden = result.secondary === null;
+	}
+	showShareCopied() {
+		if (this.secondaryAction !== "share") return;
+		if (this.copyFeedbackTimer) window.clearTimeout(this.copyFeedbackTimer);
+		const generation = ++this.copyFeedbackGeneration;
+		this.elements.secondaryLabel.classList.remove("fading");
+		this.elements.secondaryLabel.textContent = "COPIED";
+		this.copyFeedbackTimer = window.setTimeout(() => {
+			this.copyFeedbackTimer = 0;
+			if (this.secondaryAction === "share") this.swapSecondaryLabel("SHARE", generation);
+		}, this.durations.shareVisible);
+	}
+	swapSecondaryLabel(text, generation) {
+		const label = this.elements.secondaryLabel;
+		if (label.textContent === text || this.reducedMotion.matches) {
+			label.textContent = text;
+			return;
+		}
+		label.classList.remove("fading");
+		label.offsetWidth;
+		label.classList.add("fading");
+		window.setTimeout(() => {
+			if (generation !== this.copyFeedbackGeneration) return;
+			label.textContent = text;
+			label.classList.remove("fading");
+		}, this.durations.shareFade);
+	}
+};
 function createResultRow(row, newPersonalBest) {
 	const module = document.createElement("div");
 	module.className = "result-module";
@@ -3797,6 +3866,7 @@ var GameView = class {
 	volume;
 	discovery;
 	progressSummary;
+	resultView;
 	durations;
 	handlers = null;
 	state = null;
@@ -3804,9 +3874,6 @@ var GameView = class {
 	inputModality;
 	hoveredButton = null;
 	preview = null;
-	resultSignature = "";
-	resultCopyFeedbackTimer = 0;
-	resultCopyFeedbackGeneration = 0;
 	rulesSignature = "";
 	announcementFrame = 0;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
@@ -3833,6 +3900,16 @@ var GameView = class {
 			timelineReset: duration(styles, "--duration-timeline-reset"),
 			timelineRewind: duration(styles, "--duration-timeline-rewind")
 		};
+		this.resultView = new ResultView({
+			action: this.elements.resultAction,
+			secondary: this.elements.resultSecondary,
+			secondaryLabel: this.elements.resultSecondaryLabel,
+			title: this.elements.resultTitle,
+			meta: this.elements.resultMeta
+		}, {
+			shareVisible: this.durations.shareVisible,
+			shareFade: this.durations.shareFade
+		}, this.reducedMotion);
 		this.modal = new ModalController(root, this.elements, { discovery: this.durations.discoveryModal }, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
@@ -3870,7 +3947,7 @@ var GameView = class {
 		this.elements.skip.addEventListener("click", handlers.skip);
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
 		this.elements.resultSecondary.addEventListener("click", () => {
-			const action = this.state?.result?.secondary?.action;
+			const action = this.resultView.secondaryAction;
 			if (action === "share") handlers.shareDaily();
 			else if (action === "spotify") handlers.openSpotify();
 		});
@@ -3937,7 +4014,7 @@ var GameView = class {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
 		}
-		this.renderResult(state.result);
+		this.resultView.render(state.result);
 		this.renderClock(state.clock);
 		if (openingOverlay === "result") this.modal.openResult();
 		else if (openingOverlay === "discovery") {
@@ -3986,15 +4063,7 @@ var GameView = class {
 		}));
 	}
 	showDailyShareCopied() {
-		if (this.state?.overlay !== "result" || this.state.result?.secondary?.action !== "share") return;
-		if (this.resultCopyFeedbackTimer) window.clearTimeout(this.resultCopyFeedbackTimer);
-		const generation = ++this.resultCopyFeedbackGeneration;
-		this.elements.resultSecondaryLabel.classList.remove("fading");
-		this.elements.resultSecondaryLabel.textContent = "COPIED";
-		this.resultCopyFeedbackTimer = window.setTimeout(() => {
-			this.resultCopyFeedbackTimer = 0;
-			if (this.state?.overlay === "result" && this.state.result?.secondary?.action === "share") this.swapResultSecondaryLabel("SHARE", generation);
-		}, this.durations.shareVisible);
+		this.resultView.showShareCopied();
 	}
 	resetTransientUi() {
 		cancelAnimationFrame(this.announcementFrame);
@@ -4049,31 +4118,6 @@ var GameView = class {
 		this.elements.discoveryActions.hidden = false;
 		if (returnFocus) this.elements.discoveryReset.focus({ preventScroll: true });
 	}
-	renderResult(result) {
-		const signature = result ? JSON.stringify(result) : "";
-		if (signature === this.resultSignature) return;
-		this.resultSignature = signature;
-		if (this.resultCopyFeedbackTimer) {
-			window.clearTimeout(this.resultCopyFeedbackTimer);
-			this.resultCopyFeedbackTimer = 0;
-		}
-		this.resultCopyFeedbackGeneration += 1;
-		this.elements.resultSecondaryLabel.classList.remove("fading");
-		if (!result) {
-			this.elements.resultTitle.textContent = "";
-			this.elements.resultMeta.replaceChildren();
-			this.elements.resultSecondary.hidden = true;
-			return;
-		}
-		this.elements.resultAction.textContent = result.primaryLabel;
-		this.elements.resultTitle.innerHTML = result.titleHtml;
-		this.elements.resultMeta.replaceChildren(...result.rows.map((row) => createResultRow(row, result.highlightPersonalBest)));
-		this.elements.resultMeta.dataset.announcement = result.announcement;
-		this.elements.resultSecondaryLabel.textContent = result.secondary?.label ?? "";
-		if (result.secondary) this.elements.resultSecondary.setAttribute("aria-label", result.secondary.ariaLabel);
-		else this.elements.resultSecondary.removeAttribute("aria-label");
-		this.elements.resultSecondary.hidden = result.secondary === null;
-	}
 	bindPreview(element, preview) {
 		element.addEventListener("pointerenter", () => {
 			if (this.finePointer.matches && this.previewAllowed()) {
@@ -4099,21 +4143,6 @@ var GameView = class {
 				this.renderRules();
 			}
 		});
-	}
-	swapResultSecondaryLabel(text, generation) {
-		const label = this.elements.resultSecondaryLabel;
-		if (label.textContent === text || this.reducedMotion.matches) {
-			label.textContent = text;
-			return;
-		}
-		label.classList.remove("fading");
-		label.offsetWidth;
-		label.classList.add("fading");
-		window.setTimeout(() => {
-			if (generation !== this.resultCopyFeedbackGeneration) return;
-			label.textContent = text;
-			label.classList.remove("fading");
-		}, this.durations.shareFade);
 	}
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
