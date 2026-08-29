@@ -224,92 +224,105 @@ function updateGauntletBest(bests, won, elapsedMs, trackCount) {
 		newPersonalBest: true
 	};
 }
-var GameSession = class {
-	modeState = null;
-	roundState = null;
-	roundNumberState = 0;
-	attemptsState = [];
-	resultState = null;
-	get snapshot() {
-		const timedAttempts = isTimedMode(this.modeState) ? this.attemptsState : [];
-		const correctAttempts = timedAttempts.filter((attempt) => attempt.outcome === "correct");
-		const gauntletFoundTrackIds = this.modeState === "gauntlet" ? new Set(correctAttempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null)) : /* @__PURE__ */ new Set();
-		return {
-			mode: this.modeState,
-			round: this.roundState ? this.copyRound(this.roundState) : null,
-			roundNumber: this.roundNumberState,
-			attempt: this.puzzleAttempt(),
-			guesses: timedAttempts.filter((attempt) => attempt.outcome !== "skip").length,
-			correct: correctAttempts.length,
-			attempts: this.attemptsState.map((attempt) => ({ ...attempt })),
-			guessedTrackIds: this.puzzleGuessedTrackIds(),
-			gauntletFoundTrackIds,
-			result: this.resultState ? { ...this.resultState } : null
-		};
-	}
-	reset(mode, attempts = []) {
-		this.modeState = mode;
-		this.roundState = null;
-		this.roundNumberState = 0;
-		this.attemptsState = attempts.map((attempt) => ({ ...attempt }));
-		this.resultState = null;
-	}
-	setRound(round) {
-		if (this.roundNumberState === 0) this.roundNumberState = 1;
-		this.roundState = this.copyRound(round);
-	}
-	clearRound() {
-		this.roundState = null;
-	}
-	resolvePuzzleAttempt(outcome, guessed) {
-		if (!isPuzzleMode(this.modeState)) throw new Error("Puzzle attempts require Daily or Classic mode.");
-		const id = this.attemptsState.length + 1;
-		const finished = outcome === "correct" || id === 6;
-		this.attemptsState.unshift(this.createAttempt(id, outcome, guessed, false));
-		return { finished };
-	}
-	resolveTimed(outcome, guessed) {
-		if (!isTimedMode(this.modeState)) throw new Error("Timed attempts require Blitz, Survival, or Gauntlet mode.");
-		const gauntletMilestone = !!(outcome === "correct" && this.modeState === "gauntlet" && this.roundState && !this.attemptsState.some((attempt) => attempt.outcome === "correct" && attempt.trackNumber === this.roundState?.track.dailyNumber));
-		this.attemptsState.unshift(this.createAttempt(this.roundNumberState, outcome, guessed, gauntletMilestone));
-		this.roundNumberState += 1;
-		this.roundState = null;
-	}
-	finish(result) {
-		if (!this.modeState || result.mode !== this.modeState) throw new Error("Game result mode must match the active session mode.");
-		this.resultState = { ...result };
-	}
-	dismissResult() {
-		if (!this.resultState) return;
-		this.roundState = null;
-		this.resultState = null;
-	}
-	puzzleAttempt() {
-		if (!isPuzzleMode(this.modeState)) return 0;
-		return this.attemptsState[0]?.outcome === "correct" || this.attemptsState.length === 6 ? Math.max(0, this.attemptsState.length - 1) : this.attemptsState.length;
-	}
-	puzzleGuessedTrackIds() {
-		if (!isPuzzleMode(this.modeState)) return /* @__PURE__ */ new Set();
-		return new Set(this.attemptsState.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
-	}
-	createAttempt(id, outcome, guessed, gauntletMilestone) {
-		const attempt = {
-			id,
-			outcome,
-			trackNumber: outcome === "skip" ? null : guessed?.dailyNumber ?? null
-		};
-		return outcome === "correct" && gauntletMilestone ? {
-			...attempt,
-			gauntletMilestone: true
-		} : attempt;
-	}
-	copyRound(round) {
-		return {
-			...round,
-			track: { ...round.track }
-		};
-	}
-};
+function create(mode = null, attempts = []) {
+	return {
+		mode,
+		round: null,
+		roundNumber: 0,
+		attempts: attempts.map((attempt) => ({ ...attempt })),
+		result: null
+	};
+}
+function snapshot(state) {
+	const timedAttempts = isTimedMode(state.mode) ? state.attempts : [];
+	const correctAttempts = timedAttempts.filter((attempt) => attempt.outcome === "correct");
+	const gauntletFoundTrackIds = state.mode === "gauntlet" ? new Set(correctAttempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null)) : /* @__PURE__ */ new Set();
+	return {
+		mode: state.mode,
+		round: state.round ? copyRound(state.round) : null,
+		roundNumber: state.roundNumber,
+		attempt: puzzleAttempt(state),
+		guesses: timedAttempts.filter((attempt) => attempt.outcome !== "skip").length,
+		correct: correctAttempts.length,
+		attempts: state.attempts.map((attempt) => ({ ...attempt })),
+		guessedTrackIds: puzzleGuessedTrackIds(state),
+		gauntletFoundTrackIds,
+		result: state.result ? { ...state.result } : null
+	};
+}
+function setRound(state, round) {
+	return {
+		...state,
+		round: copyRound(round),
+		roundNumber: state.roundNumber || 1
+	};
+}
+function clearRound(state) {
+	return state.round ? {
+		...state,
+		round: null
+	} : state;
+}
+function resolvePuzzleAttempt(state, outcome, guessed) {
+	if (!isPuzzleMode(state.mode)) throw new Error("Puzzle attempts require Daily or Classic mode.");
+	const id = state.attempts.length + 1;
+	return {
+		state: {
+			...state,
+			attempts: [createAttempt(id, outcome, guessed, false), ...state.attempts]
+		},
+		finished: outcome === "correct" || id === 6
+	};
+}
+function resolveTimedAttempt(state, outcome, guessed) {
+	if (!isTimedMode(state.mode)) throw new Error("Timed attempts require Blitz, Survival, or Gauntlet mode.");
+	const gauntletMilestone = !!(outcome === "correct" && state.mode === "gauntlet" && state.round && !state.attempts.some((attempt) => attempt.outcome === "correct" && attempt.trackNumber === state.round?.track.dailyNumber));
+	return {
+		...state,
+		round: null,
+		roundNumber: state.roundNumber + 1,
+		attempts: [createAttempt(state.roundNumber, outcome, guessed, gauntletMilestone), ...state.attempts]
+	};
+}
+function finish(state, result) {
+	if (!state.mode || result.mode !== state.mode) throw new Error("Game result mode must match the active session mode.");
+	return {
+		...state,
+		result: { ...result }
+	};
+}
+function dismissResult(state) {
+	return state.result ? {
+		...state,
+		round: null,
+		result: null
+	} : state;
+}
+function puzzleAttempt(state) {
+	if (!isPuzzleMode(state.mode)) return 0;
+	return state.attempts[0]?.outcome === "correct" || state.attempts.length === 6 ? Math.max(0, state.attempts.length - 1) : state.attempts.length;
+}
+function puzzleGuessedTrackIds(state) {
+	if (!isPuzzleMode(state.mode)) return /* @__PURE__ */ new Set();
+	return new Set(state.attempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
+}
+function createAttempt(id, outcome, guessed, gauntletMilestone) {
+	const attempt = {
+		id,
+		outcome,
+		trackNumber: outcome === "skip" ? null : guessed?.dailyNumber ?? null
+	};
+	return outcome === "correct" && gauntletMilestone ? {
+		...attempt,
+		gauntletMilestone: true
+	} : attempt;
+}
+function copyRound(round) {
+	return {
+		...round,
+		track: { ...round.track }
+	};
+}
 function summarizeDiscovery(tracks, discoveries) {
 	const discovered = tracks.reduce((total, track) => total + Number(discoveries.has(track.dailyNumber)), 0);
 	const total = tracks.length;
@@ -727,7 +740,7 @@ var GameController = class {
 	openSpotifyLink;
 	copyToClipboard;
 	random;
-	session = new GameSession();
+	session = create();
 	catalogError = false;
 	catalogLoadingVisible = false;
 	tracks = [];
@@ -786,7 +799,7 @@ var GameController = class {
 		});
 	}
 	selectMode(mode) {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		if (this.activeOverlay || this.catalogError || state.mode === mode) return;
 		if (mode === "daily") {
 			const date = this.dailySchedule.start();
@@ -808,7 +821,7 @@ var GameController = class {
 		this.resolveAttempt("skip", null);
 	}
 	guess(dailyNumber) {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		const round = state.round;
 		if (!round || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay || state.guessedTrackIds.has(dailyNumber)) return;
 		const guessed = this.tracks.find((track) => track.dailyNumber === dailyNumber);
@@ -816,13 +829,13 @@ var GameController = class {
 		this.resolveAttempt(dailyNumber === round.track.dailyNumber ? "correct" : "wrong", guessed);
 	}
 	resultAction() {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		const mode = state.mode;
 		if (!mode) return;
 		if (state.result) {
 			if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
 				this.startDailyCountdown();
-				this.session.dismissResult();
+				this.session = dismissResult(this.session);
 				this.resultPersistenceFailed = false;
 				this.render();
 				this.view.closeResult("classic");
@@ -878,17 +891,17 @@ var GameController = class {
 		this.view.announce("ALL PROGRESS RESET.");
 	}
 	openSpotify() {
-		const result = this.session.snapshot.result;
+		const result = snapshot(this.session).result;
 		const spotify = result && (result.mode === "classic" || result.mode === "daily") ? result.spotify : "";
 		if (spotify) this.openSpotifyLink(spotify);
 	}
 	shareDaily() {
-		const result = this.session.snapshot.result;
+		const result = snapshot(this.session).result;
 		if (result?.mode !== "daily") return;
 		const sessionNumber = this.sessionNumber;
 		const dailyDate = this.dailyDate;
 		const stillCurrent = () => {
-			return this.sessionNumber === sessionNumber && this.dailyDate === dailyDate && this.session.snapshot.result?.mode === "daily";
+			return this.sessionNumber === sessionNumber && this.dailyDate === dailyDate && snapshot(this.session).result?.mode === "daily";
 		};
 		this.copyToClipboard(formatDailyShare(dailyDate, result)).then((copied) => {
 			if (!stillCurrent()) return;
@@ -906,18 +919,18 @@ var GameController = class {
 		if (spotify) this.openSpotifyLink(spotify);
 	}
 	handleDailyDateChanged(date) {
-		if (this.session.snapshot.mode !== "daily" || date === this.latestDailyDate) return;
+		if (snapshot(this.session).mode !== "daily" || date === this.latestDailyDate) return;
 		this.latestDailyDate = date;
 		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
-		if (!this.session.snapshot.result) {
+		if (!snapshot(this.session).result) {
 			this.dailyDate = date;
 			this.resetForMode("daily");
 		}
 	}
 	handlePageVisible() {
 		this.pageVisible = true;
-		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
+		if (snapshot(this.session).mode === "daily") this.dailySchedule.reconcile();
 		if (this.activeOverlay) return;
 		if (this.playback.ownedRound) this.playback.restore();
 		this.prime();
@@ -925,7 +938,7 @@ var GameController = class {
 	}
 	handlePageHidden() {
 		this.pageVisible = false;
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		if (!this.playback.ownedRound || state.result) return;
 		const wasRequested = this.playback.snapshot.playRequested;
 		this.clock.pause();
@@ -933,14 +946,14 @@ var GameController = class {
 		if (wasRequested) this.render();
 	}
 	onPending(round) {
-		this.session.setRound(round);
-		if (this.session.snapshot.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track);
+		this.session = setRound(this.session, round);
+		if (snapshot(this.session).mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track);
 		this.render();
 	}
 	onAudioPlaying(round, startedNewRound) {
 		if (startedNewRound) {
-			this.session.setRound(round);
-			const session = this.session.snapshot;
+			this.session = setRound(this.session, round);
+			const session = snapshot(this.session);
 			this.refreshClockViewContext(session, this.playback.snapshot);
 			if (!isTimedMode(session.mode)) this.clock.restart(snippetSeconds(session.attempt) * 1e3);
 			this.clock.start();
@@ -948,7 +961,7 @@ var GameController = class {
 			this.view.focusGuess();
 			return;
 		}
-		if (this.session.snapshot.round?.id === round.id) {
+		if (snapshot(this.session).round?.id === round.id) {
 			this.clock.start();
 			this.render();
 		}
@@ -965,7 +978,7 @@ var GameController = class {
 		this.render();
 	}
 	onAudioEnded(round) {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		if (state.round?.id !== round.id || this.playback.snapshot.activeRoundId !== round.id || state.result) return;
 		this.clock.pause();
 		if (isTimedMode(state.mode)) this.resolveAttempt("skip", null);
@@ -974,7 +987,7 @@ var GameController = class {
 	onAudioRecovery(kind) {
 		this.clock.pause();
 		if (kind === "automatic-replacement") {
-			this.session.clearRound();
+			this.session = clearRound(this.session);
 			this.view.announce(copy.selectedTrackReplacing);
 			return;
 		}
@@ -992,7 +1005,7 @@ var GameController = class {
 		this.persistenceFailureQueued = true;
 		queueMicrotask(() => {
 			this.persistenceFailureQueued = false;
-			if (this.session.snapshot.result) {
+			if (snapshot(this.session).result) {
 				this.render();
 				return;
 			}
@@ -1007,7 +1020,7 @@ var GameController = class {
 		}));
 	}
 	onClockExpired() {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		if (state.result || !state.round) return;
 		if (isTimedMode(state.mode)) this.finishGame(false);
 		else {
@@ -1016,8 +1029,8 @@ var GameController = class {
 		}
 	}
 	handlePlay(shortcut) {
-		if (this.session.snapshot.mode === "daily") this.dailySchedule.reconcile();
-		const state = this.session.snapshot;
+		if (snapshot(this.session).mode === "daily") this.dailySchedule.reconcile();
+		const state = snapshot(this.session);
 		const transport = this.playback.snapshot;
 		const requested = transport.playRequested;
 		const roundHeard = !!state.round && transport.activeRoundId === state.round.id;
@@ -1034,30 +1047,36 @@ var GameController = class {
 		const round = state.round;
 		if (!round || !roundHeard) return;
 		if (isTimedMode(state.mode)) {
-			if (requested) {
-				this.clock.pause();
-				this.playback.pause();
-				this.render();
-			} else {
-				this.playback.replay(round, false);
-				this.render();
-			}
-			this.view.focusGuess();
+			this.handleTimedPlay(round, requested);
 			return;
 		}
+		this.handlePuzzlePlay(round, state.attempt, requested, shortcut);
+	}
+	handleTimedPlay(round, requested) {
+		if (requested) {
+			this.clock.pause();
+			this.playback.pause();
+			this.render();
+		} else {
+			this.playback.replay(round, false);
+			this.render();
+		}
+		this.view.focusGuess();
+	}
+	handlePuzzlePlay(round, attempt, requested, shortcut) {
 		const stopping = requested && !shortcut;
 		const pausing = requested || shortcut;
 		const elapsed = pausing ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
 		if (stopping) this.playback.rewind(round);
 		else if (pausing) this.playback.pause();
-		if (!stopping) this.playback.replay(round, elapsed > 0 || !roundHeard);
+		if (!stopping) this.playback.replay(round, elapsed > 0);
 		this.view.resetTimeline();
-		this.clock.restart(snippetSeconds(state.attempt) * 1e3);
+		this.clock.restart(snippetSeconds(attempt) * 1e3);
 		this.render();
 		this.view.focusGuess();
 	}
 	resolveAttempt(outcome, guessed) {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		const round = state.round;
 		const mode = state.mode;
 		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
@@ -1070,30 +1089,37 @@ var GameController = class {
 		this.view.resetGuessInput();
 		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
 		if (isTimedMode(mode)) {
-			this.playback.pause();
-			this.session.resolveTimed(outcome, guessed);
-			const updated = this.session.snapshot;
-			this.refreshClockViewContext(updated, this.playback.snapshot);
-			const gauntletComplete = mode === "gauntlet" && outcome === "correct" && updated.gauntletFoundTrackIds.size === this.tracks.length;
-			this.view.announce(gauntletComplete ? "CORRECT. GAUNTLET COMPLETE." : outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
-			if (gauntletComplete) {
-				this.finishGame(true, round);
-				return;
-			}
-			if (modeAdjustsTime(mode)) {
-				const adjustment = survivalAdjustment(outcome);
-				this.view.flashTimeChange(adjustment / 1e3);
-				if (this.clock.adjust(adjustment).remainingMs <= 0) {
-					this.finishGame(false, round);
-					return;
-				}
-			}
-			this.playback.start();
+			this.resolveTimedAttempt(mode, round, outcome, guessed);
 			return;
 		}
+		this.resolvePuzzleAttempt(mode, round, outcome, guessed);
+	}
+	resolveTimedAttempt(mode, round, outcome, guessed) {
+		this.playback.pause();
+		this.session = resolveTimedAttempt(this.session, outcome, guessed);
+		const updated = snapshot(this.session);
+		this.refreshClockViewContext(updated, this.playback.snapshot);
+		const gauntletComplete = mode === "gauntlet" && outcome === "correct" && updated.gauntletFoundTrackIds.size === this.tracks.length;
+		this.view.announce(gauntletComplete ? "CORRECT. GAUNTLET COMPLETE." : outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
+		if (gauntletComplete) {
+			this.finishGame(true, round);
+			return;
+		}
+		if (modeAdjustsTime(mode)) {
+			const adjustment = survivalAdjustment(outcome);
+			this.view.flashTimeChange(adjustment / 1e3);
+			if (this.clock.adjust(adjustment).remainingMs <= 0) {
+				this.finishGame(false, round);
+				return;
+			}
+		}
+		this.playback.start();
+	}
+	resolvePuzzleAttempt(mode, round, outcome, guessed) {
 		const clockWasRunning = this.playback.snapshot.playRequested && this.clock.snapshot().running;
-		const resolution = this.session.resolvePuzzleAttempt(outcome, guessed);
-		const updated = this.session.snapshot;
+		const resolution = resolvePuzzleAttempt(this.session, outcome, guessed);
+		this.session = resolution.state;
+		const updated = snapshot(this.session);
 		this.refreshClockViewContext(updated, this.playback.snapshot);
 		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
@@ -1112,14 +1138,14 @@ var GameController = class {
 		this.view.focusGuess();
 	}
 	finishGame(won, fallbackRound = null) {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		const round = state.round ?? fallbackRound;
 		const mode = state.mode;
 		if (!round || !mode || state.result) return;
 		const clock = this.clock.pause();
 		this.playback.stop();
 		const result = this.progress.finish(finishedRun(mode, won, round, state, clock, this.dailyDate, this.tracks.length));
-		this.session.finish(result);
+		this.session = finish(this.session, result);
 		this.render();
 	}
 	resetForMode(mode) {
@@ -1129,7 +1155,7 @@ var GameController = class {
 		this.sessionNumber += 1;
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
 		const resumed = attempts.length;
-		this.session.reset(mode, attempts);
+		this.session = create(mode, attempts);
 		const milliseconds = modeRules[mode].initialTimeMs ?? snippetSeconds(resumed) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
@@ -1141,7 +1167,7 @@ var GameController = class {
 		this.sessionNumber += 1;
 		this.resultPersistenceFailed = false;
 		this.playback.reset();
-		this.session.reset(null);
+		this.session = create();
 		this.clock.configure(1e3);
 		this.render();
 	}
@@ -1165,18 +1191,18 @@ var GameController = class {
 		};
 	}
 	prime() {
-		const state = this.session.snapshot;
+		const state = snapshot(this.session);
 		if (!this.pageVisible || !state.mode || !this.tracks.length || this.activeOverlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate)) return;
 		this.playback.prime();
 	}
 	dailyCatalogPending() {
-		return dailyCatalogPending(this.session.snapshot.mode, this.tracks, this.dailyDate, this.progress.daily);
+		return dailyCatalogPending(snapshot(this.session).mode, this.tracks, this.dailyDate, this.progress.daily);
 	}
 	gauntletUnlocked() {
 		return summarizeDiscovery(this.tracks, this.progress.discoveries).complete;
 	}
 	render() {
-		const session = this.session.snapshot;
+		const session = snapshot(this.session);
 		const transport = this.playback.snapshot;
 		this.refreshClockViewContext(session, transport);
 		const viewModel = composeGameViewModel({
@@ -1207,14 +1233,14 @@ var GameController = class {
 	startDailyCountdown() {
 		this.dailySchedule.startCountdown((remainingMs) => {
 			this.dailyCountdownMs = remainingMs;
-			if (!this.activeOverlay && this.session.snapshot.mode === "daily") this.render();
+			if (!this.activeOverlay && snapshot(this.session).mode === "daily") this.render();
 		});
 	}
 	get activeOverlay() {
-		return this.session.snapshot.result ? "result" : this.discoveryOpen ? "discovery" : null;
+		return snapshot(this.session).result ? "result" : this.discoveryOpen ? "discovery" : null;
 	}
 	get appStatus() {
-		if (this.tracks.length) return this.session.snapshot.mode ? "ready" : "awaiting-mode";
+		if (this.tracks.length) return snapshot(this.session).mode ? "ready" : "awaiting-mode";
 		return this.catalogError ? "error" : "loading";
 	}
 };
@@ -3985,6 +4011,7 @@ var GameView = class {
 		if (sessionChanged || openingOverlay) this.resetTransientUi();
 		const transportVisible = state.transportText !== "";
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
+		this.root.classList.toggle("mode-selected", state.mode !== null);
 		this.root.classList.toggle("timed", isTimedMode(state.mode));
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
