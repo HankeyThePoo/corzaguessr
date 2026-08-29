@@ -2405,10 +2405,13 @@ var Playback = class {
 	}
 	start(manualRetry = false) {
 		if (!this.mode || !this.factory || this.suspended) return false;
+		const failurePolicy = modeRules[this.mode].failurePolicy;
 		if (manualRetry) {
+			const replaceFailedRound = this.current?.phase === "retry" && failurePolicy === "replace";
 			this.resetRecoveryCircuits();
 			this.manualRetryRequired = false;
-			if (this.current?.phase !== "retry") this.failedTrackIds.clear();
+			if (replaceFailedRound) this.current = null;
+			else if (this.current?.phase !== "retry") this.failedTrackIds.clear();
 		}
 		if (!manualRetry && this.manualRetryRequired) {
 			this.callbacks.onRecovery("manual-retry");
@@ -2546,7 +2549,7 @@ var Playback = class {
 			};
 			this.manualRetryRequired = false;
 			this.previousTrackId = this.mode === "daily" ? this.previousTrackId : round.track.dailyNumber;
-			if (this.mode === "gauntlet") this.failedTrackIds.clear();
+			if (this.mode && modeRules[this.mode].failurePolicy === "replace") this.failedTrackIds.clear();
 			this.resetCurrentRecovery();
 			this.clearLoading();
 			this.callbacks.onPlaying(round, true);
@@ -2605,7 +2608,7 @@ var Playback = class {
 				round
 			};
 			this.manualRetryRequired = true;
-			this.callbacks.onRecovery("selected-track-retry");
+			this.callbacks.onRecovery(failurePolicy === "replace" ? "manual-retry" : "selected-track-retry");
 			return;
 		}
 		if (!preserveIdentity) {
@@ -2624,7 +2627,7 @@ var Playback = class {
 			round
 		};
 		this.manualRetryRequired = true;
-		this.callbacks.onRecovery("selected-track-retry");
+		this.callbacks.onRecovery(failurePolicy === "replace" ? "manual-retry" : "selected-track-retry");
 	}
 	prefetch() {
 		if (!isTimedMode(this.mode) || !this.factory || this.suspended || this.next || this.nextRecoveryFailures > maximumNextRecoveries) return;
