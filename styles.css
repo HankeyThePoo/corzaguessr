@@ -45,7 +45,7 @@
   --tracking-heading: 0.1em;
   --opacity-muted: 70%;
   --duration-fast: 160ms;
-  --duration-survival-feedback: 680ms;
+  --duration-time-adjustment-feedback: 680ms;
   --duration-share-visible: 680ms;
   --duration-wiggle: 400ms;
   --duration-snippet: 400ms;
@@ -56,7 +56,7 @@
   --duration-timeline-reset: 300ms;
   --duration-timeline-rewind: 200ms;
   --duration-share-fade: 200ms;
-  --duration-survival-flash: 520ms;
+  --duration-time-adjustment-flash: 520ms;
   --slot-motion-duration: var(--duration-slot);
   --control-height: 46px;
   --play-size: 68px;
@@ -618,29 +618,29 @@
 }
 
 #corzaguessr .feedback {
-  --survival-flash-start: var(--danger-strong);
-  --survival-flash-end: var(--danger-surface);
-  --survival-flash-shadow: var(--danger-border);
+  --adjustment-flash-start: var(--danger-strong);
+  --adjustment-flash-end: var(--danger-surface);
+  --adjustment-flash-shadow: var(--danger-border);
   right: 0;
   z-index: 3;
   opacity: 0;
-  background: linear-gradient(90deg, var(--survival-flash-start), var(--survival-flash-end));
-  box-shadow: inset 0 0 18px var(--survival-flash-shadow);
+  background: linear-gradient(90deg, var(--adjustment-flash-start), var(--adjustment-flash-end));
+  box-shadow: inset 0 0 18px var(--adjustment-flash-shadow);
   pointer-events: none;
   transform: scaleX(0);
   transform-origin: left;
   will-change: opacity;
 }
 
-#corzaguessr .feedback.survival-penalty,
-#corzaguessr .feedback.survival-reward {
-  animation: corzaguessr-survival-flash var(--duration-survival-flash) cubic-bezier(0.16, 1, 0.3, 1);
+#corzaguessr .feedback.time-adjustment-penalty,
+#corzaguessr .feedback.time-adjustment-reward {
+  animation: corzaguessr-time-adjustment-flash var(--duration-time-adjustment-flash) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-#corzaguessr .feedback.survival-reward {
-  --survival-flash-start: var(--reward-gold-strong);
-  --survival-flash-end: var(--reward-gold-soft);
-  --survival-flash-shadow: var(--reward-gold-shadow);
+#corzaguessr .feedback.time-adjustment-reward {
+  --adjustment-flash-start: var(--reward-gold-strong);
+  --adjustment-flash-end: var(--reward-gold-soft);
+  --adjustment-flash-shadow: var(--reward-gold-shadow);
 }
 
 #corzaguessr .time-change {
@@ -662,11 +662,11 @@
   transform: translateY(0) scale(0.85);
 }
 
-#corzaguessr .time-change.survival-change span {
-  animation: corzaguessr-survival-hit var(--duration-survival-feedback) cubic-bezier(0.16, 1, 0.3, 1);
+#corzaguessr .time-change.time-adjustment-active span {
+  animation: corzaguessr-time-adjustment-hit var(--duration-time-adjustment-feedback) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-#corzaguessr .time-change.survival-change-static span {
+#corzaguessr .time-change.time-adjustment-static span {
   opacity: 1;
   transform: none;
 }
@@ -699,7 +699,7 @@
   display: none;
 }
 
-@keyframes corzaguessr-survival-flash {
+@keyframes corzaguessr-time-adjustment-flash {
   0% {
     opacity: 0;
   }
@@ -717,7 +717,7 @@
   }
 }
 
-@keyframes corzaguessr-survival-hit {
+@keyframes corzaguessr-time-adjustment-hit {
   0% {
     opacity: 0;
     transform: translateY(12px) scale(0.85);
@@ -1115,12 +1115,12 @@
 
 #corzaguessr .progress-bests {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
 #corzaguessr .progress-bests.has-gauntlet-best {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 #corzaguessr .progress-best {
@@ -1539,15 +1539,11 @@
   }
 
   #corzaguessr .progress-bests.has-gauntlet-best {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #corzaguessr .progress-bests.has-gauntlet-best .progress-best {
-    grid-column: span 2;
-  }
-
-  #corzaguessr .progress-bests.has-gauntlet-best .progress-best:nth-child(4) {
-    grid-column: 2 / span 2;
+    grid-column: auto;
   }
 
   #corzaguessr .progress-best-gauntlet {
@@ -1653,63 +1649,7 @@
 
 @media (max-width: 480px) {
   #corzaguessr .mode-navigation {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: min(100%, 280px);
-    gap: 0;
-    margin: 0 auto;
-  }
-
-  #corzaguessr .mode {
-    width: 100%;
-    min-width: 0;
-    padding: 0 10px;
-  }
-
-  #corzaguessr .mode-navigation .mode {
-    border-radius: 0;
-    box-shadow:
-      inset calc(-1 * var(--line-width)) 0 var(--line),
-      inset 0 calc(-1 * var(--line-width)) var(--line);
-  }
-
-  #corzaguessr .mode-navigation .mode:first-child {
-    border-radius: var(--radius) 0 0;
-  }
-
-  #corzaguessr .mode-navigation .mode:nth-child(2) {
-    border-radius: 0 var(--radius) 0 0;
-    box-shadow: inset 0 calc(-1 * var(--line-width)) var(--line);
-  }
-
-  #corzaguessr .mode-navigation .mode:nth-child(n + 3) {
-    box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
-  }
-
-  #corzaguessr .mode-navigation .mode:nth-child(3) {
-    border-radius: 0 0 0 var(--radius);
-  }
-
-  #corzaguessr .mode-navigation .mode:last-child {
-    border-radius: 0 0 var(--radius);
-    box-shadow: none;
-  }
-
-  #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
-    box-shadow: none;
-  }
-
-  #corzaguessr .mode-navigation:has(.mode:nth-child(2)[aria-pressed="true"]) .mode:first-child {
-    box-shadow: inset 0 calc(-1 * var(--line-width)) var(--line);
-  }
-
-  #corzaguessr .mode-navigation:has(.mode:nth-child(3)[aria-pressed="true"]) .mode:first-child {
-    box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
-  }
-
-  #corzaguessr .mode-navigation:has(.mode:nth-child(4)[aria-pressed="true"]) .mode:nth-child(2),
-  #corzaguessr .mode-navigation:has(.mode:nth-child(4)[aria-pressed="true"]) .mode:nth-child(3) {
-    box-shadow: none;
   }
 
   #corzaguessr .discovery-button {
