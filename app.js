@@ -673,6 +673,7 @@ function composeGameViewModel(input) {
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
 		discoveries: input.discoveries,
+		suggestionTracks: session.mode === "daily" ? input.tracks.filter((track) => isReleasedBy(track, input.dailyDate)) : input.tracks,
 		tracks: input.tracks,
 		overlay: input.overlay
 	};
@@ -1115,7 +1116,7 @@ var GameController = class {
 		const resolution = resolvePuzzleAttempt(this.session, outcome, guessed);
 		this.session = resolution.state;
 		const updated = this.session;
-		this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
+		if (!(resolution.finished && outcome === "skip")) this.view.announce(outcome === "correct" ? "CORRECT." : outcome === "wrong" ? "INCORRECT. TRY AGAIN." : "SKIPPED. MORE TIME ADDED.");
 		if (resolution.finished) {
 			this.finishGame();
 			return;
@@ -4028,7 +4029,7 @@ var GameView = class {
 		this.elements.snippet.style.width = `${state.snippetSeconds / snippetDurations.at(-1) * 100}%`;
 		this.renderRules();
 		this.attempts.render(state.slots, sessionKey);
-		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds);
+		this.autocomplete.setDependencies(state.suggestionTracks, state.unavailableGuessIds);
 		if (state.overlay === "discovery") {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
