@@ -1,38 +1,39 @@
 #corzaguessr {
   --off-white: #F7F7F7;
   --near-black: #101010;
-  --gradient: linear-gradient(135deg, #49f1fa, #7bb0f7 50%, #8d64f5);
+  --gradient-start: #49f1fa;
+  --gradient-middle: #7bb0f7;
+  --gradient-end: #8d64f5;
+  --correct: #10b981;
+  --wrong: #ef4444;
+  --reward: #ffda5e;
+  --mute: var(--wrong);
+  --gradient: linear-gradient(
+    135deg,
+    var(--gradient-start),
+    var(--gradient-middle) 50%,
+    var(--gradient-end)
+  );
   --gradient-background-soft: linear-gradient(
     135deg,
-    rgb(73 241 250 / 12%),
-    rgb(123 176 247 / 12%) 50%,
-    rgb(141 100 245 / 12%)
+    rgb(from var(--gradient-start) r g b / 12%),
+    rgb(from var(--gradient-middle) r g b / 12%) 50%,
+    rgb(from var(--gradient-end) r g b / 12%)
   );
-  --surface-glass: rgb(247 247 247 / 2%);
-  --surface-interactive: rgb(247 247 247 / 20%);
-  --surface-dark: rgb(16 16 16 / 40%);
-  --line: rgb(247 247 247 / 20%);
+  --surface-glass: rgb(from var(--off-white) r g b / 2%);
+  --surface-interactive: rgb(from var(--off-white) r g b / 20%);
+  --surface-dark: rgb(from var(--near-black) r g b / 40%);
+  --line: rgb(from var(--off-white) r g b / 20%);
   --line-width: 1px;
   --gradient-border-width: 2px;
-  --scrim: rgb(16 16 16 / 50%);
-  --artwork-scrim: rgb(16 16 16 / 30%);
-  --control-glow: rgb(247 247 247 / 15%);
+  --scrim: rgb(from var(--near-black) r g b / 50%);
+  --artwork-scrim: rgb(from var(--near-black) r g b / 30%);
+  --control-glow: rgb(from var(--off-white) r g b / 15%);
   --glass-blur: 20px;
-  --shadow-surface: 0 6px 18px rgb(16 16 16 / 30%);
-  --shadow-text: 0 2px 8px rgb(16 16 16 / 90%);
-  --success-border: rgb(16 185 129 / 50%);
-  --success-surface: rgb(16 185 129 / 10%);
-  --danger-strong: rgb(239 68 68 / 90%);
-  --danger-border: rgb(239 68 68 / 50%);
-  --danger-surface: rgb(239 68 68 / 10%);
-  --reward-gold-strong: rgb(255 218 94 / 90%);
-  --reward-gold-soft: rgb(255 218 94 / 25%);
-  --reward-gold-shadow: rgb(255 218 94 / 50%);
+  --shadow-surface: 0 6px 18px rgb(from var(--near-black) r g b / 30%);
+  --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
   --radius: 8px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
+  --space: 4px;
   --text-display: 2rem;
   --text-clock: 1.35rem;
   --text-feedback: 1.35rem;
@@ -40,6 +41,7 @@
   --text-small: 0.8rem;
   --text-label: 0.75rem;
   --text-meta: 0.6rem;
+  --line-height: 20px;
   --tracking-control: 0.04em;
   --tracking-label: 0.08em;
   --tracking-heading: 0.1em;
@@ -58,10 +60,13 @@
   --duration-share-fade: 200ms;
   --duration-time-adjustment-flash: 520ms;
   --control-height: 46px;
+  --button-width: 128px;
   --play-size: 68px;
+  --time-width: 3.2ch;
+  --modal-max-height: 650px;
   --volume-height: 30px;
   color: var(--off-white);
-  padding: var(--space-4) var(--space-3) 3rem;
+  padding: calc(var(--space) * 4) calc(var(--space) * 3) 3rem;
   font-family: "Monument Extended", Inter, system-ui, sans-serif;
   scrollbar-width: none;
 }
@@ -79,13 +84,13 @@
 
 #corzaguessr .wrap {
   display: grid;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
   max-width: 1100px;
   margin: auto;
 }
 
 #corzaguessr h1 {
-  margin: var(--space-4) 0 0;
+  margin: calc(var(--space) * 4) 0 0;
   text-align: center;
   font-size: var(--text-display);
   line-height: 1;
@@ -130,7 +135,7 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--duration-fast) ease;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(var(--near-black) 0 0) content-box, linear-gradient(var(--near-black) 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
@@ -163,7 +168,7 @@
 #corzaguessr .actions {
   display: flex;
   justify-content: center;
-  gap: var(--space-3);
+  gap: calc(var(--space) * 3);
 }
 
 #corzaguessr .glass {
@@ -187,7 +192,7 @@
 
 #corzaguessr .game-surface {
   display: grid;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
 }
 
 #corzaguessr .mode-navigation {
@@ -198,14 +203,14 @@
 }
 
 #corzaguessr .card {
-  padding: var(--space-4);
+  padding: calc(var(--space) * 4);
   border-radius: var(--radius);
 }
 
 #corzaguessr .stack,
 #corzaguessr .board {
   display: grid;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
 }
 
 #corzaguessr .stack {
@@ -215,8 +220,8 @@
 
 #corzaguessr .slots {
   display: grid;
-  gap: var(--space-4);
-  padding-top: var(--space-4);
+  gap: calc(var(--space) * 4);
+  padding-top: calc(var(--space) * 4);
 }
 
 #corzaguessr .attempt-area {
@@ -234,13 +239,13 @@
 }
 
 #corzaguessr .guess-lane {
-  --attempt-action-width: min(128px, 34%);
-  --attempt-copy-offset: calc(var(--attempt-action-width) + var(--space-4));
-  --attempt-copy-shift: calc(min(64px, 17%) + var(--space-2));
+  --attempt-action-width: min(var(--button-width), 34%);
+  --attempt-copy-offset: calc(var(--attempt-action-width) + calc(var(--space) * 4));
+  --attempt-copy-shift: calc(min(64px, 17%) + calc(var(--space) * 2));
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--attempt-action-width);
   align-items: center;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
 }
 
 #corzaguessr .guess-lane .auto {
@@ -261,10 +266,10 @@
 
 #corzaguessr .controls {
   display: grid;
-  grid-template-columns: 3.2ch auto 3.2ch;
+  grid-template-columns: var(--time-width) auto var(--time-width);
   align-items: center;
   justify-content: center;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
   font-size: var(--text-clock);
   font-weight: 800;
 }
@@ -281,7 +286,7 @@
 
 #corzaguessr .time span {
   display: inline-block;
-  width: 3.2ch;
+  width: var(--time-width);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -311,11 +316,11 @@
 
 #corzaguessr .button,
 #corzaguessr .mode {
-  padding: 0 var(--space-4);
+  padding: 0 calc(var(--space) * 4);
 }
 
 #corzaguessr .button {
-  width: 128px;
+  width: var(--button-width);
 }
 
 #corzaguessr .result-secondary-label {
@@ -334,7 +339,7 @@
 #corzaguessr .discovery-button {
   width: min(180px, 25%);
   margin: 0 auto;
-  padding: 0 var(--space-3);
+  padding: 0 calc(var(--space) * 3);
 }
 
 #corzaguessr .discovery-button[aria-expanded="true"]::before {
@@ -439,7 +444,7 @@
   height: 100%;
   align-items: end;
   justify-content: space-between;
-  padding: 3px var(--space-1);
+  padding: 3px var(--space);
   pointer-events: none;
 }
 
@@ -468,7 +473,7 @@
 }
 
 #corzaguessr .volume-control.muted .volume-bar:first-child {
-  background: var(--danger-border);
+  background: rgb(from var(--mute) r g b / 50%);
 }
 
 #corzaguessr .volume-range {
@@ -551,7 +556,7 @@
   transform-origin: left;
   transition: transform var(--duration-timeline-reset) ease-out;
   will-change: transform;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(var(--near-black) 0 0) content-box, linear-gradient(var(--near-black) 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
@@ -630,14 +635,12 @@
 }
 
 #corzaguessr .feedback {
-  --adjustment-flash-start: var(--danger-strong);
-  --adjustment-flash-end: var(--danger-surface);
-  --adjustment-flash-shadow: var(--danger-border);
+  --adjustment-flash-start: rgb(from var(--wrong) r g b / 90%);
+  --adjustment-flash-end: rgb(from var(--wrong) r g b / 10%);
   right: 0;
   z-index: 3;
   opacity: 0;
   background: linear-gradient(90deg, var(--adjustment-flash-start), var(--adjustment-flash-end));
-  box-shadow: inset 0 0 18px var(--adjustment-flash-shadow);
   pointer-events: none;
   transform: scaleX(0);
   transform-origin: left;
@@ -650,9 +653,8 @@
 }
 
 #corzaguessr .feedback.time-adjustment-reward {
-  --adjustment-flash-start: var(--reward-gold-strong);
-  --adjustment-flash-end: var(--reward-gold-soft);
-  --adjustment-flash-shadow: var(--reward-gold-shadow);
+  --adjustment-flash-start: rgb(from var(--reward) r g b / 90%);
+  --adjustment-flash-end: rgb(from var(--reward) r g b / 25%);
 }
 
 #corzaguessr .time-change {
@@ -744,7 +746,7 @@
   z-index: 3;
   width: 3px;
   background: var(--gradient);
-  box-shadow: 0 0 8px rgb(123 176 247 / 50%);
+  box-shadow: 0 0 8px rgb(from var(--gradient-middle) r g b / 50%);
   pointer-events: none;
   translate: -50% 0;
 }
@@ -826,11 +828,11 @@
 #corzaguessr input {
   width: 100%;
   height: var(--control-height);
-  padding: var(--space-3);
+  padding: calc(var(--space) * 3);
   outline: 0;
   color: var(--off-white);
   font: inherit;
-  line-height: 20px;
+  line-height: var(--line-height);
   text-align: center;
   text-indent: 0;
   text-transform: uppercase;
@@ -851,10 +853,10 @@
   inset: 0;
   align-items: center;
   overflow: hidden;
-  padding: var(--space-3);
+  padding: calc(var(--space) * 3);
   color: var(--off-white);
   font: inherit;
-  line-height: 20px;
+  line-height: var(--line-height);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -917,7 +919,7 @@
 
 #corzaguessr .suggest button {
   width: 100%;
-  padding: var(--space-3);
+  padding: calc(var(--space) * 3);
   background: none;
   color: var(--off-white);
   text-align: center;
@@ -940,9 +942,9 @@
   align-items: center;
   justify-content: center;
   min-height: var(--control-height);
-  padding: var(--space-3);
+  padding: calc(var(--space) * 3);
   overflow: hidden;
-  line-height: 20px;
+  line-height: var(--line-height);
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
@@ -959,8 +961,8 @@
 }
 
 #corzaguessr .slot.correct {
-  border-color: var(--success-border);
-  background: var(--success-surface);
+  border-color: rgb(from var(--correct) r g b / 50%);
+  background: rgb(from var(--correct) r g b / 10%);
 }
 
 #corzaguessr .slot.correct.gauntlet-milestone {
@@ -977,14 +979,14 @@
   background: var(--gradient);
   opacity: 0.5;
   pointer-events: none;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(var(--near-black) 0 0) content-box, linear-gradient(var(--near-black) 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
 
 #corzaguessr .slot.wrong {
-  border-color: var(--danger-border);
-  background: var(--danger-surface);
+  border-color: rgb(from var(--wrong) r g b / 50%);
+  background: rgb(from var(--wrong) r g b / 10%);
 }
 
 #corzaguessr .slot.wiggle {
@@ -1002,7 +1004,7 @@
   inset: 0;
   align-items: flex-start;
   justify-content: center;
-  padding: var(--space-4);
+  padding: calc(var(--space) * 4);
   border-radius: inherit;
   background: transparent;
   pointer-events: none;
@@ -1035,10 +1037,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
   width: 100%;
-  max-height: min(82dvh, 650px);
-  padding: var(--space-4);
+  max-height: min(82dvh, var(--modal-max-height));
+  padding: calc(var(--space) * 4);
   overflow-y: auto;
   text-align: center;
   text-transform: uppercase;
@@ -1055,9 +1057,9 @@
 
 #corzaguessr .result-module {
   display: grid;
-  gap: var(--space-1);
-  padding-top: var(--space-4);
-  margin-top: var(--space-4);
+  gap: var(--space);
+  padding-top: calc(var(--space) * 4);
+  margin-top: calc(var(--space) * 4);
   border-top: var(--line-width) solid var(--line);
 }
 
@@ -1115,18 +1117,18 @@
 #corzaguessr .discovery-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
   height: auto;
-  max-height: min(78dvh, 650px);
-  padding: var(--space-4);
+  max-height: min(78dvh, var(--modal-max-height));
+  padding: calc(var(--space) * 4);
   overflow: hidden;
 }
 
 #corzaguessr .progress-summary {
   display: grid;
-  gap: var(--space-4);
+  gap: calc(var(--space) * 4);
   margin-top: 0;
-  padding-top: var(--space-4);
+  padding-top: calc(var(--space) * 4);
   border-top: var(--line-width) solid var(--line);
 }
 
@@ -1146,17 +1148,17 @@
 
 #corzaguessr .progress-bests {
   display: flex;
-  gap: var(--space-2);
+  gap: calc(var(--space) * 2);
 }
 
 #corzaguessr .progress-best {
   display: grid;
   flex: 1 1 0;
   align-content: center;
-  gap: var(--space-1);
+  gap: var(--space);
   min-width: 0;
   min-height: 74px;
-  padding: var(--space-2);
+  padding: calc(var(--space) * 2);
   overflow-wrap: anywhere;
   text-align: center;
   text-transform: uppercase;
@@ -1182,7 +1184,7 @@
 
 #corzaguessr .discovery-title {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space);
   margin: 0;
   text-align: center;
   font-size: var(--text-body);
@@ -1206,15 +1208,15 @@
 
 #corzaguessr .discovery-panel > .actions {
   margin-top: 0;
-  padding-top: var(--space-4);
+  padding-top: calc(var(--space) * 4);
   border-top: var(--line-width) solid var(--line);
 }
 
 #corzaguessr .reset-confirmation {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space);
   margin-top: 0;
-  padding-top: var(--space-4);
+  padding-top: calc(var(--space) * 4);
   border-top: var(--line-width) solid var(--line);
   text-align: center;
   text-transform: uppercase;
@@ -1236,12 +1238,12 @@
 }
 
 #corzaguessr .reset-confirmation .actions {
-  margin-top: var(--space-3);
+  margin-top: calc(var(--space) * 3);
 }
 
 #corzaguessr .discovery-items {
   --discovery-row-height: 42px;
-  --discovery-row-gap: var(--space-2);
+  --discovery-row-gap: calc(var(--space) * 2);
   display: grid;
   grid-auto-rows: max-content;
   align-content: start;
@@ -1268,16 +1270,16 @@
   align-items: center;
   justify-content: center;
   min-height: var(--discovery-row-height);
-  padding: var(--space-2) var(--space-3);
+  padding: calc(var(--space) * 2) calc(var(--space) * 3);
   font-size: var(--text-body);
-  line-height: 20px;
+  line-height: var(--line-height);
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
 
 #corzaguessr .discovery-item-known {
-  --discovery-action-width: 128px;
+  --discovery-action-width: var(--button-width);
   position: relative;
   isolation: isolate;
   display: block;
@@ -1342,7 +1344,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: calc(var(--space) * 2) calc(var(--space) * 3);
   overflow: hidden;
   border-radius: inherit;
   background: transparent;
@@ -1359,7 +1361,7 @@
 
 #corzaguessr .discovery-item-compact {
   display: block;
-  line-height: 20px;
+  line-height: var(--line-height);
   opacity: 1;
   transition: opacity var(--duration-fast) ease;
 }
@@ -1370,8 +1372,8 @@
   inset: 0;
   display: grid;
   grid-template-columns: var(--discovery-cover-size) minmax(0, 1fr);
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: calc(var(--space) * 3);
+  padding: calc(var(--space) * 3);
   opacity: 0;
   visibility: hidden;
   text-align: left;
@@ -1422,8 +1424,8 @@
 #corzaguessr .discovery-track-metadata {
   display: flex;
   min-width: 0;
-  padding: var(--space-1)
-    calc(var(--discovery-action-width) + var(--space-4)) var(--space-1) 0;
+  padding: var(--space)
+    calc(var(--discovery-action-width) + calc(var(--space) * 4)) var(--space) 0;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
@@ -1442,7 +1444,7 @@
 }
 
 #corzaguessr .discovery-artist {
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--space);
   font-size: var(--text-label);
   font-weight: 800;
   letter-spacing: var(--tracking-label);
@@ -1456,7 +1458,7 @@
 }
 
 #corzaguessr .discovery-release-date {
-  margin-top: var(--space-2);
+  margin-top: calc(var(--space) * 2);
   font-size: var(--text-meta);
   opacity: var(--opacity-muted);
 }
@@ -1464,8 +1466,8 @@
 #corzaguessr .discovery-track-spotify {
   position: absolute;
   z-index: 2;
-  right: var(--space-3);
-  bottom: var(--space-3);
+  right: calc(var(--space) * 3);
+  bottom: calc(var(--space) * 3);
   width: var(--discovery-action-width);
   opacity: 0;
   pointer-events: none;
@@ -1482,7 +1484,7 @@
 }
 
 #corzaguessr .discovery-item-new {
-  gap: var(--space-2);
+  gap: calc(var(--space) * 2);
 }
 
 #corzaguessr .discovery-track {
@@ -1524,6 +1526,11 @@
 }
 
 @media (max-width: 600px) {
+  #corzaguessr.discovery-open .header-action {
+    position: relative;
+    z-index: 3;
+  }
+
   #corzaguessr .ruleset.scroll .ruleset-track {
     justify-content: flex-start;
     min-width: max-content;
@@ -1539,7 +1546,7 @@
   #corzaguessr .discovery-modal {
     position: fixed;
     align-items: center;
-    padding: var(--space-2);
+    padding: calc(var(--space) * 2);
     border-radius: 0;
   }
 
@@ -1555,14 +1562,14 @@
   #corzaguessr .progress-bests {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--space-1);
+    gap: var(--space);
   }
 
   #corzaguessr .progress-best {
     grid-column: span 2;
     gap: 0;
     min-height: 50px;
-    padding: var(--space-1);
+    padding: var(--space);
   }
 
   #corzaguessr .progress-best:last-child:nth-child(odd) {
@@ -1581,7 +1588,7 @@
   }
 
   #corzaguessr .discovery-item-known.expanded {
-    padding-bottom: var(--space-3);
+    padding-bottom: calc(var(--space) * 3);
   }
 
   #corzaguessr .discovery-item-toggle {
@@ -1630,7 +1637,7 @@
     display: none;
     right: auto;
     bottom: auto;
-    margin: 0 var(--space-3) 0 auto;
+    margin: 0 calc(var(--space) * 3) 0 auto;
     transition: filter var(--duration-fast) ease;
   }
 
@@ -1658,7 +1665,7 @@
 
   #corzaguessr .discovery-track-details {
     --discovery-cover-size: 104px;
-    gap: var(--space-2);
+    gap: calc(var(--space) * 2);
   }
 
   #corzaguessr .discovery-cover {
@@ -1671,11 +1678,11 @@
   #corzaguessr {
     --play-size: 64px;
     --volume-height: 28px;
-    padding-inline: var(--space-2);
+    padding-inline: calc(var(--space) * 2);
   }
 
   #corzaguessr .controls {
-    gap: var(--space-2);
+    gap: calc(var(--space) * 2);
   }
 
   #corzaguessr .volume-bars {
@@ -1697,7 +1704,7 @@
 
   #corzaguessr .actions {
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: calc(var(--space) * 2);
   }
 
   #corzaguessr .actions .button {
