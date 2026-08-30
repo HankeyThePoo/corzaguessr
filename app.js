@@ -97,6 +97,7 @@ var snippetDurations = [
 	16,
 	32
 ];
+var seekSnippetSeconds = snippetDurations[3];
 var modeRules = {
 	classic: {
 		initialTimeMs: null,
@@ -116,6 +117,12 @@ var modeRules = {
 		gameplay: "blitz",
 		failurePolicy: "replace"
 	},
+	seek: {
+		initialTimeMs: null,
+		description: "PLACE THE EIGHT-SECOND SNIPPET ON THE SONG TIMELINE",
+		gameplay: "seek",
+		failurePolicy: "replace"
+	},
 	gauntlet: {
 		initialTimeMs: 3e4,
 		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
@@ -124,22 +131,34 @@ var modeRules = {
 	}
 };
 function isTimedMode(mode) {
-	return mode !== null && modeRules[mode].gameplay !== "puzzle";
+	return mode !== null && (modeRules[mode].gameplay === "blitz" || modeRules[mode].gameplay === "gauntlet");
 }
 function isPuzzleMode(mode) {
 	return mode !== null && modeRules[mode].gameplay === "puzzle";
 }
+function isSeekMode(mode) {
+	return mode === "seek";
+}
+function prefetchesRounds(mode) {
+	return mode !== null && modeRules[mode].gameplay !== "puzzle";
+}
 function clockDisplayForMode(mode) {
 	const gameplay = modeRules[mode].gameplay;
-	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : "elapsed";
+	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : gameplay === "gauntlet" ? "elapsed" : "seek";
 }
 function snippetSeconds(attempt) {
 	return snippetDurations[Math.max(0, Math.min(snippetDurations.length - 1, attempt))];
 }
 function skipLabel(mode, attempt) {
+	if (mode === "seek") return "GUESS";
 	if (isTimedMode(mode)) return "SKIP";
 	if (attempt >= snippetDurations.length - 1) return "GIVE UP";
 	return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
+}
+function seekPoints(guessedSecond, actualSecond, duration) {
+	if (!Number.isFinite(duration) || duration <= 0) return 0;
+	const relativeError = Math.min(1, Math.abs(guessedSecond - actualSecond) / duration);
+	return Math.round(1e3 * (1 - relativeError) ** 2);
 }
 function gauntletTimeAdjustment(outcome) {
 	return outcome === "correct" ? 3e3 : outcome === "wrong" ? -1e3 : -2e3;
@@ -215,12 +234,28 @@ function updateGauntletBest(bests, won, elapsedMs, trackCount) {
 		newPersonalBest: true
 	};
 }
+function updateSeekBest(bests, score) {
+	if (score <= bests.seek.score) return {
+		changed: false,
+		newPersonalBest: false
+	};
+	bests.seek = { score };
+	return {
+		changed: true,
+		newPersonalBest: true
+	};
+}
 function createSession(mode = null, attempts = []) {
 	return {
 		mode,
 		round: null,
 		started: false,
 		attempts: attempts.map((attempt) => ({ ...attempt })),
+		seek: mode === "seek" ? {
+			phase: "selecting",
+			selectedSecond: null,
+			attempts: []
+		} : null,
 		result: null
 	};
 }
@@ -232,10 +267,71 @@ function setRound(state, round) {
 	};
 }
 function clearRound(state) {
-	return state.round ? {
+	if (!state.round) return state;
+	return {
 		...state,
-		round: null
-	} : state;
+		round: null,
+		seek: state.seek ? {
+			...state.seek,
+			phase: "selecting",
+			selectedSecond: null
+		} : null
+	};
+}
+function selectSeekSecond(state, second) {
+	if (state.mode !== "seek" || !state.seek || !state.round || state.seek.phase !== "selecting") return state;
+	const selectedSecond = Math.max(0, Math.min(Math.floor(state.round.track.duration), Math.round(second)));
+	return {
+		...state,
+		seek: {
+			...state.seek,
+			selectedSecond
+		}
+	};
+}
+function resolveSeekAttempt(state) {
+	if (state.mode !== "seek" || !state.seek || !state.round || state.seek.phase !== "selecting" || state.seek.selectedSecond === null) throw new Error("Seek attempts require a selected position and active round.");
+	const guessedSecond = state.seek.selectedSecond;
+	const actualSecond = Math.round(state.round.clipStart);
+	return {
+		...state,
+		seek: {
+			phase: "revealing",
+			selectedSecond: null,
+			attempts: [{
+				id: state.seek.attempts.length + 1,
+				trackNumber: state.round.track.dailyNumber,
+				guessedSecond,
+				actualSecond,
+				points: seekPoints(guessedSecond, actualSecond, state.round.track.duration)
+			}, ...state.seek.attempts]
+		}
+	};
+}
+function completeSeekReveal(state) {
+	if (!state.seek || state.seek.phase !== "revealing") return state;
+	return {
+		...state,
+		seek: {
+			...state.seek,
+			phase: "revealed"
+		}
+	};
+}
+function advanceSeekRound(state) {
+	if (!state.seek || state.seek.phase !== "revealed") return state;
+	return {
+		...state,
+		round: null,
+		seek: {
+			...state.seek,
+			phase: "selecting",
+			selectedSecond: null
+		}
+	};
+}
+function seekUsedTrackIds(state) {
+	return new Set(state.seek?.attempts.map((attempt) => attempt.trackNumber) ?? []);
 }
 function resolvePuzzleAttempt(state, outcome, guessed) {
 	if (!isPuzzleMode(state.mode)) throw new Error("Puzzle attempts require Daily or Classic mode.");
@@ -400,8 +496,8 @@ function dailyClipStart(track, date) {
 	const maximum = Math.max(0, Math.floor(track.duration - clip));
 	return stableHash(`corzaguessr-daily-clip:${date}:${track.dailyNumber}`) % (maximum + 1);
 }
-function randomClipStart(track, timed, random = Math.random) {
-	const clip = Math.min(timed ? 60 : snippetDurations.at(-1), track.duration);
+function randomClipStart(track, clipSeconds, random = Math.random) {
+	const clip = Math.min(clipSeconds, track.duration);
 	const maximum = Math.max(0, Math.floor(track.duration - clip));
 	return Math.floor(clampRandom(random()) * (maximum + 1));
 }
@@ -449,6 +545,7 @@ function emptyPersonalBests() {
 			score: 0,
 			accuracy: null
 		},
+		seek: { score: 0 },
 		gauntlet: {
 			timeMs: 0,
 			trackCount: 0
@@ -471,6 +568,11 @@ function composeClockViewModel(input) {
 	if (!mode) return {
 		currentText: "0:00",
 		endText: "0:01",
+		progress: 0
+	};
+	if (clockDisplayForMode(mode) === "seek") return {
+		currentText: "?:??",
+		endText: "?:??",
 		progress: 0
 	};
 	if (isTimedMode(mode)) {
@@ -529,7 +631,7 @@ function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	const timedOut = result.mode === "blitz" || result.mode === "gauntlet" && !result.won;
 	const puzzleMessage = puzzleResultMessage(result, attempts);
 	return {
-		titleHtml: result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${puzzleMessage}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
+		titleHtml: result.mode === "seek" ? "&#10022; <span class=\"end\">SEEK COMPLETE</span> &#10022;" : result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${puzzleMessage}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
 		primaryLabel: daily ? "CLOSE" : "NEW GAME",
 		rows,
 		highlightPersonalBest: !daily && result.newPersonalBest,
@@ -560,11 +662,12 @@ function resultRows(result) {
 		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
 		return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 	}
+	if (result.mode === "seek") return [["RUN:", `${result.score}/5000 POINTS`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `${result.bestScore}/5000 POINTS`]];
 	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
 	return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 }
 function resultAnnouncement(result, rows = resultRows(result), attempts = []) {
-	return `${result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : `${puzzleResultMessage(result, attempts)}.`} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+	return `${result.mode === "seek" ? "SEEK COMPLETE." : result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : `${puzzleResultMessage(result, attempts)}.`} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
 }
 function puzzleResultMessage(result, attempts) {
 	if (result.mode !== "daily" && result.mode !== "classic") return "";
@@ -587,7 +690,7 @@ function acceptsAttempt(session, transport) {
 	return !!session.round && !session.result && !transport.retryNeeded && transport.activeRoundId === session.round.id;
 }
 function guessInputVisible(session, transport) {
-	return !!session.round && !session.result && !transport.retryNeeded;
+	return !isSeekMode(session.mode) && !!session.round && !session.result && !transport.retryNeeded;
 }
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
@@ -604,6 +707,14 @@ function rulesText(input) {
 	if (input.appStatus === "error") return copy.catalogError;
 	if (!session.mode) return copy.modePrompt;
 	if (input.transport.retryNeeded) return copy.trackError;
+	if (session.mode === "seek" && session.seek) {
+		const latest = session.seek.attempts[0];
+		if (session.seek.phase !== "selecting" && latest) {
+			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
+			return `${distance} SECOND${distance === 1 ? "" : "S"} AWAY · ${latest.points} POINTS`;
+		}
+		if (session.round) return "PLACE YOUR GUESS ON THE TIMELINE";
+	}
 	if (session.mode === "daily") {
 		if (dailyCatalogPending(session.mode, input.tracks, dailyDate, dailyProgress)) return copy.trackUnavailable;
 		if (dailyInProgress(dailyProgress, dailyDate)) return `DAILY IN PROGRESS, CONTINUE FROM ATTEMPT ${dailyAttempt(dailyProgress) + 1}`;
@@ -641,33 +752,38 @@ function composeGameViewModel(input) {
 		text: copy.trackError,
 		tone: "technical"
 	};
-	const slots = headSlot ? [headSlot, ...attemptSlots] : attemptSlots;
+	const slots = (session.mode === "seek" ? composeSeekSlots(session) : null) ?? (headSlot ? [headSlot, ...attemptSlots] : attemptSlots);
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
 	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
 	const inputVisible = guessInputVisible(session, transport);
-	const attemptEnabled = !!(input.appStatus === "ready" && session.round && inputVisible && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
+	const interactionEnabled = !!(input.appStatus === "ready" && session.round && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
+	const attemptEnabled = interactionEnabled && inputVisible && !isSeekMode(session.mode);
+	const seekTimeline = composeSeekTimeline(session, interactionEnabled);
+	const actionEnabled = isSeekMode(session.mode) ? input.appStatus === "ready" && !!session.seek && !session.result && !transport.loading && !input.overlay && (session.seek.phase === "revealed" || interactionEnabled && session.seek.selectedSecond !== null) : attemptEnabled;
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
 		rulesText: rulesText(input),
 		transportText: transport.loading ? copy.loadingTrack : "",
 		inputVisible,
-		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && !transport.loading && playControlAvailable),
+		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && !transport.loading && (!session.seek || session.seek.phase === "selecting") && playControlAvailable),
 		attemptEnabled,
+		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: snippetSeconds(attempt),
-		skipText: skipLabel(session.mode, attempt),
+		snippetSeconds: isSeekMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
+		skipText: seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: snippetSeconds(attempt),
+			snippetSeconds: isSeekMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
 			inputVisible,
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
 		}),
+		seekTimeline,
 		result: composeResultViewModel(session.result, input.progressPersistencePending, session.attempts),
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
@@ -696,6 +812,39 @@ function promptSlot(session, tracksLeft) {
 		text: attempt === snippetDurations.length - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${snippetDurations.length}`,
 		tone: attempt === snippetDurations.length - 1 ? "final-prompt" : "prompt"
 	};
+}
+function composeSeekSlots(session) {
+	const seek = session.seek;
+	if (!seek) return [];
+	const resolved = seek.attempts.map((attempt) => ({
+		id: attempt.id,
+		text: `ROUND ${attempt.id} · ${attempt.points} POINTS`,
+		tone: "neutral"
+	}));
+	if (!session.started || seek.phase !== "selecting") return resolved;
+	const round = seek.attempts.length + 1;
+	return [{
+		id: round,
+		text: `ROUND ${round} OUT OF 5`,
+		tone: "prompt"
+	}, ...resolved];
+}
+function composeSeekTimeline(session, interactionEnabled) {
+	if (session.mode !== "seek" || !session.seek || !session.round) return null;
+	const latest = session.seek.attempts[0] ?? null;
+	return {
+		roundId: session.round.id,
+		phase: session.seek.phase,
+		maximumSecond: Math.floor(session.round.track.duration),
+		selectedSecond: session.seek.phase === "selecting" ? session.seek.selectedSecond : latest?.guessedSecond ?? null,
+		actualSecond: session.seek.phase === "selecting" ? null : latest?.actualSecond ?? null,
+		interactionEnabled: interactionEnabled && session.seek.phase === "selecting"
+	};
+}
+function seekActionLabel(session) {
+	if (session.mode !== "seek" || !session.seek) return skipLabel(session.mode, puzzleAttempt(session));
+	if (session.seek.phase !== "revealed") return "GUESS";
+	return session.seek.attempts.length >= 5 ? "RESULTS" : "NEXT";
 }
 function attemptSlot(attempt, mode, tracks, gauntletMilestone) {
 	let text = attempt.trackNumber === null ? "" : tracks.find((track) => track.dailyNumber === attempt.trackNumber)?.title ?? `TRACK #${attempt.trackNumber}`;
@@ -809,7 +958,26 @@ var GameController = class {
 		this.handlePlay(true);
 	}
 	skip() {
-		this.resolveAttempt("skip", null);
+		if (isSeekMode(this.session.mode)) this.seekAction();
+		else this.resolveAttempt("skip", null);
+	}
+	selectSeekSecond(second) {
+		if (this.activeOverlay || !acceptsAttempt(this.session, this.playback.snapshot)) return;
+		const updated = selectSeekSecond(this.session, second);
+		if (updated === this.session) return;
+		this.session = updated;
+		this.render();
+	}
+	onSeekRevealComplete(roundId) {
+		if (this.session.round?.id !== roundId || this.session.seek?.phase !== "revealing") return;
+		this.session = completeSeekReveal(this.session);
+		const latest = this.session.seek?.attempts[0];
+		if (latest) {
+			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
+			this.view.announce(`${distance} SECOND${distance === 1 ? "" : "S"} AWAY. ${latest.points} POINTS.`);
+		}
+		this.render();
+		this.view.focusAttemptAction();
 	}
 	guess(dailyNumber) {
 		const state = this.session;
@@ -944,7 +1112,10 @@ var GameController = class {
 		if (startedNewRound) {
 			this.session = setRound(this.session, round);
 			const session = this.session;
-			if (!isTimedMode(session.mode)) this.clock.restart(snippetSeconds(puzzleAttempt(session)) * 1e3);
+			if (!isTimedMode(session.mode)) {
+				const seconds = isSeekMode(session.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(session));
+				this.clock.restart(seconds * 1e3);
+			}
 			this.clock.start();
 			this.render();
 			this.view.focusGuess();
@@ -1006,6 +1177,7 @@ var GameController = class {
 	}
 	onClockTick(snapshot) {
 		const session = this.session;
+		if (isSeekMode(session.mode)) return;
 		this.view.renderClock(composeClockViewModel({
 			mode: session.mode,
 			snippetSeconds: snippetSeconds(puzzleAttempt(session)),
@@ -1047,7 +1219,7 @@ var GameController = class {
 			this.handleTimedPlay(round, requested);
 			return;
 		}
-		this.handlePuzzlePlay(round, puzzleAttempt(state), requested, shortcut);
+		this.handleSnippetPlay(round, isSeekMode(state.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
 	}
 	handleTimedPlay(round, requested) {
 		if (requested) {
@@ -1060,7 +1232,7 @@ var GameController = class {
 		}
 		this.view.focusGuess();
 	}
-	handlePuzzlePlay(round, attempt, requested, shortcut) {
+	handleSnippetPlay(round, seconds, requested, shortcut) {
 		const stopping = requested && !shortcut;
 		const pausing = requested || shortcut;
 		const elapsed = pausing ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
@@ -1068,7 +1240,7 @@ var GameController = class {
 		else if (pausing) this.playback.pause();
 		if (!stopping) this.playback.replay(round, elapsed > 0);
 		this.view.resetTimeline();
-		this.clock.restart(snippetSeconds(attempt) * 1e3);
+		this.clock.restart(seconds * 1e3);
 		this.render();
 		this.view.focusGuess();
 	}
@@ -1076,7 +1248,7 @@ var GameController = class {
 		const state = this.session;
 		const round = state.round;
 		const mode = state.mode;
-		if (!round || !mode || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
+		if (!round || !mode || isSeekMode(mode) || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
 		if (isTimedMode(mode)) {
 			if (this.clock.pause().remainingMs <= 0) {
 				this.finishGame();
@@ -1132,6 +1304,25 @@ var GameController = class {
 		this.render();
 		this.view.focusGuess();
 	}
+	seekAction() {
+		const state = this.session;
+		const seek = state.seek;
+		if (state.mode !== "seek" || !seek || state.result || this.activeOverlay) return;
+		if (seek.phase === "revealed") {
+			if (seek.attempts.length >= 5) {
+				this.finishGame();
+				return;
+			}
+			this.session = advanceSeekRound(state);
+			this.playback.start();
+			return;
+		}
+		if (seek.phase !== "selecting" || seek.selectedSecond === null || !acceptsAttempt(state, this.playback.snapshot) || this.playback.snapshot.loading) return;
+		this.clock.pause();
+		this.playback.pause();
+		this.session = resolveSeekAttempt(state);
+		this.render();
+	}
 	finishGame() {
 		const state = this.session;
 		if (!state.mode || state.result) return;
@@ -1153,7 +1344,7 @@ var GameController = class {
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
-		const milliseconds = modeRules[mode].initialTimeMs ?? snippetSeconds(resumed) * 1e3;
+		const milliseconds = modeRules[mode].initialTimeMs ?? (isSeekMode(mode) ? seekSnippetSeconds : snippetSeconds(resumed)) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.prime();
@@ -1176,9 +1367,11 @@ var GameController = class {
 			if (!track) return null;
 			clipStart = dailyClipStart(track, this.dailyDate);
 		} else {
-			track = selectRandomTrack(this.tracks, failed, avoid, this.random);
+			const excluded = mode === "seek" ? /* @__PURE__ */ new Set([...failed, ...seekUsedTrackIds(this.session)]) : failed;
+			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
 			if (!track) return null;
-			clipStart = randomClipStart(track, isTimedMode(mode), this.random);
+			const clipSeconds = mode === "seek" ? seekSnippetSeconds : isTimedMode(mode) ? 60 : snippetDurations.at(-1);
+			clipStart = randomClipStart(track, clipSeconds, this.random);
 		}
 		return {
 			id: ++this.nextRoundId,
@@ -1405,6 +1598,25 @@ function finishRun(state, run) {
 			}
 		};
 	}
+	if (mode === "seek") {
+		const score = session.seek?.attempts.reduce((total, attempt) => total + attempt.points, 0) ?? 0;
+		const personalBests = cloneBests(state.personalBests);
+		const update = updateSeekBest(personalBests, score);
+		const nextState = update.changed ? {
+			...state,
+			personalBests
+		} : state;
+		return {
+			state: nextState,
+			changedSection: update.changed ? "personalBests" : null,
+			result: {
+				mode: "seek",
+				newPersonalBest: update.newPersonalBest,
+				score,
+				bestScore: nextState.personalBests.seek.score
+			}
+		};
+	}
 	const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
 	const completedTracks = correctTrackIds(attempts).size;
 	const catalogTrackCount = run.catalogTrackCount;
@@ -1462,6 +1674,7 @@ function cloneBests(bests) {
 	return {
 		classic: { ...bests.classic },
 		blitz: { ...bests.blitz },
+		seek: { ...bests.seek },
 		gauntlet: { ...bests.gauntlet }
 	};
 }
@@ -1846,15 +2059,16 @@ function parsePersonalBests(value) {
 	if (!isRecord(value) || !hasExactKeys(value, [
 		"classic",
 		"blitz",
+		"seek",
 		"gauntlet"
 	])) return emptyPersonalBests();
-	const { classic, blitz, gauntlet } = value;
+	const { classic, blitz, seek, gauntlet } = value;
 	if (!isRecord(classic) || !hasExactKeys(classic, [
 		"current",
 		"best",
 		"snippetTotal",
 		"bestSnippetTotal"
-	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validScoreBest(blitz) || !validGauntletBest(gauntlet)) return emptyPersonalBests();
+	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validScoreBest(blitz) || !validSeekBest(seek) || !validGauntletBest(gauntlet)) return emptyPersonalBests();
 	return {
 		classic: {
 			current: classic.current,
@@ -1866,11 +2080,15 @@ function parsePersonalBests(value) {
 			score: blitz.score,
 			accuracy: blitz.accuracy
 		},
+		seek: { score: seek.score },
 		gauntlet: {
 			timeMs: gauntlet.timeMs,
 			trackCount: gauntlet.trackCount
 		}
 	};
+}
+function validSeekBest(value) {
+	return isRecord(value) && hasExactKeys(value, ["score"]) && isIntegerBetween(value.score, 0, 5e3);
 }
 function validGauntletBest(value) {
 	if (!isRecord(value) || !hasExactKeys(value, ["timeMs", "trackCount"]) || !isNonNegativeInteger(value.timeMs) || value.timeMs % 1e3 !== 0 || !isNonNegativeInteger(value.trackCount)) return false;
@@ -2638,7 +2856,7 @@ var Playback = class {
 		this.callbacks.onRecovery(failurePolicy === "replace" ? "manual-retry" : "selected-track-retry");
 	}
 	prefetch() {
-		if (!isTimedMode(this.mode) || !this.factory || this.suspended || this.next || this.nextRecoveryFailures > maximumNextRecoveries) return;
+		if (!prefetchesRounds(this.mode) || !this.factory || this.suspended || this.next || this.nextRecoveryFailures > maximumNextRecoveries) return;
 		const owned = this.current?.phase !== "retry" ? this.current?.round ?? null : null;
 		if (!owned || !this.audio.primaryStatus(owned)?.ready) return;
 		const round = this.factory(this.failedTrackIds, owned.track.dailyNumber);
@@ -3342,7 +3560,8 @@ function splitTrackTitle(value) {
 var modes = [
 	"daily",
 	"classic",
-	"blitz"
+	"blitz",
+	"seek"
 ];
 function nextPrimaryFocus(state, key) {
 	const modeIndex = state.current && isMode(state.current) ? modes.indexOf(state.current) : -1;
@@ -3385,7 +3604,7 @@ function available(state, target) {
 	return state.enabled.has(target) ? target : null;
 }
 function isMode(target) {
-	return target === "daily" || target === "blitz" || target === "classic";
+	return target === "daily" || target === "blitz" || target === "classic" || target === "seek";
 }
 var ModalController = class {
 	root;
@@ -3617,6 +3836,11 @@ function rows(bests, daily, dailyDate) {
 			mode: "BLITZ",
 			value: bests.blitz.score ? `${bests.blitz.score} CORRECT` : emptyRecordValue,
 			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% ACCURACY` : emptyRecordDetail
+		},
+		{
+			mode: "SEEK",
+			value: bests.seek.score ? `${bests.seek.score} POINTS` : emptyRecordValue,
+			detail: bests.seek.score ? "BEST SCORE" : emptyRecordDetail
 		}
 	];
 	if (bests.gauntlet.trackCount > 0) standard.push({
@@ -3721,6 +3945,8 @@ var TimelineView = class {
 	timeAdjustmentTimer = 0;
 	timeAdjustmentListener = null;
 	timeAdjustmentGeneration = 0;
+	seekFrame = 0;
+	seekRevealKey = "";
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
@@ -3732,6 +3958,70 @@ var TimelineView = class {
 		this.elements.now.textContent = text;
 		this.elements.fill.style.transform = `scaleX(${scale})`;
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
+	}
+	renderSeek(state, onRevealComplete) {
+		this.elements.timeline.classList.toggle("seek-timeline", state !== null);
+		if (!state) {
+			this.cancelSeekReveal();
+			this.elements.seekRange.disabled = true;
+			return;
+		}
+		const maximum = Math.max(0, state.maximumSecond);
+		this.elements.seekRange.max = String(maximum);
+		this.elements.seekRange.disabled = !state.interactionEnabled;
+		const selected = state.selectedSecond;
+		this.elements.seekRange.value = String(selected ?? 0);
+		this.elements.seekRange.setAttribute("aria-valuetext", selected === null ? "NO POSITION SELECTED" : formatClock(selected));
+		this.setSeekMarker(this.elements.seekGuess, selected, maximum);
+		this.elements.now.textContent = selected === null ? "?:??" : formatClock(selected);
+		if (state.phase === "selecting" || state.actualSecond === null) {
+			this.cancelSeekReveal();
+			this.elements.end.textContent = "?:??";
+			this.setSeekMarker(this.elements.seekActual, null, maximum);
+			this.hideSeekDistance();
+			return;
+		}
+		if (state.phase === "revealed") {
+			this.cancelSeekReveal();
+			this.elements.end.textContent = formatClock(state.actualSecond);
+			this.setSeekMarker(this.elements.seekActual, state.actualSecond, maximum);
+			this.showSeekDistance(selected ?? 0, state.actualSecond, maximum);
+			return;
+		}
+		const key = `${state.roundId}:${selected}:${state.actualSecond}`;
+		if (key === this.seekRevealKey && this.seekFrame) return;
+		this.cancelSeekReveal(false);
+		this.seekRevealKey = key;
+		this.elements.end.textContent = "0:00";
+		this.setSeekMarker(this.elements.seekActual, 0, maximum);
+		this.hideSeekDistance();
+		if (this.reducedMotion.matches || this.durations.seekReveal <= 0) {
+			this.elements.end.textContent = formatClock(state.actualSecond);
+			this.setSeekMarker(this.elements.seekActual, state.actualSecond, maximum);
+			this.showSeekDistance(selected ?? 0, state.actualSecond, maximum);
+			queueMicrotask(() => onRevealComplete(state.roundId));
+			return;
+		}
+		let startedAt = null;
+		const animate = (now) => {
+			if (this.seekRevealKey !== key) return;
+			startedAt ??= now;
+			const progress = Math.min(1, (now - startedAt) / this.durations.seekReveal);
+			const accelerated = progress * progress;
+			const revealedSecond = state.actualSecond * accelerated;
+			this.elements.end.textContent = formatClock(revealedSecond);
+			this.setSeekMarker(this.elements.seekActual, revealedSecond, maximum);
+			if (progress < 1) {
+				this.seekFrame = this.scheduler.requestFrame(animate);
+				return;
+			}
+			this.seekFrame = 0;
+			this.elements.end.textContent = formatClock(state.actualSecond);
+			this.setSeekMarker(this.elements.seekActual, state.actualSecond, maximum);
+			this.showSeekDistance(selected ?? 0, state.actualSecond, maximum);
+			onRevealComplete(state.roundId);
+		};
+		this.seekFrame = this.scheduler.requestFrame(animate);
 	}
 	beginReset(rewindPlayback = false) {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
@@ -3796,6 +4086,28 @@ var TimelineView = class {
 		this.elements.feedback.classList.remove("time-adjustment-reward", "time-adjustment-penalty");
 		this.elements.timeChange.classList.remove("time-adjustment-active", "time-adjustment-static");
 		this.elements.timeChangeText.textContent = "";
+	}
+	setSeekMarker(marker, second, maximum) {
+		marker.hidden = second === null;
+		if (second !== null) {
+			const percentage = maximum > 0 ? second / maximum * 100 : 0;
+			marker.style.left = `clamp(var(--gradient-border-width), ${percentage}%, calc(100% - var(--gradient-border-width)))`;
+		}
+	}
+	showSeekDistance(guessed, actual, maximum) {
+		const start = Math.min(guessed, actual);
+		const distance = Math.abs(guessed - actual);
+		this.elements.seekDistance.hidden = false;
+		this.elements.seekDistance.style.left = `${maximum > 0 ? start / maximum * 100 : 0}%`;
+		this.elements.seekDistance.style.width = `${maximum > 0 ? distance / maximum * 100 : 0}%`;
+	}
+	hideSeekDistance() {
+		this.elements.seekDistance.hidden = true;
+	}
+	cancelSeekReveal(clearKey = true) {
+		if (this.seekFrame) this.scheduler.cancelFrame(this.seekFrame);
+		this.seekFrame = 0;
+		if (clearKey) this.seekRevealKey = "";
 	}
 	progressScale() {
 		const computed = getComputedStyle(this.elements.fill).transform;
@@ -3904,7 +4216,8 @@ var GameView = class {
 		this.modeButtons = {
 			daily: this.required("[data-mode=\"daily\"]"),
 			blitz: this.required("[data-mode=\"blitz\"]"),
-			classic: this.required("[data-mode=\"classic\"]")
+			classic: this.required("[data-mode=\"classic\"]"),
+			seek: this.required("[data-mode=\"seek\"]")
 		};
 		const styles = getComputedStyle(root);
 		this.durations = {
@@ -3915,7 +4228,8 @@ var GameView = class {
 			slot: duration(styles, "--duration-slot"),
 			discoveryModal: duration(styles, "--duration-discovery-modal"),
 			timelineReset: duration(styles, "--duration-timeline-reset"),
-			timelineRewind: duration(styles, "--duration-timeline-rewind")
+			timelineRewind: duration(styles, "--duration-timeline-rewind"),
+			seekReveal: duration(styles, "--duration-seek-reveal")
 		};
 		this.resultView = new ResultView({
 			action: this.elements.resultAction,
@@ -3943,11 +4257,17 @@ var GameView = class {
 			fill: this.elements.fill,
 			feedback: this.elements.feedback,
 			timeChange: this.elements.timeChange,
-			timeChangeText: this.elements.timeChangeText
+			timeChangeText: this.elements.timeChangeText,
+			end: this.elements.endtime,
+			seekRange: this.elements.seekRange,
+			seekGuess: this.elements.seekGuess,
+			seekActual: this.elements.seekActual,
+			seekDistance: this.elements.seekDistance
 		}, {
 			reset: this.durations.timelineReset,
 			rewind: this.durations.timelineRewind,
-			timeAdjustmentFeedback: this.durations.timeAdjustmentFeedback
+			timeAdjustmentFeedback: this.durations.timeAdjustmentFeedback,
+			seekReveal: this.durations.seekReveal
 		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
@@ -3962,6 +4282,9 @@ var GameView = class {
 		this.discovery.bind(handlers.openDiscoverySpotify, handlers.startGauntlet);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.skip.addEventListener("click", handlers.skip);
+		this.elements.seekRange.addEventListener("input", () => {
+			handlers.selectSeekSecond(Number(this.elements.seekRange.value));
+		});
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
 		this.elements.resultSecondary.addEventListener("click", () => {
 			const action = this.resultView.secondaryAction;
@@ -4004,10 +4327,11 @@ var GameView = class {
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
 		this.root.classList.toggle("mode-selected", state.mode !== null);
 		this.root.classList.toggle("timed", isTimedMode(state.mode));
+		this.root.classList.toggle("seek", state.mode === "seek");
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
-		this.elements.skip.disabled = !state.attemptEnabled;
+		this.elements.skip.disabled = !state.actionEnabled;
 		this.elements.guess.disabled = !state.attemptEnabled;
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
@@ -4034,6 +4358,7 @@ var GameView = class {
 		}
 		this.resultView.render(state.result);
 		this.renderClock(state.clock);
+		this.timeline.renderSeek(state.seekTimeline, (roundId) => this.handlers?.seekRevealComplete(roundId));
 		if (openingOverlay === "result") this.modal.openResult();
 		else if (openingOverlay === "discovery") {
 			this.hideResetConfirmation(false);
@@ -4094,12 +4419,17 @@ var GameView = class {
 	focusPlay() {
 		if (!this.elements.play.disabled && !this.elements.play.closest("[inert]")) this.elements.play.focus({ preventScroll: true });
 	}
+	focusAttemptAction() {
+		if (!this.elements.skip.disabled && !this.elements.skip.closest("[inert]")) this.elements.skip.focus({ preventScroll: true });
+	}
 	focusMode(mode) {
 		const button = this.modeButtons[mode];
 		if (!button.disabled && !button.closest("[inert]")) button.focus({ preventScroll: true });
 	}
 	focusGuess() {
-		if (this.inputModality !== "pointer-coarse" && !this.elements.guess.disabled && !this.elements.guess.closest("[inert]")) queueMicrotask(() => this.elements.guess.focus({ preventScroll: true }));
+		if (this.inputModality === "pointer-coarse") return;
+		const target = this.state?.mode === "seek" ? this.elements.seekRange : this.elements.guess;
+		if (!target.disabled && !target.closest("[inert]")) queueMicrotask(() => target.focus({ preventScroll: true }));
 	}
 	focusAfterDiscoveryClose(request) {
 		if (request.outcome === "start-gauntlet" || this.state?.mode) this.focusPlay();
@@ -4202,7 +4532,7 @@ var GameView = class {
 		}
 		const target = event.target instanceof Element ? event.target : null;
 		if (this.isArrowKey(event.key)) {
-			if (target === this.elements.volumeRange) return;
+			if (target === this.elements.volumeRange || target === this.elements.seekRange) return;
 			if (target === this.elements.guess && this.state.inputVisible) return;
 			if (this.state.inputVisible && this.state.attemptEnabled) {
 				event.preventDefault();
@@ -4231,6 +4561,7 @@ var GameView = class {
 			daily: this.modeButtons.daily,
 			blitz: this.modeButtons.blitz,
 			classic: this.modeButtons.classic,
+			seek: this.modeButtons.seek,
 			play: this.elements.play
 		};
 		const entries = Object.entries(elements);
@@ -4327,6 +4658,10 @@ var GameView = class {
 			timeline: this.required(".timeline"),
 			timeChange: this.required(".time-change"),
 			timeChangeText: this.required(".time-change span"),
+			seekRange: this.required(".seek-range"),
+			seekGuess: this.required(".seek-guess"),
+			seekActual: this.required(".seek-actual"),
+			seekDistance: this.required(".seek-distance"),
 			ruleset: this.required(".ruleset"),
 			rulesetText: this.required(".ruleset-text"),
 			rulesetCopy: this.required(".ruleset-copy"),
@@ -4370,13 +4705,13 @@ function markup() {
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
 		`<div class="row header-action"><button type="button" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
-    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button></div>`,
+    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="seek" aria-pressed="false">SEEK</button></div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
-		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="time-change"><span></span></div>${snippetTicks}</div>`,
+		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="seek-distance" hidden></div><div class="seek-marker seek-guess" hidden></div><div class="seek-marker seek-actual" hidden></div><input class="seek-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${copy.modePrompt}</span><span class="ruleset-copy">${copy.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
@@ -4448,6 +4783,8 @@ if (root && !root.dataset.corzaguessrReady) {
 		play: () => controller.play(),
 		playbackShortcut: () => controller.playbackShortcut(),
 		skip: () => controller.skip(),
+		selectSeekSecond: (second) => controller.selectSeekSecond(second),
+		seekRevealComplete: (roundId) => controller.onSeekRevealComplete(roundId),
 		guess: (dailyNumber) => controller.guess(dailyNumber),
 		resultAction: () => controller.resultAction(),
 		openDiscovery: () => controller.openDiscovery(),
