@@ -97,7 +97,8 @@ var snippetDurations = [
 	16,
 	32
 ];
-var seekSnippetSeconds = snippetDurations[3];
+var seekMaxPointsPerRound = 1e3;
+var seekMaxScore = 5 * seekMaxPointsPerRound;
 var modeRules = {
 	classic: {
 		initialTimeMs: null,
@@ -162,7 +163,13 @@ function skipLabel(mode, attempt) {
 function seekPoints(guessedSecond, actualSecond, duration) {
 	if (!Number.isFinite(duration) || duration <= 0) return 0;
 	const relativeError = Math.min(1, Math.abs(guessedSecond - actualSecond) / duration);
-	return Math.round(1e3 * (1 - relativeError) ** 2);
+	return Math.round(seekMaxPointsPerRound * (1 - relativeError) ** 2);
+}
+function seekAttemptPoints(attempt) {
+	return seekPoints(attempt.guessedSecond, attempt.actualSecond, attempt.trackDuration);
+}
+function seekScore(attempts) {
+	return attempts.reduce((total, attempt) => total + seekAttemptPoints(attempt), 0);
 }
 function gauntletTimeAdjustment(outcome) {
 	return outcome === "correct" ? 3e3 : outcome === "wrong" ? -1e3 : -2e3;
@@ -305,9 +312,9 @@ function resolvePositionAttempt(state) {
 			attempts: [{
 				id: state.position.attempts.length + 1,
 				trackNumber: state.round.track.dailyNumber,
+				trackDuration: state.round.track.duration,
 				guessedSecond,
-				actualSecond,
-				points: seekPoints(guessedSecond, actualSecond, state.round.track.duration)
+				actualSecond
 			}, ...state.position.attempts]
 		}
 	};
@@ -666,7 +673,7 @@ function resultRows(result) {
 		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
 		return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 	}
-	if (result.mode === "seek") return [["RUN:", `${result.score}/5000 POINTS`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `${result.bestScore}/5000 POINTS`]];
+	if (result.mode === "seek") return [["RUN:", `${result.score}/${seekMaxScore} POINTS`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `${result.bestScore}/${seekMaxScore} POINTS`]];
 	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
 	return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 }
@@ -711,11 +718,11 @@ function rulesText(input) {
 	if (input.appStatus === "error") return copy.catalogError;
 	if (!session.mode) return copy.modePrompt;
 	if (input.transport.retryNeeded) return copy.trackError;
-	if (isPositionMode(session.mode) && session.position) {
+	if (session.mode === "seek" && session.position) {
 		const latest = session.position.attempts[0];
 		if (session.position.phase !== "selecting" && latest) {
 			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
-			return `${distance} SECOND${distance === 1 ? "" : "S"} AWAY · ${latest.points} POINTS`;
+			return `${distance} SECOND${distance === 1 ? "" : "S"} AWAY · ${seekAttemptPoints(latest)} POINTS`;
 		}
 		if (session.round) return "PLACE YOUR GUESS ON THE TIMELINE";
 	}
@@ -756,7 +763,7 @@ function composeGameViewModel(input) {
 		text: copy.trackError,
 		tone: "technical"
 	};
-	const slots = (isPositionMode(session.mode) ? composeSeekSlots(session) : null) ?? (headSlot ? [headSlot, ...attemptSlots] : attemptSlots);
+	const slots = (session.mode === "seek" ? composeSeekSlots(session) : null) ?? (headSlot ? [headSlot, ...attemptSlots] : attemptSlots);
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
@@ -765,7 +772,7 @@ function composeGameViewModel(input) {
 	const interactionEnabled = !!(input.appStatus === "ready" && session.round && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
 	const attemptEnabled = interactionEnabled && inputVisible && !isPositionMode(session.mode);
 	const positionTimeline = composePositionTimeline(session, interactionEnabled);
-	const actionEnabled = isPositionMode(session.mode) ? input.appStatus === "ready" && !!session.position && !session.result && !transport.loading && !input.overlay && (session.position.phase === "revealed" || interactionEnabled && session.position.selectedSecond !== null) : attemptEnabled;
+	const actionEnabled = session.mode === "seek" ? input.appStatus === "ready" && !!session.position && !session.result && !transport.loading && !input.overlay && (session.position.phase === "revealed" || interactionEnabled && session.position.selectedSecond !== null) : attemptEnabled;
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
@@ -776,13 +783,13 @@ function composeGameViewModel(input) {
 		attemptEnabled,
 		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: isPositionMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
+		snippetSeconds: session.mode === "seek" ? 8 : snippetSeconds(attempt),
 		skipText: seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: isPositionMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
+			snippetSeconds: session.mode === "seek" ? 8 : snippetSeconds(attempt),
 			inputVisible,
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
@@ -822,7 +829,7 @@ function composeSeekSlots(session) {
 	if (!position) return [];
 	const resolved = position.attempts.map((attempt) => ({
 		id: attempt.id,
-		text: `ROUND ${attempt.id} · ${attempt.points} POINTS`,
+		text: `ROUND ${attempt.id} · ${seekAttemptPoints(attempt)} POINTS`,
 		tone: "neutral"
 	}));
 	if (!session.started || position.phase !== "selecting") return resolved;
@@ -962,7 +969,7 @@ var GameController = class {
 		this.handlePlay(true);
 	}
 	skip() {
-		if (isPositionMode(this.session.mode)) this.seekAction();
+		if (this.session.mode === "seek") this.seekAction();
 		else this.resolveAttempt("skip", null);
 	}
 	selectPositionSecond(second) {
@@ -976,12 +983,14 @@ var GameController = class {
 		if (this.session.round?.id !== roundId || this.session.position?.phase !== "revealing") return;
 		this.session = completePositionReveal(this.session);
 		const latest = this.session.position?.attempts[0];
-		if (latest) {
+		if (this.session.mode === "seek" && latest) {
 			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
-			this.view.announce(`${distance} SECOND${distance === 1 ? "" : "S"} AWAY. ${latest.points} POINTS.`);
+			this.view.announce(`${distance} SECOND${distance === 1 ? "" : "S"} AWAY. ${seekAttemptPoints(latest)} POINTS.`);
+			this.render();
+			this.view.focusAttemptAction();
+			return;
 		}
 		this.render();
-		this.view.focusAttemptAction();
 	}
 	guess(dailyNumber) {
 		const state = this.session;
@@ -1117,7 +1126,7 @@ var GameController = class {
 			this.session = setRound(this.session, round);
 			const session = this.session;
 			if (!isTimedMode(session.mode)) {
-				const seconds = isPositionMode(session.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(session));
+				const seconds = session.mode === "seek" ? 8 : snippetSeconds(puzzleAttempt(session));
 				this.clock.restart(seconds * 1e3);
 			}
 			this.clock.start();
@@ -1223,7 +1232,7 @@ var GameController = class {
 			this.handleTimedPlay(round, requested);
 			return;
 		}
-		this.handleSnippetPlay(round, isPositionMode(state.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
+		this.handleSnippetPlay(round, state.mode === "seek" ? 8 : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
 	}
 	handleTimedPlay(round, requested) {
 		if (requested) {
@@ -1348,7 +1357,7 @@ var GameController = class {
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
-		const milliseconds = modeRules[mode].initialTimeMs ?? (isPositionMode(mode) ? seekSnippetSeconds : snippetSeconds(resumed)) * 1e3;
+		const milliseconds = modeRules[mode].initialTimeMs ?? (mode === "seek" ? 8 : snippetSeconds(resumed)) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.prime();
@@ -1371,10 +1380,10 @@ var GameController = class {
 			if (!track) return null;
 			clipStart = dailyClipStart(track, this.dailyDate);
 		} else {
-			const excluded = isPositionMode(mode) ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
+			const excluded = mode === "seek" ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
 			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
 			if (!track) return null;
-			const clipSeconds = isPositionMode(mode) ? seekSnippetSeconds : isTimedMode(mode) ? 60 : snippetDurations.at(-1);
+			const clipSeconds = mode === "seek" ? 8 : isTimedMode(mode) ? 60 : snippetDurations.at(-1);
 			clipStart = randomClipStart(track, clipSeconds, this.random);
 		}
 		return {
@@ -1603,7 +1612,7 @@ function finishRun(state, run) {
 		};
 	}
 	if (mode === "seek") {
-		const score = session.position?.attempts.reduce((total, attempt) => total + attempt.points, 0) ?? 0;
+		const score = seekScore(session.position?.attempts ?? []);
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateSeekBest(personalBests, score);
 		const nextState = update.changed ? {
