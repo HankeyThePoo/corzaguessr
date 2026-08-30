@@ -523,7 +523,6 @@
 }
 
 #corzaguessr .timeline {
-  --timeline-border: var(--line);
   --timeline-progress: var(--off-white);
   position: relative;
   isolation: isolate;
@@ -535,7 +534,6 @@
 }
 
 #corzaguessr.mode-selected .timeline {
-  --timeline-border: var(--gradient);
   --timeline-progress: var(--gradient);
 }
 
@@ -550,7 +548,7 @@
   z-index: 4;
   padding: var(--gradient-border-width);
   border-radius: inherit;
-  background: var(--timeline-border);
+  background: var(--gradient);
   clip-path: inset(0 100% 0 0);
   pointer-events: none;
   transition: clip-path var(--duration-timeline-reset) ease-out;
@@ -692,7 +690,7 @@
   transition: clip-path var(--duration-timeline-reset) ease-out;
 }
 
-#corzaguessr.mode-selected:not(.timed):not(.position) .ticks {
+#corzaguessr.mode-selected .ticks {
   clip-path: inset(0);
 }
 
@@ -701,6 +699,12 @@
   inset: var(--gradient-border-width) auto;
   width: 2px;
   background: var(--line);
+  opacity: 0;
+  transition: opacity var(--duration-timeline-reset) ease-out;
+}
+
+#corzaguessr.mode-selected:not(.timed):not(.position) .tick {
+  opacity: 1;
 }
 
 #corzaguessr .tick::before {
@@ -716,10 +720,6 @@
 
 #corzaguessr.mode-selected .tick::before {
   transform: scaleX(1);
-}
-
-#corzaguessr.timed .tick {
-  display: none;
 }
 
 #corzaguessr.mode-selected.position .snippet,
