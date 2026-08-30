@@ -689,8 +689,8 @@ function resultRows(result) {
 		];
 	}
 	if (result.mode === "blitz") {
-		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · ACCURACY: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
-		return [["RUN:", `CORRECT GUESSES: ${result.correct} · ACCURACY: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · SUCCESS RATE: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
+		return [["RUN:", `CORRECT GUESSES: ${result.correct} · SUCCESS RATE: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 	}
 	if (result.mode === "seek") return [["RUN:", `${result.score}/${seekMaxScore} POINTS`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `${result.bestScore}/${seekMaxScore} POINTS`]];
 	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
@@ -736,6 +736,7 @@ function rulesText(input) {
 	if (input.appStatus === "loading") return input.catalogLoadingVisible ? copy.loadingCatalog : copy.modePrompt;
 	if (input.appStatus === "error") return copy.catalogError;
 	if (!session.mode) return copy.modePrompt;
+	if (session.mode === "classic" && input.classicResumePending) return "PRESS PLAY TO CONTINUE OR GIVE UP THE CURRENT ROUND";
 	if (input.transport.retryNeeded) return copy.trackError;
 	if (session.mode === "seek" && session.position) {
 		const latest = session.position.attempts[0];
@@ -791,7 +792,8 @@ function composeGameViewModel(input) {
 	const interactionEnabled = !!(input.appStatus === "ready" && session.round && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
 	const attemptEnabled = interactionEnabled && inputVisible && !isPositionMode(session.mode);
 	const positionTimeline = composePositionTimeline(session, interactionEnabled);
-	const actionEnabled = session.mode === "seek" ? input.appStatus === "ready" && !!session.position && !session.result && !transport.loading && !input.overlay && (session.position.phase === "revealed" || interactionEnabled && session.position.selectedSecond !== null) : attemptEnabled;
+	const classicResumeChoice = session.mode === "classic" && input.classicResumePending;
+	const actionEnabled = classicResumeChoice ? input.appStatus === "ready" && !input.overlay : session.mode === "seek" ? input.appStatus === "ready" && !!session.position && !session.result && !transport.loading && !input.overlay && (session.position.phase === "revealed" || interactionEnabled && session.position.selectedSecond !== null) : attemptEnabled;
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
@@ -803,7 +805,7 @@ function composeGameViewModel(input) {
 		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
 		snippetSeconds: modeSnippetSeconds(session.mode, attempt),
-		skipText: seekActionLabel(session),
+		skipText: classicResumeChoice ? "GIVE UP" : seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
@@ -929,6 +931,7 @@ var GameController = class {
 	nextRoundId = 0;
 	persistenceFailureQueued = false;
 	pageVisible = true;
+	classicResumePending = false;
 	constructor(catalog, progress, clock, playback, view, dailySchedule, openSpotifyLink, copyToClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
@@ -988,7 +991,13 @@ var GameController = class {
 		this.handlePlay(true);
 	}
 	skip() {
-		if (this.session.mode === "seek") this.seekAction();
+		if (this.session.mode === "classic" && this.classicResumePending) {
+			if (this.activeOverlay) return;
+			this.progress.forfeitClassicRound();
+			this.classicResumePending = false;
+			this.resetForMode("classic");
+			this.view.announce("PREVIOUS CLASSIC ROUND FORFEITED.");
+		} else if (this.session.mode === "seek") this.seekAction();
 		else this.resolveAttempt("skip", null);
 	}
 	selectPositionSecond(second) {
@@ -1182,7 +1191,10 @@ var GameController = class {
 	onAudioRecovery(kind) {
 		this.clock.pause();
 		if (kind === "automatic-replacement") {
-			if (this.session.mode === "classic") this.progress.clearClassicRound();
+			if (this.session.mode === "classic") {
+				this.classicResumePending = false;
+				this.progress.clearClassicRound();
+			}
 			this.session = clearRound(this.session);
 			this.view.announce(copy.selectedTrackReplacing);
 			return;
@@ -1236,6 +1248,7 @@ var GameController = class {
 		const requested = transport.playRequested;
 		const roundHeard = !!state.round && transport.activeRoundId === state.round.id;
 		if (this.appStatus !== "ready" || !state.mode || this.activeOverlay || this.dailyCatalogPending() || state.mode === "daily" && this.progress.dailyDone(this.dailyDate) && !state.round) return;
+		if (this.classicResumePending) this.classicResumePending = false;
 		if (!state.round || transport.retryNeeded) {
 			this.playback.start(transport.retryNeeded);
 			return;
@@ -1376,7 +1389,9 @@ var GameController = class {
 		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
 		this.sessionNumber += 1;
-		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : mode === "classic" ? this.progress.classicRound?.attempts ?? [] : [];
+		const classicRound = mode === "classic" ? this.progress.classicRound : null;
+		this.classicResumePending = classicRound !== null;
+		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : mode === "classic" ? classicRound?.attempts ?? [] : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
 		const milliseconds = modeRules[mode].initialTimeMs ?? modeSnippetSeconds(mode, resumed) * 1e3;
@@ -1388,6 +1403,7 @@ var GameController = class {
 	resetToModeSelection() {
 		this.dailySchedule.stop();
 		this.sessionNumber += 1;
+		this.classicResumePending = false;
 		this.playback.reset();
 		this.session = createSession();
 		this.clock.configure(1e3);
@@ -1407,6 +1423,7 @@ var GameController = class {
 			const maximumClipStart = track ? Math.max(0, Math.floor(track.duration - Math.min(maxPuzzleSnippetSeconds, track.duration))) : -1;
 			if (track && restoredClassic.clipStart <= maximumClipStart) clipStart = restoredClassic.clipStart;
 			else {
+				this.classicResumePending = false;
 				this.progress.clearClassicRound();
 				this.session = createSession("classic");
 				this.clock.configure(snippetSeconds(0) * 1e3);
@@ -1453,7 +1470,8 @@ var GameController = class {
 			discoveries: this.progress.discoveries,
 			tracks: this.tracks,
 			overlay: this.activeOverlay,
-			progressPersistencePending: this.progress.persistencePending
+			progressPersistencePending: this.progress.persistencePending,
+			classicResumePending: this.classicResumePending
 		});
 		this.view.render(viewModel, String(this.sessionNumber));
 	}
@@ -1570,6 +1588,19 @@ var Progress = class {
 			classicRound: null
 		};
 		this.pendingPersistence.classicRound = true;
+		this.persistPendingProgress();
+	}
+	forfeitClassicRound() {
+		if (!this.state.classicRound) return;
+		const personalBests = cloneBests(this.state.personalBests);
+		const update = updateClassicBest(personalBests, false, 0);
+		this.state = {
+			...this.state,
+			classicRound: null,
+			personalBests: update.changed ? personalBests : this.state.personalBests
+		};
+		this.pendingPersistence.classicRound = true;
+		if (update.changed) this.pendingPersistence.personalBests = true;
 		this.persistPendingProgress();
 	}
 	recordDiscovery(trackNumber) {
@@ -3725,7 +3756,7 @@ function available(state, target) {
 var ModalController = class {
 	root;
 	elements;
-	durations;
+	duration;
 	reducedMotion;
 	announce;
 	scheduler;
@@ -3736,11 +3767,12 @@ var ModalController = class {
 	openFrame = 0;
 	transitionGeneration = 0;
 	closeListener = null;
+	closeTarget = null;
 	lockedScroll = null;
-	constructor(root, elements, durations, reducedMotion, announce, scheduler = browserAnimationScheduler) {
+	constructor(root, elements, duration, reducedMotion, announce, scheduler = browserAnimationScheduler) {
 		this.root = root;
 		this.elements = elements;
-		this.durations = durations;
+		this.duration = duration;
 		this.reducedMotion = reducedMotion;
 		this.announce = announce;
 		this.scheduler = scheduler;
@@ -3748,76 +3780,74 @@ var ModalController = class {
 	get discoveryLayoutActive() {
 		return this.kind === "discovery" && !this.closing;
 	}
+	get resultLayoutActive() {
+		return this.kind === "result";
+	}
 	openResult() {
-		if (this.kind) return;
-		this.kind = "result";
-		this.captureReturnFocus();
-		this.lockScroll();
-		this.elements.card.classList.add("result-open");
-		this.elements.result.setAttribute("aria-hidden", "false");
-		this.elements.resultAction.focus({ preventScroll: true });
-		this.announce(this.elements.resultMeta.dataset.announcement || "RESULT");
+		if (this.openModal("result")) this.announce(this.elements.resultMeta.dataset.announcement || "RESULT");
 	}
 	openDiscovery() {
-		if (this.kind) return;
+		this.openModal("discovery");
+	}
+	closeResult(fallbackFocus, onClosed = () => {}) {
+		return this.closeModal("result", fallbackFocus, onClosed);
+	}
+	closeDiscovery(fallbackFocus, onClosed, focusOverride = null) {
+		return this.closeModal("discovery", fallbackFocus, onClosed, focusOverride);
+	}
+	openModal(kind) {
+		if (this.kind) return false;
+		const parts = this.parts(kind);
 		const generation = this.beginOpen();
-		this.kind = "discovery";
+		this.kind = kind;
 		this.closing = false;
 		this.captureReturnFocus();
 		this.lockScroll();
-		this.root.classList.add("discovery-open");
-		this.elements.discoveryModal.setAttribute("aria-hidden", "false");
-		this.elements.discoveryButton.setAttribute("aria-expanded", "true");
+		parts.classOwner.classList.add(parts.openClass);
+		parts.modal.setAttribute("aria-hidden", "false");
+		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
 		const finishOpen = () => {
 			this.openFrame = 0;
-			if (!this.transitionMatches("discovery", generation)) return;
-			this.root.classList.add("discovery-visible");
-			this.elements.discoveryShell.style.height = `${this.elements.discoveryPanel.offsetHeight}px`;
-			if (this.reducedMotion.matches) {
-				this.elements.discoveryShell.offsetHeight;
+			if (!this.transitionMatches(kind, generation)) return;
+			parts.classOwner.classList.add(parts.visibleClass);
+			parts.shell.style.height = `${parts.panel.offsetHeight}px`;
+			if (this.reducedMotion.matches && kind === "discovery") {
+				parts.shell.offsetHeight;
 				this.elements.discoveryClose.style.visibility = "visible";
 			}
-			this.elements.discoveryClose.focus({ preventScroll: true });
+			parts.focusTarget.focus({ preventScroll: true });
 		};
 		if (this.reducedMotion.matches) {
-			this.elements.discoveryShell.style.transition = "none";
+			parts.shell.style.transition = "none";
 			finishOpen();
 		} else {
-			this.elements.discoveryShell.style.height = "0px";
-			this.elements.discoveryShell.offsetHeight;
+			parts.shell.style.height = "0px";
+			parts.shell.offsetHeight;
 			this.openFrame = this.scheduler.requestFrame(finishOpen);
 		}
+		return true;
 	}
-	closeResult(fallbackFocus) {
-		if (this.kind !== "result") return;
-		this.elements.card.classList.remove("result-open");
-		this.elements.result.setAttribute("aria-hidden", "true");
-		this.kind = null;
-		this.closing = false;
-		this.unlockScroll();
-		this.returnFocus = null;
-		if (this.canFocus(fallbackFocus)) fallbackFocus.focus({ preventScroll: true });
-	}
-	closeDiscovery(fallbackFocus, onClosed, focusOverride = null) {
-		if (this.closing || this.kind !== "discovery") return false;
+	closeModal(kind, fallbackFocus, onClosed, focusOverride = null) {
+		if (this.closing || this.kind !== kind) return false;
+		const parts = this.parts(kind);
 		this.closing = true;
 		const generation = ++this.transitionGeneration;
 		this.scheduler.cancelFrame(this.openFrame);
 		this.openFrame = 0;
 		this.cancelCloseWait();
-		this.root.classList.remove("discovery-visible");
-		this.elements.discoveryShell.style.height = `${this.elements.discoveryShell.offsetHeight}px`;
-		this.elements.discoveryShell.offsetHeight;
-		this.elements.discoveryShell.style.height = "0px";
-		this.elements.discoveryButton.setAttribute("aria-expanded", "false");
+		parts.classOwner.classList.remove(parts.visibleClass);
+		parts.shell.style.height = `${parts.shell.offsetHeight}px`;
+		parts.shell.offsetHeight;
+		parts.shell.style.height = "0px";
+		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "false");
 		const finish = () => {
-			if (this.kind !== "discovery" || this.transitionGeneration !== generation) return;
+			if (this.kind !== kind || this.transitionGeneration !== generation) return;
 			this.cancelCloseWait();
-			this.root.classList.remove("discovery-open", "discovery-visible");
-			this.elements.discoveryModal.setAttribute("aria-hidden", "true");
-			this.elements.discoveryShell.style.height = "";
-			this.elements.discoveryShell.style.transition = "";
-			this.elements.discoveryClose.style.visibility = "";
+			parts.classOwner.classList.remove(parts.openClass, parts.visibleClass);
+			parts.modal.setAttribute("aria-hidden", "true");
+			parts.shell.style.height = "";
+			parts.shell.style.transition = "";
+			if (kind === "discovery") this.elements.discoveryClose.style.visibility = "";
 			this.kind = null;
 			this.closing = false;
 			this.unlockScroll();
@@ -3831,13 +3861,14 @@ var ModalController = class {
 			finish();
 			return true;
 		}
-		const transitionTarget = this.elements.discoveryShell;
+		const transitionTarget = parts.shell;
+		this.closeTarget = transitionTarget;
 		this.closeListener = (event) => {
 			const transition = event;
 			if (event.target === transitionTarget && (!transition.propertyName || transition.propertyName === "height")) finish();
 		};
 		transitionTarget.addEventListener("transitionend", this.closeListener);
-		this.closeTimer = this.scheduler.setTimer(finish, this.durations.discovery);
+		this.closeTimer = this.scheduler.setTimer(finish, this.duration);
 		return true;
 	}
 	trapFocus(event) {
@@ -3902,8 +3933,28 @@ var ModalController = class {
 	cancelCloseWait() {
 		if (this.closeTimer) this.scheduler.clearTimer(this.closeTimer);
 		this.closeTimer = 0;
-		if (this.closeListener) this.elements.discoveryShell.removeEventListener("transitionend", this.closeListener);
+		if (this.closeListener && this.closeTarget) this.closeTarget.removeEventListener("transitionend", this.closeListener);
 		this.closeListener = null;
+		this.closeTarget = null;
+	}
+	parts(kind) {
+		return kind === "result" ? {
+			classOwner: this.elements.card,
+			openClass: "result-open",
+			visibleClass: "result-visible",
+			modal: this.elements.result,
+			shell: this.elements.resultShell,
+			panel: this.elements.resultPanel,
+			focusTarget: this.elements.resultAction
+		} : {
+			classOwner: this.root,
+			openClass: "discovery-open",
+			visibleClass: "discovery-visible",
+			modal: this.elements.discoveryModal,
+			shell: this.elements.discoveryShell,
+			panel: this.elements.discoveryPanel,
+			focusTarget: this.elements.discoveryClose
+		};
 	}
 };
 var emptyRecordValue = "---";
@@ -3951,7 +4002,7 @@ function rows(bests, daily, dailyDate) {
 		{
 			mode: "BLITZ",
 			value: bests.blitz.score ? `${bests.blitz.score} CORRECT` : emptyRecordValue,
-			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% ACCURACY` : emptyRecordDetail
+			detail: bests.blitz.score ? `${bests.blitz.accuracy ?? 0}% SUCCESS RATE` : emptyRecordDetail
 		},
 		{
 			mode: "SEEK",
@@ -4347,7 +4398,7 @@ var GameView = class {
 			shareFade: duration(styles, "--duration-share-fade"),
 			wiggle: duration(styles, "--duration-wiggle"),
 			slot: duration(styles, "--duration-slot"),
-			discoveryModal: duration(styles, "--duration-discovery-modal"),
+			modal: duration(styles, "--duration-modal"),
 			timelineReset: duration(styles, "--duration-timeline-reset"),
 			timelineRewind: duration(styles, "--duration-timeline-rewind"),
 			positionReveal: duration(styles, "--duration-position-reveal")
@@ -4362,7 +4413,7 @@ var GameView = class {
 			shareVisible: this.durations.shareVisible,
 			shareFade: this.durations.shareFade
 		}, this.reducedMotion);
-		this.modal = new ModalController(root, this.elements, { discovery: this.durations.discoveryModal }, this.reducedMotion, (message) => this.announce(message));
+		this.modal = new ModalController(root, this.elements, this.durations.modal, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
@@ -4458,7 +4509,7 @@ var GameView = class {
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
-		this.elements.headerAction.inert = overlay;
+		this.elements.headerAction.inert = state.overlay === "result";
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
 		this.elements.slots.inert = overlay || blockedBoard;
@@ -4479,7 +4530,7 @@ var GameView = class {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
 		}
-		this.resultView.render(state.result);
+		if (state.result || !this.modal.resultLayoutActive) this.resultView.render(state.result);
 		this.renderClock(state.clock);
 		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
 		if (openingOverlay === "result") this.modal.openResult();
@@ -4520,7 +4571,7 @@ var GameView = class {
 	}
 	closeResult(focus) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
-		this.modal.closeResult(target);
+		this.modal.closeResult(target, () => this.resultView.render(null));
 	}
 	beginDiscoveryClose(request) {
 		return this.modal.closeDiscovery(this.elements.discoveryButton, () => queueMicrotask(() => {
@@ -4666,7 +4717,7 @@ var GameView = class {
 			this.movePrimaryFocus(event.key, pointerAnchor);
 			return;
 		}
-		if (event.key === "Enter" && this.state.appStatus !== "awaiting-mode" && !target?.closest("button, input, a, .suggest")) {
+		if (event.key === "Enter" && this.state.appStatus !== "awaiting-mode" && (target === this.elements.positionRange || !target?.closest("button, input, a, .suggest"))) {
 			event.preventDefault();
 			this.handlers.playbackShortcut();
 		}
@@ -4791,6 +4842,8 @@ var GameView = class {
 			resultSecondary,
 			resultSecondaryLabel,
 			result: this.required(".result-modal"),
+			resultShell: this.required(".result-shell"),
+			resultPanel: this.required(".result-modal .corzaguessr-modal"),
 			resultTitle: this.required("#corzaguessr-result-title"),
 			resultMeta: this.required("#corzaguessr-result-meta"),
 			discoveryButton: this.required(".discovery-button"),
