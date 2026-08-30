@@ -853,8 +853,8 @@ function composeSeekSlots(session) {
 		text: `ROUND ${attempt.id} · ${seekAttemptPoints(attempt)} POINTS`,
 		tone: "neutral"
 	}));
-	if (!session.started || position.phase !== "selecting") return resolved;
-	const round = position.attempts.length + 1;
+	if (!session.started) return resolved;
+	const round = position.phase === "selecting" ? position.attempts.length + 1 : position.attempts.length;
 	return [{
 		id: round,
 		text: `ROUND ${round} OUT OF ${modeRules.seek.roundCount}`,
