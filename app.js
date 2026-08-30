@@ -97,45 +97,59 @@ var snippetDurations = [
 	16,
 	32
 ];
-var seekMaxPointsPerRound = 1e3;
-var seekMaxScore = 5 * seekMaxPointsPerRound;
+var puzzleAttemptCount = snippetDurations.length;
+var maxPuzzleSnippetSeconds = snippetDurations.at(-1);
 var modeRules = {
 	classic: {
 		initialTimeMs: null,
 		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
 		gameplay: "puzzle",
 		clockDisplay: "snippet",
-		failurePolicy: "heard-fixed"
+		failurePolicy: "heard-fixed",
+		prefetchRounds: false
 	},
 	daily: {
 		initialTimeMs: null,
 		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
 		gameplay: "puzzle",
 		clockDisplay: "snippet",
-		failurePolicy: "fixed"
+		failurePolicy: "fixed",
+		prefetchRounds: false
 	},
 	blitz: {
 		initialTimeMs: 6e4,
 		description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
 		gameplay: "timed",
 		clockDisplay: "countdown",
-		failurePolicy: "replace"
+		failurePolicy: "replace",
+		prefetchRounds: true
 	},
 	seek: {
 		initialTimeMs: null,
 		description: "PLACE THE EIGHT-SECOND SNIPPET ON THE SONG TIMELINE",
 		gameplay: "position",
 		clockDisplay: "position",
-		failurePolicy: "replace"
+		failurePolicy: "replace",
+		prefetchRounds: true,
+		snippetSeconds: 8,
+		roundCount: 5,
+		maxPointsPerRound: 1e3
 	},
 	gauntlet: {
 		initialTimeMs: 3e4,
 		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
 		gameplay: "timed",
 		clockDisplay: "elapsed",
-		failurePolicy: "replace"
+		failurePolicy: "replace",
+		prefetchRounds: true,
+		timeAdjustmentsMs: {
+			correct: 3e3,
+			wrong: -1e3,
+			skip: -2e3
+		}
 	}
 };
+var seekMaxScore = modeRules.seek.roundCount * modeRules.seek.maxPointsPerRound;
 function isTimedMode(mode) {
 	return mode !== null && modeRules[mode].gameplay === "timed";
 }
@@ -146,33 +160,30 @@ function isPositionMode(mode) {
 	return mode !== null && modeRules[mode].gameplay === "position";
 }
 function prefetchesRounds(mode) {
-	return isTimedMode(mode) || isPositionMode(mode);
+	return mode !== null && modeRules[mode].prefetchRounds;
 }
 function clockDisplayForMode(mode) {
 	return modeRules[mode].clockDisplay;
 }
 function snippetSeconds(attempt) {
-	return snippetDurations[Math.max(0, Math.min(snippetDurations.length - 1, attempt))];
+	return snippetDurations[Math.max(0, Math.min(puzzleAttemptCount - 1, attempt))];
 }
 function skipLabel(mode, attempt) {
 	if (mode === "seek") return "GUESS";
 	if (isTimedMode(mode)) return "SKIP";
-	if (attempt >= snippetDurations.length - 1) return "GIVE UP";
+	if (attempt >= puzzleAttemptCount - 1) return "GIVE UP";
 	return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
 }
 function seekPoints(guessedSecond, actualSecond, duration) {
 	if (!Number.isFinite(duration) || duration <= 0) return 0;
 	const relativeError = Math.min(1, Math.abs(guessedSecond - actualSecond) / duration);
-	return Math.round(seekMaxPointsPerRound * (1 - relativeError) ** 2);
+	return Math.round(modeRules.seek.maxPointsPerRound * (1 - relativeError) ** 2);
 }
 function seekAttemptPoints(attempt) {
 	return seekPoints(attempt.guessedSecond, attempt.actualSecond, attempt.trackDuration);
 }
 function seekScore(attempts) {
 	return attempts.reduce((total, attempt) => total + seekAttemptPoints(attempt), 0);
-}
-function gauntletTimeAdjustment(outcome) {
-	return outcome === "correct" ? 3e3 : outcome === "wrong" ? -1e3 : -2e3;
 }
 function accuracy(correct, guesses) {
 	return guesses > 0 ? Math.round(correct * 100 / guesses) : 0;
@@ -352,7 +363,7 @@ function resolvePuzzleAttempt(state, outcome, guessed) {
 			...state,
 			attempts: [createAttempt(id, outcome, guessed), ...state.attempts]
 		},
-		finished: outcome === "correct" || id === 6
+		finished: outcome === "correct" || id === puzzleAttemptCount
 	};
 }
 function resolveTimedAttempt(state, outcome, guessed) {
@@ -379,7 +390,7 @@ function dismissResult(state) {
 }
 function puzzleAttempt(state) {
 	if (!isPuzzleMode(state.mode)) return 0;
-	return state.attempts[0]?.outcome === "correct" || state.attempts.length === 6 ? Math.max(0, state.attempts.length - 1) : state.attempts.length;
+	return state.attempts[0]?.outcome === "correct" || state.attempts.length === puzzleAttemptCount ? Math.max(0, state.attempts.length - 1) : state.attempts.length;
 }
 function puzzleGuessedTrackIds(state) {
 	if (!isPuzzleMode(state.mode)) return /* @__PURE__ */ new Set();
@@ -503,7 +514,7 @@ function hasDailyTrackAvailable(tracks, date) {
 	return tracks.some((track) => isReleasedBy(track, date));
 }
 function dailyClipStart(track, date) {
-	const clip = Math.min(snippetDurations.at(-1), track.duration);
+	const clip = Math.min(maxPuzzleSnippetSeconds, track.duration);
 	const maximum = Math.max(0, Math.floor(track.duration - clip));
 	return stableHash(`corzaguessr-daily-clip:${date}:${track.dailyNumber}`) % (maximum + 1);
 }
@@ -601,7 +612,7 @@ function composeClockViewModel(input) {
 	return {
 		currentText: formatClock(seconds),
 		endText: `0:${String(input.snippetSeconds).padStart(2, "0")}`,
-		progress: seconds ? seconds / snippetDurations.at(-1) + .0025 : 0
+		progress: seconds ? seconds / maxPuzzleSnippetSeconds + .0025 : 0
 	};
 }
 function formatClock(seconds) {
@@ -624,9 +635,9 @@ var months$1 = [
 	"December"
 ];
 function formatDailyShare(date, result) {
-	const attempts = Math.max(1, Math.min(6, Math.trunc(result.attempts)));
-	const squares = Array.from({ length: 6 }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
-	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : "I didn't get it in 6 tries!";
+	const attempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(result.attempts)));
+	const squares = Array.from({ length: puzzleAttemptCount }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
+	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : `I didn't get it in ${puzzleAttemptCount} tries!`;
 	return `CORZAGUESSR✦ DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${shareUrl}`;
 }
 function formatShareDate(value) {
@@ -783,13 +794,13 @@ function composeGameViewModel(input) {
 		attemptEnabled,
 		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: session.mode === "seek" ? 8 : snippetSeconds(attempt),
+		snippetSeconds: session.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(attempt),
 		skipText: seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: session.mode === "seek" ? 8 : snippetSeconds(attempt),
+			snippetSeconds: session.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(attempt),
 			inputVisible,
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
@@ -820,8 +831,8 @@ function promptSlot(session, tracksLeft) {
 	const attempt = puzzleAttempt(session);
 	return {
 		id: attempt + 1,
-		text: attempt === snippetDurations.length - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${snippetDurations.length}`,
-		tone: attempt === snippetDurations.length - 1 ? "final-prompt" : "prompt"
+		text: attempt === puzzleAttemptCount - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${puzzleAttemptCount}`,
+		tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
 	};
 }
 function composeSeekSlots(session) {
@@ -836,7 +847,7 @@ function composeSeekSlots(session) {
 	const round = position.attempts.length + 1;
 	return [{
 		id: round,
-		text: `ROUND ${round} OUT OF 5`,
+		text: `ROUND ${round} OUT OF ${modeRules.seek.roundCount}`,
 		tone: "prompt"
 	}, ...resolved];
 }
@@ -855,12 +866,12 @@ function composePositionTimeline(session, interactionEnabled) {
 function seekActionLabel(session) {
 	if (session.mode !== "seek" || !session.position) return skipLabel(session.mode, puzzleAttempt(session));
 	if (session.position.phase !== "revealed") return "GUESS";
-	return session.position.attempts.length >= 5 ? "RESULTS" : "NEXT";
+	return session.position.attempts.length >= modeRules.seek.roundCount ? "RESULTS" : "NEXT";
 }
 function attemptSlot(attempt, mode, tracks, gauntletMilestone) {
 	let text = attempt.trackNumber === null ? "" : tracks.find((track) => track.dailyNumber === attempt.trackNumber)?.title ?? `TRACK #${attempt.trackNumber}`;
 	if (attempt.outcome === "skip") if (isTimedMode(mode)) text = "SKIPPED";
-	else if (attempt.id === 6) text = "FINAL GUESS SKIPPED";
+	else if (attempt.id === puzzleAttemptCount) text = "FINAL GUESS SKIPPED";
 	else {
 		const added = snippetDurations[attempt.id] - snippetDurations[attempt.id - 1];
 		text = `GUESS ${attempt.id} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`;
@@ -1126,7 +1137,7 @@ var GameController = class {
 			this.session = setRound(this.session, round);
 			const session = this.session;
 			if (!isTimedMode(session.mode)) {
-				const seconds = session.mode === "seek" ? 8 : snippetSeconds(puzzleAttempt(session));
+				const seconds = session.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(puzzleAttempt(session));
 				this.clock.restart(seconds * 1e3);
 			}
 			this.clock.start();
@@ -1232,7 +1243,7 @@ var GameController = class {
 			this.handleTimedPlay(round, requested);
 			return;
 		}
-		this.handleSnippetPlay(round, state.mode === "seek" ? 8 : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
+		this.handleSnippetPlay(round, state.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
 	}
 	handleTimedPlay(round, requested) {
 		if (requested) {
@@ -1287,7 +1298,7 @@ var GameController = class {
 			return;
 		}
 		if (mode === "gauntlet") {
-			const adjustment = gauntletTimeAdjustment(outcome);
+			const adjustment = modeRules.gauntlet.timeAdjustmentsMs[outcome];
 			this.view.flashTimeChange(adjustment / 1e3);
 			if (this.clock.adjust(adjustment).remainingMs <= 0) {
 				this.finishGame();
@@ -1322,7 +1333,7 @@ var GameController = class {
 		const position = state.position;
 		if (state.mode !== "seek" || !position || state.result || this.activeOverlay) return;
 		if (position.phase === "revealed") {
-			if (position.attempts.length >= 5) {
+			if (position.attempts.length >= modeRules.seek.roundCount) {
 				this.finishGame();
 				return;
 			}
@@ -1357,7 +1368,7 @@ var GameController = class {
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
-		const milliseconds = modeRules[mode].initialTimeMs ?? (mode === "seek" ? 8 : snippetSeconds(resumed)) * 1e3;
+		const milliseconds = modeRules[mode].initialTimeMs ?? (mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(resumed)) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.prime();
@@ -1383,7 +1394,7 @@ var GameController = class {
 			const excluded = mode === "seek" ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
 			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
 			if (!track) return null;
-			const clipSeconds = mode === "seek" ? 8 : isTimedMode(mode) ? 60 : snippetDurations.at(-1);
+			const clipSeconds = mode === "seek" ? modeRules.seek.snippetSeconds : isTimedMode(mode) ? 60 : maxPuzzleSnippetSeconds;
 			clipStart = randomClipStart(track, clipSeconds, this.random);
 		}
 		return {
@@ -2034,7 +2045,7 @@ function parseDailyProgress(value) {
 		"attempts"
 	];
 	if (value.status !== "in-progress" && !completed || !hasExactKeys(value, currentKeys)) return emptyDailyProgress();
-	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || !Array.isArray(value.attempts) || completed && value.outcome !== "won" && value.outcome !== "lost" || completed && !isIntegerBetween(value.attempts.length, 1, 6) || !completed && !isIntegerBetween(value.attempts.length, 0, 5)) return emptyDailyProgress();
+	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || !Array.isArray(value.attempts) || completed && value.outcome !== "won" && value.outcome !== "lost" || completed && !isIntegerBetween(value.attempts.length, 1, puzzleAttemptCount) || !completed && !isIntegerBetween(value.attempts.length, 0, puzzleAttemptCount - 1)) return emptyDailyProgress();
 	const attemptCount = value.attempts.length;
 	const attempts = [];
 	for (let index = 0; index < attemptCount; index += 1) {
@@ -2101,7 +2112,7 @@ function parsePersonalBests(value) {
 	};
 }
 function validSeekBest(value) {
-	return isRecord(value) && hasExactKeys(value, ["score"]) && isIntegerBetween(value.score, 0, 5e3);
+	return isRecord(value) && hasExactKeys(value, ["score"]) && isIntegerBetween(value.score, 0, seekMaxScore);
 }
 function validGauntletBest(value) {
 	if (!isRecord(value) || !hasExactKeys(value, ["timeMs", "trackCount"]) || !isNonNegativeInteger(value.timeMs) || value.timeMs % 1e3 !== 0 || !isNonNegativeInteger(value.trackCount)) return false;
@@ -2122,7 +2133,7 @@ function validScoreBest(value) {
 	return isIntegerBetween(value.accuracy, 0, 100);
 }
 function validSnippetTotal(streak, total) {
-	return streak === 0 ? total === 0 : total >= streak && total <= streak * 32;
+	return streak === 0 ? total === 0 : total >= streak && total <= streak * maxPuzzleSnippetSeconds;
 }
 function isRecord(value) {
 	return !!value && typeof value === "object" && !Array.isArray(value);
@@ -3837,7 +3848,7 @@ function rows(bests, daily, dailyDate) {
 	const standard = [
 		{
 			mode: "DAILY",
-			value: dailyComplete ? dailyWon(daily, dailyDate) ? `${dailyAttempt(daily) + 1}/6` : "FAILED" : emptyRecordValue,
+			value: dailyComplete ? dailyWon(daily, dailyDate) ? `${dailyAttempt(daily) + 1}/${puzzleAttemptCount}` : "FAILED" : emptyRecordValue,
 			detail: dailyComplete ? formatOrdinalDate(daily.date) : emptyRecordDetail
 		},
 		{
@@ -4061,8 +4072,8 @@ var TimelineView = class {
 		}
 		if (this.reducedMotion.matches || this.durations.reset <= 0) return;
 		this.elements.fill.style.transform = `scaleX(${previousScale})`;
-		this.elements.fill.offsetWidth;
 		this.elements.fill.style.transition = "transform var(--duration-timeline-reset) ease-out";
+		this.elements.fill.offsetWidth;
 		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.reset, generation, (event) => {
 			const transition = event;
 			return !transition.propertyName || transition.propertyName === "transform";
@@ -4720,7 +4731,7 @@ function duration(styles, name) {
 	return value.endsWith("ms") ? Number.parseFloat(value) || 0 : value.endsWith("s") ? (Number.parseFloat(value) || 0) * 1e3 : 0;
 }
 function snippetPercentage(seconds) {
-	return `${seconds / snippetDurations.at(-1) * 100}%`;
+	return `${seconds / maxPuzzleSnippetSeconds * 100}%`;
 }
 function markup() {
 	const snippetTicks = snippetDurations.slice(0, -1).map((seconds) => `<i class="tick" style="left:${snippetPercentage(seconds)}"></i>`).join("");
