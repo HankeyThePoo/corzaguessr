@@ -149,6 +149,12 @@ var modeRules = {
 		}
 	}
 };
+var regularModes = [
+	"daily",
+	"classic",
+	"blitz",
+	"seek"
+];
 var seekMaxScore = modeRules.seek.roundCount * modeRules.seek.maxPointsPerRound;
 function isTimedMode(mode) {
 	return mode !== null && modeRules[mode].gameplay === "timed";
@@ -1130,6 +1136,7 @@ var GameController = class {
 	onPending(round) {
 		this.session = setRound(this.session, round);
 		if (this.session.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track);
+		else if (this.session.mode === "classic") this.progress.markClassicStarted(round);
 		this.render();
 	}
 	onAudioPlaying(round, startedNewRound) {
@@ -1173,6 +1180,7 @@ var GameController = class {
 	onAudioRecovery(kind) {
 		this.clock.pause();
 		if (kind === "automatic-replacement") {
+			if (this.session.mode === "classic") this.progress.clearClassicRound();
 			this.session = clearRound(this.session);
 			this.view.announce(copy.selectedTrackReplacing);
 			return;
@@ -1318,6 +1326,7 @@ var GameController = class {
 			return;
 		}
 		if (mode === "daily" && this.progress.dailyInProgress(this.dailyDate)) this.progress.updateDailyAttempt(updated.attempts);
+		else if (mode === "classic") this.progress.updateClassicAttempts(updated.attempts);
 		const limit = snippetSeconds(puzzleAttempt(updated)) * 1e3;
 		if (clockWasRunning) this.clock.extendTo(limit);
 		else {
@@ -1365,7 +1374,7 @@ var GameController = class {
 		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
 		this.sessionNumber += 1;
-		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
+		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : mode === "classic" ? this.progress.classicRound?.attempts ?? [] : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
 		const milliseconds = modeRules[mode].initialTimeMs ?? (mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(resumed)) * 1e3;
@@ -1385,11 +1394,22 @@ var GameController = class {
 	createRound(mode, failed, avoid) {
 		let track;
 		let clipStart;
+		const restoredClassic = mode === "classic" ? this.progress.classicRound : null;
 		if (mode === "daily") {
 			const daily = this.progress.daily;
 			track = selectDailyTrack(this.tracks, this.dailyDate, dailyInProgress(daily, this.dailyDate) ? daily.dailyNumber : null);
 			if (!track) return null;
 			clipStart = dailyClipStart(track, this.dailyDate);
+		} else if (restoredClassic) {
+			track = this.tracks.find((candidate) => candidate.dailyNumber === restoredClassic.dailyNumber) ?? null;
+			const maximumClipStart = track ? Math.max(0, Math.floor(track.duration - Math.min(maxPuzzleSnippetSeconds, track.duration))) : -1;
+			if (track && restoredClassic.clipStart <= maximumClipStart) clipStart = restoredClassic.clipStart;
+			else {
+				this.progress.clearClassicRound();
+				track = selectRandomTrack(this.tracks, failed, avoid, this.random);
+				if (!track) return null;
+				clipStart = randomClipStart(track, maxPuzzleSnippetSeconds, this.random);
+			}
 		} else {
 			const excluded = mode === "seek" ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
 			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
@@ -1459,6 +1479,7 @@ var Progress = class {
 		this.state = {
 			discoveries: new Set(loaded.discoveries),
 			daily: cloneDaily(loaded.daily),
+			classicRound: cloneClassicRound(loaded.classicRound),
 			personalBests: cloneBests(loaded.personalBests)
 		};
 	}
@@ -1467,6 +1488,9 @@ var Progress = class {
 	}
 	get daily() {
 		return cloneDaily(this.state.daily);
+	}
+	get classicRound() {
+		return cloneClassicRound(this.state.classicRound);
 	}
 	get personalBests() {
 		return cloneBests(this.state.personalBests);
@@ -1510,6 +1534,40 @@ var Progress = class {
 		this.pendingPersistence.daily = true;
 		this.persistPendingProgress();
 	}
+	markClassicStarted(round) {
+		if (this.state.classicRound) return;
+		this.state = {
+			...this.state,
+			classicRound: {
+				dailyNumber: round.track.dailyNumber,
+				clipStart: round.clipStart,
+				attempts: []
+			}
+		};
+		this.pendingPersistence.classicRound = true;
+		this.persistPendingProgress();
+	}
+	updateClassicAttempts(attempts) {
+		if (!this.state.classicRound) return;
+		this.state = {
+			...this.state,
+			classicRound: {
+				...this.state.classicRound,
+				attempts: attempts.map((attempt) => ({ ...attempt }))
+			}
+		};
+		this.pendingPersistence.classicRound = true;
+		this.persistPendingProgress();
+	}
+	clearClassicRound() {
+		if (!this.state.classicRound) return;
+		this.state = {
+			...this.state,
+			classicRound: null
+		};
+		this.pendingPersistence.classicRound = true;
+		this.persistPendingProgress();
+	}
 	recordDiscovery(trackNumber) {
 		if (this.state.discoveries.has(trackNumber)) return;
 		this.state = {
@@ -1524,6 +1582,7 @@ var Progress = class {
 		this.state = {
 			discoveries: /* @__PURE__ */ new Set(),
 			daily: emptyDailyProgress(),
+			classicRound: null,
 			personalBests: emptyPersonalBests()
 		};
 		this.pendingPersistence = emptyPendingPersistence();
@@ -1532,12 +1591,13 @@ var Progress = class {
 	finish(run) {
 		const transition = finishRun(this.state, run);
 		this.state = transition.state;
-		if (transition.changedSection) this.pendingPersistence[transition.changedSection] = true;
+		for (const section of transition.changedSections) this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
 		return transition.result;
 	}
 	persistPendingProgress() {
 		if (this.pendingPersistence.daily && this.storage.saveDaily(this.state.daily)) this.pendingPersistence.daily = false;
+		if (this.pendingPersistence.classicRound && this.storage.saveClassicRound(this.state.classicRound)) this.pendingPersistence.classicRound = false;
 		if (this.pendingPersistence.discoveries && this.storage.saveDiscoveries(this.state.discoveries)) this.pendingPersistence.discoveries = false;
 		if (this.pendingPersistence.personalBests && this.storage.savePersonalBests(this.state.personalBests)) this.pendingPersistence.personalBests = false;
 		if (this.persistencePending) this.options.onPersistenceFailure?.();
@@ -1563,7 +1623,7 @@ function finishRun(state, run) {
 				...state,
 				daily
 			},
-			changedSection: "daily",
+			changedSections: ["daily"],
 			result: {
 				mode: "daily",
 				won,
@@ -1578,14 +1638,18 @@ function finishRun(state, run) {
 		const attempt = Math.max(0, attempts.length - 1);
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateClassicBest(personalBests, won, attempt);
-		const nextState = update.changed ? {
+		const clearedState = state.classicRound ? {
 			...state,
-			personalBests
+			classicRound: null
 		} : state;
+		const nextState = update.changed ? {
+			...clearedState,
+			personalBests
+		} : clearedState;
 		const best = nextState.personalBests.classic;
 		return {
 			state: nextState,
-			changedSection: update.changed ? "personalBests" : null,
+			changedSections: [...state.classicRound ? ["classicRound"] : [], ...update.changed ? ["personalBests"] : []],
 			result: {
 				mode: "classic",
 				won,
@@ -1611,7 +1675,7 @@ function finishRun(state, run) {
 		const best = nextState.personalBests.blitz;
 		return {
 			state: nextState,
-			changedSection: update.changed ? "personalBests" : null,
+			changedSections: update.changed ? ["personalBests"] : [],
 			result: {
 				mode: "blitz",
 				newPersonalBest: update.newPersonalBest,
@@ -1632,7 +1696,7 @@ function finishRun(state, run) {
 		} : state;
 		return {
 			state: nextState,
-			changedSection: update.changed ? "personalBests" : null,
+			changedSections: update.changed ? ["personalBests"] : [],
 			result: {
 				mode: "seek",
 				newPersonalBest: update.newPersonalBest,
@@ -1654,7 +1718,7 @@ function finishRun(state, run) {
 	const best = nextState.personalBests.gauntlet;
 	return {
 		state: nextState,
-		changedSection: update.changed ? "personalBests" : null,
+		changedSections: update.changed ? ["personalBests"] : [],
 		result: {
 			mode: "gauntlet",
 			won: completed,
@@ -1684,6 +1748,7 @@ function correctTrackIds(attempts) {
 function emptyPendingPersistence() {
 	return {
 		daily: false,
+		classicRound: false,
 		discoveries: false,
 		personalBests: false
 	};
@@ -1693,6 +1758,12 @@ function cloneDaily(progress) {
 		...progress,
 		attempts: progress.attempts.map((attempt) => ({ ...attempt }))
 	};
+}
+function cloneClassicRound(progress) {
+	return progress ? {
+		...progress,
+		attempts: progress.attempts.map((attempt) => ({ ...attempt }))
+	} : null;
 }
 function cloneBests(bests) {
 	return {
@@ -2026,6 +2097,7 @@ var JsonStorage = class {
 var storageKeys = {
 	discoveries: "corzaguessr:discoveries",
 	daily: "corzaguessr:daily",
+	classicRound: "corzaguessr:classic-round",
 	personalBests: "corzaguessr:personal-bests"
 };
 function parseDailyProgress(value) {
@@ -2045,26 +2117,9 @@ function parseDailyProgress(value) {
 		"attempts"
 	];
 	if (value.status !== "in-progress" && !completed || !hasExactKeys(value, currentKeys)) return emptyDailyProgress();
-	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || !Array.isArray(value.attempts) || completed && value.outcome !== "won" && value.outcome !== "lost" || completed && !isIntegerBetween(value.attempts.length, 1, puzzleAttemptCount) || !completed && !isIntegerBetween(value.attempts.length, 0, puzzleAttemptCount - 1)) return emptyDailyProgress();
-	const attemptCount = value.attempts.length;
-	const attempts = [];
-	for (let index = 0; index < attemptCount; index += 1) {
-		const candidate = value.attempts[index];
-		if (!isRecord(candidate) || !hasExactKeys(candidate, [
-			"id",
-			"outcome",
-			"trackNumber"
-		])) return emptyDailyProgress();
-		const expectedId = attemptCount - index;
-		const validOutcome = completed && index === 0 ? value.outcome === "won" && candidate.outcome === "correct" || value.outcome === "lost" && (candidate.outcome === "wrong" || candidate.outcome === "skip") : candidate.outcome === "wrong" || candidate.outcome === "skip";
-		const validTrack = candidate.outcome === "skip" ? candidate.trackNumber === null : isPositiveInteger(candidate.trackNumber);
-		if (candidate.id !== expectedId || !validOutcome || !validTrack) return emptyDailyProgress();
-		attempts.push({
-			id: candidate.id,
-			outcome: candidate.outcome,
-			trackNumber: candidate.trackNumber
-		});
-	}
+	if (typeof value.date !== "string" || !isIsoDate(value.date) || !isPositiveInteger(value.dailyNumber) || completed && value.outcome !== "won" && value.outcome !== "lost") return emptyDailyProgress();
+	const attempts = parsePuzzleAttempts(value.attempts, completed ? value.outcome : null);
+	if (!attempts) return emptyDailyProgress();
 	const common = {
 		date: value.date,
 		dailyNumber: value.dailyNumber,
@@ -2077,6 +2132,20 @@ function parseDailyProgress(value) {
 	} : {
 		status: "in-progress",
 		...common
+	};
+}
+function parseClassicRound(value) {
+	if (!isRecord(value) || !hasExactKeys(value, [
+		"dailyNumber",
+		"clipStart",
+		"attempts"
+	])) return null;
+	const attempts = parsePuzzleAttempts(value.attempts, null);
+	if (!isPositiveInteger(value.dailyNumber) || !isNonNegativeInteger(value.clipStart) || !attempts) return null;
+	return {
+		dailyNumber: value.dailyNumber,
+		clipStart: value.clipStart,
+		attempts
 	};
 }
 function parsePersonalBests(value) {
@@ -2127,6 +2196,30 @@ function parseDiscoveries(value) {
 	}
 	return discoveries;
 }
+function parsePuzzleAttempts(value, completedOutcome) {
+	if (!Array.isArray(value)) return null;
+	const minimum = completedOutcome ? 1 : 0;
+	const maximum = completedOutcome ? puzzleAttemptCount : puzzleAttemptCount - 1;
+	if (!isIntegerBetween(value.length, minimum, maximum)) return null;
+	const attempts = [];
+	for (let index = 0; index < value.length; index += 1) {
+		const candidate = value[index];
+		if (!isRecord(candidate) || !hasExactKeys(candidate, [
+			"id",
+			"outcome",
+			"trackNumber"
+		])) return null;
+		const validOutcome = completedOutcome && index === 0 ? completedOutcome === "won" && candidate.outcome === "correct" || completedOutcome === "lost" && (candidate.outcome === "wrong" || candidate.outcome === "skip") : candidate.outcome === "wrong" || candidate.outcome === "skip";
+		const validTrack = candidate.outcome === "skip" ? candidate.trackNumber === null : isPositiveInteger(candidate.trackNumber);
+		if (candidate.id !== value.length - index || !validOutcome || !validTrack) return null;
+		attempts.push({
+			id: candidate.id,
+			outcome: candidate.outcome,
+			trackNumber: candidate.trackNumber
+		});
+	}
+	return attempts;
+}
 function validScoreBest(value) {
 	if (!isRecord(value) || !hasExactKeys(value, ["score", "accuracy"]) || !isNonNegativeInteger(value.score)) return false;
 	if (value.score === 0) return value.accuracy === null;
@@ -2160,6 +2253,7 @@ var ProgressStorage = class {
 		return {
 			discoveries: parseDiscoveries(this.storage.read(storageKeys.discoveries)),
 			daily: parseDailyProgress(this.storage.read(storageKeys.daily)),
+			classicRound: parseClassicRound(this.storage.read(storageKeys.classicRound)),
 			personalBests: parsePersonalBests(this.storage.read(storageKeys.personalBests))
 		};
 	}
@@ -2172,6 +2266,9 @@ var ProgressStorage = class {
 	}
 	saveDaily(progress) {
 		return this.storage.write(storageKeys.daily, progress);
+	}
+	saveClassicRound(progress) {
+		return progress ? this.storage.write(storageKeys.classicRound, progress) : this.storage.remove(storageKeys.classicRound);
 	}
 	savePersonalBests(bests) {
 		return this.storage.write(storageKeys.personalBests, bests);
@@ -3581,14 +3678,8 @@ function splitTrackTitle(value) {
 	const separator = value.indexOf(" - ");
 	return separator < 0 ? ["", value] : [value.slice(0, separator), value.slice(separator + 3)];
 }
-var modes = [
-	"daily",
-	"classic",
-	"blitz",
-	"seek"
-];
 function nextPrimaryFocus(state, key) {
-	const modeIndex = state.current && isMode(state.current) ? modes.indexOf(state.current) : -1;
+	const modeIndex = state.current ? regularModes.findIndex((mode) => mode === state.current) : -1;
 	if (modeIndex >= 0) {
 		if (key === "ArrowUp") return available(state, "discovery");
 		if (key === "ArrowDown") return available(state, "play");
@@ -3597,8 +3688,8 @@ function nextPrimaryFocus(state, key) {
 	const recommended = recommendedMode(state);
 	if (state.current === "discovery") {
 		if (key === "ArrowDown") return recommended;
-		if (key === "ArrowLeft") return modes.find((mode) => state.enabled.has(mode)) ?? null;
-		if (key === "ArrowRight") return [...modes].reverse().find((mode) => state.enabled.has(mode)) ?? null;
+		if (key === "ArrowLeft") return regularModes.find((mode) => state.enabled.has(mode)) ?? null;
+		if (key === "ArrowRight") return [...regularModes].reverse().find((mode) => state.enabled.has(mode)) ?? null;
 		return null;
 	}
 	if (state.current === "play") return key === "ArrowUp" ? recommended : null;
@@ -3607,28 +3698,25 @@ function nextPrimaryFocus(state, key) {
 function recommendedMode(state) {
 	if (state.completedDaily && state.enabled.has("classic")) return "classic";
 	if (!state.selectedMode && state.enabled.has("daily")) return "daily";
-	const selectedIndex = state.selectedMode ? modes.findIndex((mode) => mode === state.selectedMode) : -1;
-	if (selectedIndex < 0) return modes.find((mode) => state.enabled.has(mode)) ?? null;
-	for (let distance = 1; distance < modes.length; distance += 1) {
-		const right = modes[selectedIndex + distance];
+	const selectedIndex = state.selectedMode ? regularModes.findIndex((mode) => mode === state.selectedMode) : -1;
+	if (selectedIndex < 0) return regularModes.find((mode) => state.enabled.has(mode)) ?? null;
+	for (let distance = 1; distance < regularModes.length; distance += 1) {
+		const right = regularModes[selectedIndex + distance];
 		if (right && state.enabled.has(right)) return right;
-		const left = modes[selectedIndex - distance];
+		const left = regularModes[selectedIndex - distance];
 		if (left && state.enabled.has(left)) return left;
 	}
-	return modes.find((mode) => state.enabled.has(mode)) ?? null;
+	return regularModes.find((mode) => state.enabled.has(mode)) ?? null;
 }
 function modeInDirection(state, start, step) {
-	for (let distance = 1; distance < modes.length; distance += 1) {
-		const mode = modes[(start + step * distance + modes.length) % modes.length];
+	for (let distance = 1; distance < regularModes.length; distance += 1) {
+		const mode = regularModes[(start + step * distance + regularModes.length) % regularModes.length];
 		if (mode && state.enabled.has(mode)) return mode;
 	}
 	return null;
 }
 function available(state, target) {
 	return state.enabled.has(target) ? target : null;
-}
-function isMode(target) {
-	return target === "daily" || target === "blitz" || target === "classic" || target === "seek";
 }
 var ModalController = class {
 	root;
@@ -4247,12 +4335,7 @@ var GameView = class {
 		root.innerHTML = markup();
 		this.elements = this.queryElements();
 		this.audioElements = this.elements.audioPlayers;
-		this.modeButtons = {
-			daily: this.required("[data-mode=\"daily\"]"),
-			blitz: this.required("[data-mode=\"blitz\"]"),
-			classic: this.required("[data-mode=\"classic\"]"),
-			seek: this.required("[data-mode=\"seek\"]")
-		};
+		this.modeButtons = Object.fromEntries(regularModes.map((mode) => [mode, this.required(`[data-mode="${mode}"]`)]));
 		const styles = getComputedStyle(root);
 		this.durations = {
 			timeAdjustmentFeedback: duration(styles, "--duration-time-adjustment-feedback"),
@@ -4337,7 +4420,8 @@ var GameView = class {
 		this.elements.discoveryModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
 		});
-		for (const [mode, button] of Object.entries(this.modeButtons)) {
+		for (const mode of regularModes) {
+			const button = this.modeButtons[mode];
 			button.addEventListener("click", () => handlers.selectMode(mode));
 			this.bindPreview(button, mode);
 		}
@@ -4374,7 +4458,8 @@ var GameView = class {
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
 		this.elements.slots.inert = overlay || blockedBoard;
-		for (const [mode, button] of Object.entries(this.modeButtons)) {
+		for (const mode of regularModes) {
+			const button = this.modeButtons[mode];
 			const selected = mode === state.mode;
 			button.disabled = state.appStatus === "error" || selected || state.overlay === "discovery";
 			button.setAttribute("aria-pressed", String(selected));
@@ -4592,10 +4677,7 @@ var GameView = class {
 	movePrimaryFocus(key, pointerAnchor) {
 		const elements = {
 			discovery: this.elements.discoveryButton,
-			daily: this.modeButtons.daily,
-			blitz: this.modeButtons.blitz,
-			classic: this.modeButtons.classic,
-			seek: this.modeButtons.seek,
+			...this.modeButtons,
 			play: this.elements.play
 		};
 		const entries = Object.entries(elements);
@@ -4739,7 +4821,7 @@ function markup() {
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
 		`<div class="row header-action"><button type="button" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
-    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE"><button type="button" class="mode" data-mode="daily" aria-pressed="false">DAILY</button><button type="button" class="mode" data-mode="classic" aria-pressed="false">CLASSIC</button><button type="button" class="mode" data-mode="blitz" aria-pressed="false">BLITZ</button><button type="button" class="mode" data-mode="seek" aria-pressed="false">SEEK</button></div>`,
+    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE">${regularModes.map((mode) => `<button type="button" class="mode" data-mode="${mode}" aria-pressed="false">${mode.toUpperCase()}</button>`).join("")}</div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
