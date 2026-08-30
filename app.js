@@ -544,44 +544,6 @@ function clampRandom(value) {
 function isReleasedBy(track, date) {
 	return track.releaseDate !== null && track.releaseDate <= date;
 }
-function emptyDailyProgress() {
-	return { status: "none" };
-}
-function dailyInProgress(progress, date) {
-	return progress.status === "in-progress" && progress.date === date;
-}
-function dailyStarted(progress, date) {
-	return progress.status !== "none" && progress.date === date;
-}
-function dailyCompleted(progress, date) {
-	return progress.status === "completed" && progress.date === date;
-}
-function dailyWon(progress, date) {
-	return dailyCompleted(progress, date) && progress.outcome === "won";
-}
-function dailyAttempt(progress) {
-	if (progress.status === "none") return 0;
-	return progress.status === "completed" ? Math.max(0, progress.attempts.length - 1) : progress.attempts.length;
-}
-function emptyPersonalBests() {
-	return {
-		classic: {
-			current: 0,
-			best: 0,
-			snippetTotal: 0,
-			bestSnippetTotal: 0
-		},
-		blitz: {
-			score: 0,
-			accuracy: null
-		},
-		seek: { score: 0 },
-		gauntlet: {
-			timeMs: 0,
-			trackCount: 0
-		}
-	};
-}
 var copy = {
 	modePrompt: "SELECT A MODE TO BEGIN",
 	loadingCatalog: "LOADING TRACKLIST...",
@@ -616,7 +578,7 @@ function composeClockViewModel(input) {
 			progress: denominator ? clock.remainingMs / denominator : 0
 		};
 	}
-	const seconds = mode === "daily" && !input.inputVisible && input.dailyStarted ? input.snippetSeconds : clock.elapsedMs / 1e3;
+	const seconds = clock.elapsedMs / 1e3;
 	return {
 		currentText: formatClock(seconds),
 		endText: `0:${String(input.snippetSeconds).padStart(2, "0")}`,
@@ -652,6 +614,41 @@ function formatShareDate(value) {
 	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
 	const monthName = month ? months$1[Number(month) - 1] : void 0;
 	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
+}
+function emptyDailyProgress() {
+	return { status: "none" };
+}
+function dailyInProgress(progress, date) {
+	return progress.status === "in-progress" && progress.date === date;
+}
+function dailyCompleted(progress, date) {
+	return progress.status === "completed" && progress.date === date;
+}
+function dailyWon(progress, date) {
+	return dailyCompleted(progress, date) && progress.outcome === "won";
+}
+function dailyAttempt(progress) {
+	if (progress.status === "none") return 0;
+	return progress.status === "completed" ? Math.max(0, progress.attempts.length - 1) : progress.attempts.length;
+}
+function emptyPersonalBests() {
+	return {
+		classic: {
+			current: 0,
+			best: 0,
+			snippetTotal: 0,
+			bestSnippetTotal: 0
+		},
+		blitz: {
+			score: 0,
+			accuracy: null
+		},
+		seek: { score: 0 },
+		gauntlet: {
+			timeMs: 0,
+			trackCount: 0
+		}
+	};
 }
 function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	if (!result) return null;
@@ -812,8 +809,7 @@ function composeGameViewModel(input) {
 			mode: session.mode,
 			snippetSeconds: modeSnippetSeconds(session.mode, attempt),
 			inputVisible,
-			clock: input.clock,
-			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
+			clock: input.clock
 		}),
 		positionTimeline,
 		result: composeResultViewModel(session.result, input.progressPersistencePending, session.attempts),
@@ -1146,8 +1142,8 @@ var GameController = class {
 	}
 	onPending(round) {
 		this.session = setRound(this.session, round);
-		if (this.session.mode === "daily") this.progress.markDailyStarted(this.dailyDate, round.track);
-		else if (this.session.mode === "classic") this.progress.markClassicStarted(round);
+		const mode = this.session.mode;
+		if (isPuzzleMode(mode)) this.progress.startPuzzleRound(mode, this.dailyDate, round);
 		this.render();
 	}
 	onAudioPlaying(round, startedNewRound) {
@@ -1193,7 +1189,7 @@ var GameController = class {
 		if (kind === "automatic-replacement") {
 			if (this.session.mode === "classic") {
 				this.classicResumePending = false;
-				this.progress.clearClassicRound();
+				this.progress.clearPuzzleRound("classic", this.dailyDate);
 			}
 			this.session = clearRound(this.session);
 			this.view.announce(copy.selectedTrackReplacing);
@@ -1228,8 +1224,7 @@ var GameController = class {
 			mode: session.mode,
 			snippetSeconds: snippetSeconds(puzzleAttempt(session)),
 			inputVisible: guessInputVisible(session, this.playback.snapshot),
-			clock: snapshot,
-			dailyStarted: this.progress.dailyInProgress(this.dailyDate) || this.progress.dailyDone(this.dailyDate)
+			clock: snapshot
 		}));
 	}
 	onClockExpired() {
@@ -1337,8 +1332,7 @@ var GameController = class {
 			this.finishGame();
 			return;
 		}
-		if (mode === "daily" && this.progress.dailyInProgress(this.dailyDate)) this.progress.updateDailyAttempt(updated.attempts);
-		else if (mode === "classic") this.progress.updateClassicAttempts(updated.attempts);
+		this.progress.updatePuzzleAttempts(mode, this.dailyDate, updated.attempts);
 		const limit = snippetSeconds(puzzleAttempt(updated)) * 1e3;
 		if (clockWasRunning) this.clock.extendTo(limit);
 		else {
@@ -1386,9 +1380,9 @@ var GameController = class {
 		this.dailySchedule.stopCountdown();
 		this.dailyCountdownMs = 0;
 		this.sessionNumber += 1;
-		const classicRound = mode === "classic" ? this.progress.classicRound : null;
-		this.classicResumePending = classicRound !== null;
-		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : mode === "classic" ? classicRound?.attempts ?? [] : [];
+		const puzzleRound = isPuzzleMode(mode) ? this.persistedPuzzleRound(mode) : null;
+		this.classicResumePending = mode === "classic" && puzzleRound !== null;
+		const attempts = puzzleRound?.attempts ?? [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
 		const milliseconds = modeRules[mode].initialTimeMs ?? modeSnippetSeconds(mode, resumed) * 1e3;
@@ -1409,19 +1403,18 @@ var GameController = class {
 	createRound(mode, failed, avoid) {
 		let track;
 		let clipStart;
-		const restoredClassic = mode === "classic" ? this.progress.classicRound : null;
+		const restoredPuzzle = isPuzzleMode(mode) ? this.persistedPuzzleRound(mode) : null;
 		if (mode === "daily") {
-			const daily = this.progress.daily;
-			track = selectDailyTrack(this.tracks, this.dailyDate, dailyInProgress(daily, this.dailyDate) ? daily.dailyNumber : null);
+			track = selectDailyTrack(this.tracks, this.dailyDate, restoredPuzzle?.dailyNumber ?? null);
 			if (!track) return null;
-			clipStart = dailyClipStart(track, this.dailyDate);
-		} else if (restoredClassic) {
-			track = this.tracks.find((candidate) => candidate.dailyNumber === restoredClassic.dailyNumber) ?? null;
+			clipStart = restoredPuzzle?.clipStart ?? dailyClipStart(track, this.dailyDate);
+		} else if (restoredPuzzle) {
+			track = this.tracks.find((candidate) => candidate.dailyNumber === restoredPuzzle.dailyNumber) ?? null;
 			const maximumClipStart = track ? Math.max(0, Math.floor(track.duration - Math.min(maxPuzzleSnippetSeconds, track.duration))) : -1;
-			if (track && restoredClassic.clipStart <= maximumClipStart) clipStart = restoredClassic.clipStart;
+			if (track && restoredPuzzle.clipStart <= maximumClipStart) clipStart = restoredPuzzle.clipStart;
 			else {
 				this.classicResumePending = false;
-				this.progress.clearClassicRound();
+				this.progress.clearPuzzleRound("classic", this.dailyDate);
 				this.session = createSession("classic");
 				this.clock.configure(snippetSeconds(0) * 1e3);
 				track = selectRandomTrack(this.tracks, failed, avoid, this.random);
@@ -1440,6 +1433,12 @@ var GameController = class {
 			track,
 			clipStart
 		};
+	}
+	persistedPuzzleRound(mode) {
+		return this.progress.puzzleRound(mode, this.dailyDate, (dailyNumber) => {
+			const track = this.tracks.find((candidate) => candidate.dailyNumber === dailyNumber);
+			return track ? dailyClipStart(track, this.dailyDate) : null;
+		});
 	}
 	prime() {
 		const state = this.session;
@@ -1498,7 +1497,7 @@ var Progress = class {
 		this.state = {
 			discoveries: new Set(loaded.discoveries),
 			daily: cloneDaily(loaded.daily),
-			classicRound: cloneClassicRound(loaded.classicRound),
+			classicRound: clonePuzzleRound(loaded.classicRound),
 			personalBests: cloneBests(loaded.personalBests)
 		};
 	}
@@ -1507,9 +1506,6 @@ var Progress = class {
 	}
 	get daily() {
 		return cloneDaily(this.state.daily);
-	}
-	get classicRound() {
-		return cloneClassicRound(this.state.classicRound);
 	}
 	get personalBests() {
 		return cloneBests(this.state.personalBests);
@@ -1520,71 +1516,85 @@ var Progress = class {
 	dailyDone(date) {
 		return dailyCompleted(this.state.daily, date);
 	}
-	dailyInProgress(date) {
-		return dailyInProgress(this.state.daily, date);
-	}
-	dailyAttempts(date) {
+	puzzleRound(mode, date, dailyClipStart) {
+		if (mode === "classic") return clonePuzzleRound(this.state.classicRound);
 		const daily = this.state.daily;
-		return daily.status === "none" || daily.date !== date ? [] : daily.attempts.map((attempt) => ({ ...attempt }));
+		if (daily.status === "none" || daily.date !== date) return null;
+		const clipStart = dailyClipStart(daily.dailyNumber);
+		return clipStart === null ? null : clonePuzzleRound({
+			dailyNumber: daily.dailyNumber,
+			clipStart,
+			attempts: daily.attempts
+		});
 	}
-	markDailyStarted(date, track) {
-		if (this.dailyInProgress(date)) return;
-		this.state = {
-			...this.state,
-			daily: {
-				status: "in-progress",
-				date,
-				dailyNumber: track.dailyNumber,
-				attempts: []
-			}
-		};
-		this.pendingPersistence.daily = true;
+	startPuzzleRound(mode, date, round) {
+		const section = mode === "daily" ? "daily" : "classicRound";
+		if (mode === "daily") {
+			if (this.state.daily.status !== "none" && this.state.daily.date === date) return;
+			this.state = {
+				...this.state,
+				daily: {
+					status: "in-progress",
+					date,
+					dailyNumber: round.track.dailyNumber,
+					attempts: []
+				}
+			};
+		} else {
+			if (this.state.classicRound) return;
+			this.state = {
+				...this.state,
+				classicRound: {
+					dailyNumber: round.track.dailyNumber,
+					clipStart: round.clipStart,
+					attempts: []
+				}
+			};
+		}
+		this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
 	}
-	updateDailyAttempt(attempts) {
-		if (this.state.daily.status !== "in-progress") return;
-		this.state = {
-			...this.state,
-			daily: {
-				...this.state.daily,
-				attempts: attempts.map((attempt) => ({ ...attempt }))
-			}
-		};
-		this.pendingPersistence.daily = true;
+	updatePuzzleAttempts(mode, date, attempts) {
+		const persistedAttempts = attempts.map((attempt) => ({ ...attempt }));
+		const section = mode === "daily" ? "daily" : "classicRound";
+		if (mode === "daily") {
+			if (!dailyInProgress(this.state.daily, date)) return;
+			this.state = {
+				...this.state,
+				daily: {
+					...this.state.daily,
+					attempts: persistedAttempts
+				}
+			};
+		} else {
+			if (!this.state.classicRound) return;
+			this.state = {
+				...this.state,
+				classicRound: {
+					...this.state.classicRound,
+					attempts: persistedAttempts
+				}
+			};
+		}
+		this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
 	}
-	markClassicStarted(round) {
-		if (this.state.classicRound) return;
-		this.state = {
-			...this.state,
-			classicRound: {
-				dailyNumber: round.track.dailyNumber,
-				clipStart: round.clipStart,
-				attempts: []
-			}
-		};
-		this.pendingPersistence.classicRound = true;
-		this.persistPendingProgress();
-	}
-	updateClassicAttempts(attempts) {
-		if (!this.state.classicRound) return;
-		this.state = {
-			...this.state,
-			classicRound: {
-				...this.state.classicRound,
-				attempts: attempts.map((attempt) => ({ ...attempt }))
-			}
-		};
-		this.pendingPersistence.classicRound = true;
-		this.persistPendingProgress();
-	}
-	clearClassicRound() {
-		if (!this.state.classicRound) return;
-		this.state = {
-			...this.state,
-			classicRound: null
-		};
-		this.pendingPersistence.classicRound = true;
+	clearPuzzleRound(mode, date) {
+		const section = mode === "daily" ? "daily" : "classicRound";
+		if (mode === "daily") {
+			if (!dailyInProgress(this.state.daily, date)) return;
+			this.state = {
+				...this.state,
+				daily: emptyDailyProgress()
+			};
+		} else {
+			if (!this.state.classicRound) return;
+			this.state = {
+				...this.state,
+				classicRound: null
+			};
+		}
+		this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
 	}
 	forfeitClassicRound() {
@@ -1791,7 +1801,7 @@ function cloneDaily(progress) {
 		attempts: progress.attempts.map((attempt) => ({ ...attempt }))
 	};
 }
-function cloneClassicRound(progress) {
+function clonePuzzleRound(progress) {
 	return progress ? {
 		...progress,
 		attempts: progress.attempts.map((attempt) => ({ ...attempt }))
@@ -4881,7 +4891,7 @@ function markup() {
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
-		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div><div class="ticks">${snippetTicks}</div></div>`,
+		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${copy.modePrompt}</span><span class="ruleset-copy">${copy.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
