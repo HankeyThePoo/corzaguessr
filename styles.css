@@ -540,7 +540,7 @@
 }
 
 #corzaguessr.mode-selected .timeline::before {
-  transform: scaleX(1);
+  clip-path: inset(0);
 }
 
 #corzaguessr .timeline::before {
@@ -551,11 +551,9 @@
   padding: var(--gradient-border-width);
   border-radius: inherit;
   background: var(--timeline-border);
+  clip-path: inset(0 100% 0 0);
   pointer-events: none;
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform var(--duration-timeline-reset) ease-out;
-  will-change: transform;
+  transition: clip-path var(--duration-timeline-reset) ease-out;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
