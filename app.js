@@ -103,48 +103,52 @@ var modeRules = {
 		initialTimeMs: null,
 		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
 		gameplay: "puzzle",
+		clockDisplay: "snippet",
 		failurePolicy: "heard-fixed"
 	},
 	daily: {
 		initialTimeMs: null,
 		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
 		gameplay: "puzzle",
+		clockDisplay: "snippet",
 		failurePolicy: "fixed"
 	},
 	blitz: {
 		initialTimeMs: 6e4,
 		description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
-		gameplay: "blitz",
+		gameplay: "timed",
+		clockDisplay: "countdown",
 		failurePolicy: "replace"
 	},
 	seek: {
 		initialTimeMs: null,
 		description: "PLACE THE EIGHT-SECOND SNIPPET ON THE SONG TIMELINE",
-		gameplay: "seek",
+		gameplay: "position",
+		clockDisplay: "position",
 		failurePolicy: "replace"
 	},
 	gauntlet: {
 		initialTimeMs: 3e4,
 		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
-		gameplay: "gauntlet",
+		gameplay: "timed",
+		clockDisplay: "elapsed",
 		failurePolicy: "replace"
 	}
 };
 function isTimedMode(mode) {
-	return mode !== null && (modeRules[mode].gameplay === "blitz" || modeRules[mode].gameplay === "gauntlet");
+	return mode !== null && modeRules[mode].gameplay === "timed";
 }
 function isPuzzleMode(mode) {
 	return mode !== null && modeRules[mode].gameplay === "puzzle";
 }
-function isSeekMode(mode) {
-	return mode === "seek";
+function isPositionMode(mode) {
+	return mode !== null && modeRules[mode].gameplay === "position";
 }
 function prefetchesRounds(mode) {
-	return mode !== null && modeRules[mode].gameplay !== "puzzle";
+	return isTimedMode(mode) || isPositionMode(mode);
 }
 function clockDisplayForMode(mode) {
-	const gameplay = modeRules[mode].gameplay;
-	return gameplay === "puzzle" ? "snippet" : gameplay === "blitz" ? "countdown" : gameplay === "gauntlet" ? "elapsed" : "seek";
+	return modeRules[mode].clockDisplay;
 }
 function snippetSeconds(attempt) {
 	return snippetDurations[Math.max(0, Math.min(snippetDurations.length - 1, attempt))];
@@ -251,7 +255,7 @@ function createSession(mode = null, attempts = []) {
 		round: null,
 		started: false,
 		attempts: attempts.map((attempt) => ({ ...attempt })),
-		seek: mode === "seek" ? {
+		position: isPositionMode(mode) ? {
 			phase: "selecting",
 			selectedSecond: null,
 			attempts: []
@@ -271,67 +275,67 @@ function clearRound(state) {
 	return {
 		...state,
 		round: null,
-		seek: state.seek ? {
-			...state.seek,
+		position: state.position ? {
+			...state.position,
 			phase: "selecting",
 			selectedSecond: null
 		} : null
 	};
 }
-function selectSeekSecond(state, second) {
-	if (state.mode !== "seek" || !state.seek || !state.round || state.seek.phase !== "selecting") return state;
+function selectPositionSecond(state, second) {
+	if (!isPositionMode(state.mode) || !state.position || !state.round || state.position.phase !== "selecting") return state;
 	const selectedSecond = Math.max(0, Math.min(Math.floor(state.round.track.duration), Math.round(second)));
 	return {
 		...state,
-		seek: {
-			...state.seek,
+		position: {
+			...state.position,
 			selectedSecond
 		}
 	};
 }
-function resolveSeekAttempt(state) {
-	if (state.mode !== "seek" || !state.seek || !state.round || state.seek.phase !== "selecting" || state.seek.selectedSecond === null) throw new Error("Seek attempts require a selected position and active round.");
-	const guessedSecond = state.seek.selectedSecond;
+function resolvePositionAttempt(state) {
+	if (!isPositionMode(state.mode) || !state.position || !state.round || state.position.phase !== "selecting" || state.position.selectedSecond === null) throw new Error("Position attempts require a selected position and active round.");
+	const guessedSecond = state.position.selectedSecond;
 	const actualSecond = Math.round(state.round.clipStart);
 	return {
 		...state,
-		seek: {
+		position: {
 			phase: "revealing",
 			selectedSecond: null,
 			attempts: [{
-				id: state.seek.attempts.length + 1,
+				id: state.position.attempts.length + 1,
 				trackNumber: state.round.track.dailyNumber,
 				guessedSecond,
 				actualSecond,
 				points: seekPoints(guessedSecond, actualSecond, state.round.track.duration)
-			}, ...state.seek.attempts]
+			}, ...state.position.attempts]
 		}
 	};
 }
-function completeSeekReveal(state) {
-	if (!state.seek || state.seek.phase !== "revealing") return state;
+function completePositionReveal(state) {
+	if (!state.position || state.position.phase !== "revealing") return state;
 	return {
 		...state,
-		seek: {
-			...state.seek,
+		position: {
+			...state.position,
 			phase: "revealed"
 		}
 	};
 }
-function advanceSeekRound(state) {
-	if (!state.seek || state.seek.phase !== "revealed") return state;
+function advancePositionRound(state) {
+	if (!state.position || state.position.phase !== "revealed") return state;
 	return {
 		...state,
 		round: null,
-		seek: {
-			...state.seek,
+		position: {
+			...state.position,
 			phase: "selecting",
 			selectedSecond: null
 		}
 	};
 }
-function seekUsedTrackIds(state) {
-	return new Set(state.seek?.attempts.map((attempt) => attempt.trackNumber) ?? []);
+function positionUsedTrackIds(state) {
+	return new Set(state.position?.attempts.map((attempt) => attempt.trackNumber) ?? []);
 }
 function resolvePuzzleAttempt(state, outcome, guessed) {
 	if (!isPuzzleMode(state.mode)) throw new Error("Puzzle attempts require Daily or Classic mode.");
@@ -570,7 +574,7 @@ function composeClockViewModel(input) {
 		endText: "0:01",
 		progress: 0
 	};
-	if (clockDisplayForMode(mode) === "seek") return {
+	if (clockDisplayForMode(mode) === "position") return {
 		currentText: "?:??",
 		endText: "?:??",
 		progress: 0
@@ -690,7 +694,7 @@ function acceptsAttempt(session, transport) {
 	return !!session.round && !session.result && !transport.retryNeeded && transport.activeRoundId === session.round.id;
 }
 function guessInputVisible(session, transport) {
-	return !isSeekMode(session.mode) && !!session.round && !session.result && !transport.retryNeeded;
+	return !isPositionMode(session.mode) && !!session.round && !session.result && !transport.retryNeeded;
 }
 function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 	if (mode !== "daily" || !tracks.length) return false;
@@ -707,9 +711,9 @@ function rulesText(input) {
 	if (input.appStatus === "error") return copy.catalogError;
 	if (!session.mode) return copy.modePrompt;
 	if (input.transport.retryNeeded) return copy.trackError;
-	if (session.mode === "seek" && session.seek) {
-		const latest = session.seek.attempts[0];
-		if (session.seek.phase !== "selecting" && latest) {
+	if (isPositionMode(session.mode) && session.position) {
+		const latest = session.position.attempts[0];
+		if (session.position.phase !== "selecting" && latest) {
 			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
 			return `${distance} SECOND${distance === 1 ? "" : "S"} AWAY · ${latest.points} POINTS`;
 		}
@@ -752,38 +756,38 @@ function composeGameViewModel(input) {
 		text: copy.trackError,
 		tone: "technical"
 	};
-	const slots = (session.mode === "seek" ? composeSeekSlots(session) : null) ?? (headSlot ? [headSlot, ...attemptSlots] : attemptSlots);
+	const slots = (isPositionMode(session.mode) ? composeSeekSlots(session) : null) ?? (headSlot ? [headSlot, ...attemptSlots] : attemptSlots);
 	const dailyUnavailable = dailyCatalogPending(session.mode, input.tracks, input.dailyDate, input.dailyProgress);
 	const dailyBlocked = session.mode === "daily" && (dailyUnavailable || dailyCompleted(input.dailyProgress, input.dailyDate) && !session.round);
 	const roundHeard = !!session.round && transport.activeRoundId === session.round.id;
 	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
 	const inputVisible = guessInputVisible(session, transport);
 	const interactionEnabled = !!(input.appStatus === "ready" && session.round && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
-	const attemptEnabled = interactionEnabled && inputVisible && !isSeekMode(session.mode);
-	const seekTimeline = composeSeekTimeline(session, interactionEnabled);
-	const actionEnabled = isSeekMode(session.mode) ? input.appStatus === "ready" && !!session.seek && !session.result && !transport.loading && !input.overlay && (session.seek.phase === "revealed" || interactionEnabled && session.seek.selectedSecond !== null) : attemptEnabled;
+	const attemptEnabled = interactionEnabled && inputVisible && !isPositionMode(session.mode);
+	const positionTimeline = composePositionTimeline(session, interactionEnabled);
+	const actionEnabled = isPositionMode(session.mode) ? input.appStatus === "ready" && !!session.position && !session.result && !transport.loading && !input.overlay && (session.position.phase === "revealed" || interactionEnabled && session.position.selectedSecond !== null) : attemptEnabled;
 	return {
 		appStatus: input.appStatus,
 		mode: session.mode,
 		rulesText: rulesText(input),
 		transportText: transport.loading ? copy.loadingTrack : "",
 		inputVisible,
-		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && !transport.loading && (!session.seek || session.seek.phase === "selecting") && playControlAvailable),
+		playEnabled: !!(input.appStatus === "ready" && session.mode && !input.overlay && !dailyBlocked && !transport.loading && (!session.position || session.position.phase === "selecting") && playControlAvailable),
 		attemptEnabled,
 		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: isSeekMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
+		snippetSeconds: isPositionMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
 		skipText: seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: isSeekMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
+			snippetSeconds: isPositionMode(session.mode) ? seekSnippetSeconds : snippetSeconds(attempt),
 			inputVisible,
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
 		}),
-		seekTimeline,
+		positionTimeline,
 		result: composeResultViewModel(session.result, input.progressPersistencePending, session.attempts),
 		dailyProgress: input.dailyProgress,
 		personalBests: input.personalBests,
@@ -814,37 +818,37 @@ function promptSlot(session, tracksLeft) {
 	};
 }
 function composeSeekSlots(session) {
-	const seek = session.seek;
-	if (!seek) return [];
-	const resolved = seek.attempts.map((attempt) => ({
+	const position = session.position;
+	if (!position) return [];
+	const resolved = position.attempts.map((attempt) => ({
 		id: attempt.id,
 		text: `ROUND ${attempt.id} · ${attempt.points} POINTS`,
 		tone: "neutral"
 	}));
-	if (!session.started || seek.phase !== "selecting") return resolved;
-	const round = seek.attempts.length + 1;
+	if (!session.started || position.phase !== "selecting") return resolved;
+	const round = position.attempts.length + 1;
 	return [{
 		id: round,
 		text: `ROUND ${round} OUT OF 5`,
 		tone: "prompt"
 	}, ...resolved];
 }
-function composeSeekTimeline(session, interactionEnabled) {
-	if (session.mode !== "seek" || !session.seek || !session.round) return null;
-	const latest = session.seek.attempts[0] ?? null;
+function composePositionTimeline(session, interactionEnabled) {
+	if (!isPositionMode(session.mode) || !session.position || !session.round) return null;
+	const latest = session.position.attempts[0] ?? null;
 	return {
 		roundId: session.round.id,
-		phase: session.seek.phase,
+		phase: session.position.phase,
 		maximumSecond: Math.floor(session.round.track.duration),
-		selectedSecond: session.seek.phase === "selecting" ? session.seek.selectedSecond : latest?.guessedSecond ?? null,
-		actualSecond: session.seek.phase === "selecting" ? null : latest?.actualSecond ?? null,
-		interactionEnabled: interactionEnabled && session.seek.phase === "selecting"
+		selectedSecond: session.position.phase === "selecting" ? session.position.selectedSecond : latest?.guessedSecond ?? null,
+		actualSecond: session.position.phase === "selecting" ? null : latest?.actualSecond ?? null,
+		interactionEnabled: interactionEnabled && session.position.phase === "selecting"
 	};
 }
 function seekActionLabel(session) {
-	if (session.mode !== "seek" || !session.seek) return skipLabel(session.mode, puzzleAttempt(session));
-	if (session.seek.phase !== "revealed") return "GUESS";
-	return session.seek.attempts.length >= 5 ? "RESULTS" : "NEXT";
+	if (session.mode !== "seek" || !session.position) return skipLabel(session.mode, puzzleAttempt(session));
+	if (session.position.phase !== "revealed") return "GUESS";
+	return session.position.attempts.length >= 5 ? "RESULTS" : "NEXT";
 }
 function attemptSlot(attempt, mode, tracks, gauntletMilestone) {
 	let text = attempt.trackNumber === null ? "" : tracks.find((track) => track.dailyNumber === attempt.trackNumber)?.title ?? `TRACK #${attempt.trackNumber}`;
@@ -958,20 +962,20 @@ var GameController = class {
 		this.handlePlay(true);
 	}
 	skip() {
-		if (isSeekMode(this.session.mode)) this.seekAction();
+		if (isPositionMode(this.session.mode)) this.seekAction();
 		else this.resolveAttempt("skip", null);
 	}
-	selectSeekSecond(second) {
+	selectPositionSecond(second) {
 		if (this.activeOverlay || !acceptsAttempt(this.session, this.playback.snapshot)) return;
-		const updated = selectSeekSecond(this.session, second);
+		const updated = selectPositionSecond(this.session, second);
 		if (updated === this.session) return;
 		this.session = updated;
 		this.render();
 	}
-	onSeekRevealComplete(roundId) {
-		if (this.session.round?.id !== roundId || this.session.seek?.phase !== "revealing") return;
-		this.session = completeSeekReveal(this.session);
-		const latest = this.session.seek?.attempts[0];
+	onPositionRevealComplete(roundId) {
+		if (this.session.round?.id !== roundId || this.session.position?.phase !== "revealing") return;
+		this.session = completePositionReveal(this.session);
+		const latest = this.session.position?.attempts[0];
 		if (latest) {
 			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
 			this.view.announce(`${distance} SECOND${distance === 1 ? "" : "S"} AWAY. ${latest.points} POINTS.`);
@@ -1113,7 +1117,7 @@ var GameController = class {
 			this.session = setRound(this.session, round);
 			const session = this.session;
 			if (!isTimedMode(session.mode)) {
-				const seconds = isSeekMode(session.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(session));
+				const seconds = isPositionMode(session.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(session));
 				this.clock.restart(seconds * 1e3);
 			}
 			this.clock.start();
@@ -1177,7 +1181,7 @@ var GameController = class {
 	}
 	onClockTick(snapshot) {
 		const session = this.session;
-		if (isSeekMode(session.mode)) return;
+		if (isPositionMode(session.mode)) return;
 		this.view.renderClock(composeClockViewModel({
 			mode: session.mode,
 			snippetSeconds: snippetSeconds(puzzleAttempt(session)),
@@ -1219,7 +1223,7 @@ var GameController = class {
 			this.handleTimedPlay(round, requested);
 			return;
 		}
-		this.handleSnippetPlay(round, isSeekMode(state.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
+		this.handleSnippetPlay(round, isPositionMode(state.mode) ? seekSnippetSeconds : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
 	}
 	handleTimedPlay(round, requested) {
 		if (requested) {
@@ -1248,7 +1252,7 @@ var GameController = class {
 		const state = this.session;
 		const round = state.round;
 		const mode = state.mode;
-		if (!round || !mode || isSeekMode(mode) || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
+		if (!round || !mode || isPositionMode(mode) || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
 		if (isTimedMode(mode)) {
 			if (this.clock.pause().remainingMs <= 0) {
 				this.finishGame();
@@ -1306,21 +1310,21 @@ var GameController = class {
 	}
 	seekAction() {
 		const state = this.session;
-		const seek = state.seek;
-		if (state.mode !== "seek" || !seek || state.result || this.activeOverlay) return;
-		if (seek.phase === "revealed") {
-			if (seek.attempts.length >= 5) {
+		const position = state.position;
+		if (state.mode !== "seek" || !position || state.result || this.activeOverlay) return;
+		if (position.phase === "revealed") {
+			if (position.attempts.length >= 5) {
 				this.finishGame();
 				return;
 			}
-			this.session = advanceSeekRound(state);
+			this.session = advancePositionRound(state);
 			this.playback.start();
 			return;
 		}
-		if (seek.phase !== "selecting" || seek.selectedSecond === null || !acceptsAttempt(state, this.playback.snapshot) || this.playback.snapshot.loading) return;
+		if (position.phase !== "selecting" || position.selectedSecond === null || !acceptsAttempt(state, this.playback.snapshot) || this.playback.snapshot.loading) return;
 		this.clock.pause();
 		this.playback.pause();
-		this.session = resolveSeekAttempt(state);
+		this.session = resolvePositionAttempt(state);
 		this.render();
 	}
 	finishGame() {
@@ -1344,7 +1348,7 @@ var GameController = class {
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
-		const milliseconds = modeRules[mode].initialTimeMs ?? (isSeekMode(mode) ? seekSnippetSeconds : snippetSeconds(resumed)) * 1e3;
+		const milliseconds = modeRules[mode].initialTimeMs ?? (isPositionMode(mode) ? seekSnippetSeconds : snippetSeconds(resumed)) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.prime();
@@ -1367,10 +1371,10 @@ var GameController = class {
 			if (!track) return null;
 			clipStart = dailyClipStart(track, this.dailyDate);
 		} else {
-			const excluded = mode === "seek" ? /* @__PURE__ */ new Set([...failed, ...seekUsedTrackIds(this.session)]) : failed;
+			const excluded = isPositionMode(mode) ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
 			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
 			if (!track) return null;
-			const clipSeconds = mode === "seek" ? seekSnippetSeconds : isTimedMode(mode) ? 60 : snippetDurations.at(-1);
+			const clipSeconds = isPositionMode(mode) ? seekSnippetSeconds : isTimedMode(mode) ? 60 : snippetDurations.at(-1);
 			clipStart = randomClipStart(track, clipSeconds, this.random);
 		}
 		return {
@@ -1599,7 +1603,7 @@ function finishRun(state, run) {
 		};
 	}
 	if (mode === "seek") {
-		const score = session.seek?.attempts.reduce((total, attempt) => total + attempt.points, 0) ?? 0;
+		const score = session.position?.attempts.reduce((total, attempt) => total + attempt.points, 0) ?? 0;
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateSeekBest(personalBests, score);
 		const nextState = update.changed ? {
@@ -3945,8 +3949,8 @@ var TimelineView = class {
 	timeAdjustmentTimer = 0;
 	timeAdjustmentListener = null;
 	timeAdjustmentGeneration = 0;
-	seekFrame = 0;
-	seekRevealKey = "";
+	positionFrame = 0;
+	positionRevealKey = "";
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
@@ -3959,75 +3963,75 @@ var TimelineView = class {
 		this.elements.fill.style.transform = `scaleX(${scale})`;
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
 	}
-	renderSeek(state, onRevealComplete) {
-		this.elements.timeline.classList.toggle("seek-timeline", state !== null);
+	renderPosition(state, onRevealComplete) {
+		this.elements.timeline.classList.toggle("position-timeline", state !== null);
 		if (!state) {
-			this.cancelSeekReveal();
-			this.elements.seekRange.disabled = true;
-			this.elements.seekRange.value = "0";
-			this.elements.seekRange.max = "0";
-			this.elements.seekRange.setAttribute("aria-valuetext", "NO POSITION SELECTED");
-			this.setSeekMarker(this.elements.seekGuess, null, 0);
-			this.setSeekMarker(this.elements.seekActual, null, 0);
-			this.hideSeekDistance();
+			this.cancelPositionReveal();
+			this.elements.positionRange.disabled = true;
+			this.elements.positionRange.value = "0";
+			this.elements.positionRange.max = "0";
+			this.elements.positionRange.setAttribute("aria-valuetext", "NO POSITION SELECTED");
+			this.setPositionMarker(this.elements.positionGuess, null, 0);
+			this.setPositionMarker(this.elements.positionActual, null, 0);
+			this.hidePositionDistance();
 			return;
 		}
 		const maximum = Math.max(0, state.maximumSecond);
-		this.elements.seekRange.max = String(maximum);
-		this.elements.seekRange.disabled = !state.interactionEnabled;
+		this.elements.positionRange.max = String(maximum);
+		this.elements.positionRange.disabled = !state.interactionEnabled;
 		const selected = state.selectedSecond;
-		this.elements.seekRange.value = String(selected ?? 0);
-		this.elements.seekRange.setAttribute("aria-valuetext", selected === null ? "NO POSITION SELECTED" : formatClock(selected));
-		this.setSeekMarker(this.elements.seekGuess, selected, maximum);
+		this.elements.positionRange.value = String(selected ?? 0);
+		this.elements.positionRange.setAttribute("aria-valuetext", selected === null ? "NO POSITION SELECTED" : formatClock(selected));
+		this.setPositionMarker(this.elements.positionGuess, selected, maximum);
 		this.elements.now.textContent = selected === null ? "?:??" : formatClock(selected);
 		if (state.phase === "selecting" || state.actualSecond === null) {
-			this.cancelSeekReveal();
+			this.cancelPositionReveal();
 			this.elements.end.textContent = "?:??";
-			this.setSeekMarker(this.elements.seekActual, null, maximum);
-			this.hideSeekDistance();
+			this.setPositionMarker(this.elements.positionActual, null, maximum);
+			this.hidePositionDistance();
 			return;
 		}
 		if (state.phase === "revealed") {
-			this.cancelSeekReveal();
+			this.cancelPositionReveal();
 			this.elements.end.textContent = formatClock(state.actualSecond);
-			this.setSeekMarker(this.elements.seekActual, state.actualSecond, maximum);
-			this.showSeekDistance(selected ?? 0, state.actualSecond, maximum);
+			this.setPositionMarker(this.elements.positionActual, state.actualSecond, maximum);
+			this.showPositionDistance(selected ?? 0, state.actualSecond, maximum);
 			return;
 		}
 		const key = `${state.roundId}:${selected}:${state.actualSecond}`;
-		if (key === this.seekRevealKey && this.seekFrame) return;
-		this.cancelSeekReveal(false);
-		this.seekRevealKey = key;
+		if (key === this.positionRevealKey && this.positionFrame) return;
+		this.cancelPositionReveal(false);
+		this.positionRevealKey = key;
 		this.elements.end.textContent = "0:00";
-		this.setSeekMarker(this.elements.seekActual, 0, maximum);
-		this.hideSeekDistance();
-		if (this.reducedMotion.matches || this.durations.seekReveal <= 0) {
+		this.setPositionMarker(this.elements.positionActual, 0, maximum);
+		this.hidePositionDistance();
+		if (this.reducedMotion.matches || this.durations.positionReveal <= 0) {
 			this.elements.end.textContent = formatClock(state.actualSecond);
-			this.setSeekMarker(this.elements.seekActual, state.actualSecond, maximum);
-			this.showSeekDistance(selected ?? 0, state.actualSecond, maximum);
+			this.setPositionMarker(this.elements.positionActual, state.actualSecond, maximum);
+			this.showPositionDistance(selected ?? 0, state.actualSecond, maximum);
 			queueMicrotask(() => onRevealComplete(state.roundId));
 			return;
 		}
 		let startedAt = null;
 		const animate = (now) => {
-			if (this.seekRevealKey !== key) return;
+			if (this.positionRevealKey !== key) return;
 			startedAt ??= now;
-			const progress = Math.min(1, (now - startedAt) / this.durations.seekReveal);
+			const progress = Math.min(1, (now - startedAt) / this.durations.positionReveal);
 			const accelerated = progress * progress;
 			const revealedSecond = state.actualSecond * accelerated;
 			this.elements.end.textContent = formatClock(revealedSecond);
-			this.setSeekMarker(this.elements.seekActual, revealedSecond, maximum);
+			this.setPositionMarker(this.elements.positionActual, revealedSecond, maximum);
 			if (progress < 1) {
-				this.seekFrame = this.scheduler.requestFrame(animate);
+				this.positionFrame = this.scheduler.requestFrame(animate);
 				return;
 			}
-			this.seekFrame = 0;
+			this.positionFrame = 0;
 			this.elements.end.textContent = formatClock(state.actualSecond);
-			this.setSeekMarker(this.elements.seekActual, state.actualSecond, maximum);
-			this.showSeekDistance(selected ?? 0, state.actualSecond, maximum);
+			this.setPositionMarker(this.elements.positionActual, state.actualSecond, maximum);
+			this.showPositionDistance(selected ?? 0, state.actualSecond, maximum);
 			onRevealComplete(state.roundId);
 		};
-		this.seekFrame = this.scheduler.requestFrame(animate);
+		this.positionFrame = this.scheduler.requestFrame(animate);
 	}
 	beginReset(rewindPlayback = false) {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
@@ -4093,7 +4097,7 @@ var TimelineView = class {
 		this.elements.timeChange.classList.remove("time-adjustment-active", "time-adjustment-static");
 		this.elements.timeChangeText.textContent = "";
 	}
-	setSeekMarker(marker, second, maximum) {
+	setPositionMarker(marker, second, maximum) {
 		marker.hidden = second === null;
 		if (second === null) {
 			marker.style.left = "";
@@ -4102,22 +4106,22 @@ var TimelineView = class {
 		const percentage = maximum > 0 ? second / maximum * 100 : 0;
 		marker.style.left = `clamp(var(--gradient-border-width), ${percentage}%, calc(100% - var(--gradient-border-width)))`;
 	}
-	showSeekDistance(guessed, actual, maximum) {
+	showPositionDistance(guessed, actual, maximum) {
 		const start = Math.min(guessed, actual);
 		const distance = Math.abs(guessed - actual);
-		this.elements.seekDistance.hidden = false;
-		this.elements.seekDistance.style.left = `${maximum > 0 ? start / maximum * 100 : 0}%`;
-		this.elements.seekDistance.style.width = `${maximum > 0 ? distance / maximum * 100 : 0}%`;
+		this.elements.positionDistance.hidden = false;
+		this.elements.positionDistance.style.left = `${maximum > 0 ? start / maximum * 100 : 0}%`;
+		this.elements.positionDistance.style.width = `${maximum > 0 ? distance / maximum * 100 : 0}%`;
 	}
-	hideSeekDistance() {
-		this.elements.seekDistance.hidden = true;
-		this.elements.seekDistance.style.left = "";
-		this.elements.seekDistance.style.width = "";
+	hidePositionDistance() {
+		this.elements.positionDistance.hidden = true;
+		this.elements.positionDistance.style.left = "";
+		this.elements.positionDistance.style.width = "";
 	}
-	cancelSeekReveal(clearKey = true) {
-		if (this.seekFrame) this.scheduler.cancelFrame(this.seekFrame);
-		this.seekFrame = 0;
-		if (clearKey) this.seekRevealKey = "";
+	cancelPositionReveal(clearKey = true) {
+		if (this.positionFrame) this.scheduler.cancelFrame(this.positionFrame);
+		this.positionFrame = 0;
+		if (clearKey) this.positionRevealKey = "";
 	}
 	progressScale() {
 		const computed = getComputedStyle(this.elements.fill).transform;
@@ -4239,7 +4243,7 @@ var GameView = class {
 			discoveryModal: duration(styles, "--duration-discovery-modal"),
 			timelineReset: duration(styles, "--duration-timeline-reset"),
 			timelineRewind: duration(styles, "--duration-timeline-rewind"),
-			seekReveal: duration(styles, "--duration-seek-reveal")
+			positionReveal: duration(styles, "--duration-position-reveal")
 		};
 		this.resultView = new ResultView({
 			action: this.elements.resultAction,
@@ -4269,15 +4273,15 @@ var GameView = class {
 			timeChange: this.elements.timeChange,
 			timeChangeText: this.elements.timeChangeText,
 			end: this.elements.endtime,
-			seekRange: this.elements.seekRange,
-			seekGuess: this.elements.seekGuess,
-			seekActual: this.elements.seekActual,
-			seekDistance: this.elements.seekDistance
+			positionRange: this.elements.positionRange,
+			positionGuess: this.elements.positionGuess,
+			positionActual: this.elements.positionActual,
+			positionDistance: this.elements.positionDistance
 		}, {
 			reset: this.durations.timelineReset,
 			rewind: this.durations.timelineRewind,
 			timeAdjustmentFeedback: this.durations.timeAdjustmentFeedback,
-			seekReveal: this.durations.seekReveal
+			positionReveal: this.durations.positionReveal
 		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
@@ -4292,8 +4296,8 @@ var GameView = class {
 		this.discovery.bind(handlers.openDiscoverySpotify, handlers.startGauntlet);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.skip.addEventListener("click", handlers.skip);
-		this.elements.seekRange.addEventListener("input", () => {
-			handlers.selectSeekSecond(Number(this.elements.seekRange.value));
+		this.elements.positionRange.addEventListener("input", () => {
+			handlers.selectPositionSecond(Number(this.elements.positionRange.value));
 		});
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
 		this.elements.resultSecondary.addEventListener("click", () => {
@@ -4337,7 +4341,7 @@ var GameView = class {
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
 		this.root.classList.toggle("mode-selected", state.mode !== null);
 		this.root.classList.toggle("timed", isTimedMode(state.mode));
-		this.root.classList.toggle("seek", state.mode === "seek");
+		this.root.classList.toggle("position", isPositionMode(state.mode));
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
@@ -4368,7 +4372,7 @@ var GameView = class {
 		}
 		this.resultView.render(state.result);
 		this.renderClock(state.clock);
-		this.timeline.renderSeek(state.seekTimeline, (roundId) => this.handlers?.seekRevealComplete(roundId));
+		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
 		if (openingOverlay === "result") this.modal.openResult();
 		else if (openingOverlay === "discovery") {
 			this.hideResetConfirmation(false);
@@ -4438,7 +4442,7 @@ var GameView = class {
 	}
 	focusGuess() {
 		if (this.inputModality === "pointer-coarse") return;
-		const target = this.state?.mode === "seek" ? this.elements.seekRange : this.elements.guess;
+		const target = isPositionMode(this.state?.mode ?? null) ? this.elements.positionRange : this.elements.guess;
 		if (!target.disabled && !target.closest("[inert]")) queueMicrotask(() => target.focus({ preventScroll: true }));
 	}
 	focusAfterDiscoveryClose(request) {
@@ -4542,7 +4546,7 @@ var GameView = class {
 		}
 		const target = event.target instanceof Element ? event.target : null;
 		if (this.isArrowKey(event.key)) {
-			if (target === this.elements.volumeRange || target === this.elements.seekRange) return;
+			if (target === this.elements.volumeRange || target === this.elements.positionRange) return;
 			if (target === this.elements.guess && this.state.inputVisible) return;
 			if (this.state.inputVisible && this.state.attemptEnabled) {
 				event.preventDefault();
@@ -4668,10 +4672,10 @@ var GameView = class {
 			timeline: this.required(".timeline"),
 			timeChange: this.required(".time-change"),
 			timeChangeText: this.required(".time-change span"),
-			seekRange: this.required(".seek-range"),
-			seekGuess: this.required(".seek-guess"),
-			seekActual: this.required(".seek-actual"),
-			seekDistance: this.required(".seek-distance"),
+			positionRange: this.required(".position-range"),
+			positionGuess: this.required(".position-guess"),
+			positionActual: this.required(".position-actual"),
+			positionDistance: this.required(".position-distance"),
 			ruleset: this.required(".ruleset"),
 			rulesetText: this.required(".ruleset-text"),
 			rulesetCopy: this.required(".ruleset-copy"),
@@ -4721,7 +4725,7 @@ function markup() {
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
-		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="seek-distance" hidden></div><div class="seek-marker seek-guess" hidden></div><div class="seek-marker seek-actual" hidden></div><input class="seek-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
+		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${copy.modePrompt}</span><span class="ruleset-copy">${copy.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
@@ -4793,8 +4797,8 @@ if (root && !root.dataset.corzaguessrReady) {
 		play: () => controller.play(),
 		playbackShortcut: () => controller.playbackShortcut(),
 		skip: () => controller.skip(),
-		selectSeekSecond: (second) => controller.selectSeekSecond(second),
-		seekRevealComplete: (roundId) => controller.onSeekRevealComplete(roundId),
+		selectPositionSecond: (second) => controller.selectPositionSecond(second),
+		positionRevealComplete: (roundId) => controller.onPositionRevealComplete(roundId),
 		guess: (dailyNumber) => controller.guess(dailyNumber),
 		resultAction: () => controller.resultAction(),
 		openDiscovery: () => controller.openDiscovery(),
