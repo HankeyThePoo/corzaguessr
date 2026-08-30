@@ -7,7 +7,7 @@
   --correct: #10b981;
   --wrong: #ef4444;
   --reward: #ffda5e;
-  --mute: var(--wrong);
+  --mute: #ef4444;
   --gradient: linear-gradient(
     135deg,
     var(--gradient-start),
