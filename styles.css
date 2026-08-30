@@ -725,7 +725,7 @@
   border: 0;
   border-radius: inherit;
   background: transparent;
-  cursor: ew-resize;
+  cursor: col-resize;
   opacity: 0;
 }
 
