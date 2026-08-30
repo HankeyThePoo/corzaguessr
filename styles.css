@@ -52,7 +52,7 @@
   --duration-slot: 250ms;
   --duration-discovery-card: 250ms;
   --duration-discovery-scrim: 350ms;
-  --duration-discovery-modal: 450ms;
+  --duration-discovery-modal: 350ms;
   --duration-timeline-reset: 300ms;
   --duration-timeline-rewind: 200ms;
   --duration-position-reveal: 680ms;
