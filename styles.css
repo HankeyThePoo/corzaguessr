@@ -135,7 +135,7 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--duration-fast) ease;
-  -webkit-mask: linear-gradient(var(--near-black) 0 0) content-box, linear-gradient(var(--near-black) 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
@@ -556,7 +556,7 @@
   transform-origin: left;
   transition: transform var(--duration-timeline-reset) ease-out;
   will-change: transform;
-  -webkit-mask: linear-gradient(var(--near-black) 0 0) content-box, linear-gradient(var(--near-black) 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
@@ -979,7 +979,7 @@
   background: var(--gradient);
   opacity: 0.5;
   pointer-events: none;
-  -webkit-mask: linear-gradient(var(--near-black) 0 0) content-box, linear-gradient(var(--near-black) 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
 }
@@ -1242,7 +1242,7 @@
 }
 
 #corzaguessr .discovery-items {
-  --discovery-row-height: 42px;
+  --discovery-row-height: var(--control-height);
   --discovery-row-gap: calc(var(--space) * 2);
   display: grid;
   grid-auto-rows: max-content;
@@ -1250,15 +1250,8 @@
   gap: var(--discovery-row-gap);
   min-height: 0;
   max-height: calc(
-    var(--discovery-row-height)
-    + var(--discovery-row-height)
-    + var(--discovery-row-height)
-    + var(--discovery-row-height)
-    + var(--discovery-row-height)
-    + var(--discovery-row-gap)
-    + var(--discovery-row-gap)
-    + var(--discovery-row-gap)
-    + var(--discovery-row-gap)
+    var(--discovery-row-height) * 5
+    + var(--discovery-row-gap) * 4
   );
   overflow: auto;
   overscroll-behavior: contain;
@@ -1332,11 +1325,8 @@
 
 #corzaguessr .discovery-item-known.expanded {
   height: calc(
-    var(--discovery-row-height)
-    + var(--discovery-row-height)
-    + var(--discovery-row-height)
-    + var(--discovery-row-gap)
-    + var(--discovery-row-gap)
+    var(--discovery-row-height) * 3
+    + var(--discovery-row-gap) * 2
   );
 }
 
@@ -1367,7 +1357,12 @@
 }
 
 #corzaguessr .discovery-track-details {
-  --discovery-cover-size: 116px;
+  --discovery-cover-size: calc(
+    var(--discovery-row-height) * 3
+    + var(--discovery-row-gap) * 2
+    - var(--space) * 6
+    - var(--line-width) * 2
+  );
   position: absolute;
   inset: 0;
   display: grid;
