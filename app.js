@@ -178,7 +178,6 @@ function modeSnippetSeconds(mode, puzzleAttempt) {
 	return isPositionMode(mode) ? modeRules[mode].snippetSeconds : snippetSeconds(puzzleAttempt);
 }
 function skipLabel(mode, attempt) {
-	if (mode === "seek") return "GUESS";
 	if (isTimedMode(mode)) return "SKIP";
 	if (attempt >= puzzleAttemptCount - 1) return "GIVE UP";
 	return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
