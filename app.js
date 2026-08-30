@@ -1517,82 +1517,105 @@ var Progress = class {
 		return dailyCompleted(this.state.daily, date);
 	}
 	puzzleRound(mode, date, dailyClipStart) {
-		if (mode === "classic") return clonePuzzleRound(this.state.classicRound);
-		const daily = this.state.daily;
-		if (daily.status === "none" || daily.date !== date) return null;
-		const clipStart = dailyClipStart(daily.dailyNumber);
-		return clipStart === null ? null : clonePuzzleRound({
-			dailyNumber: daily.dailyNumber,
-			clipStart,
-			attempts: daily.attempts
-		});
+		switch (mode) {
+			case "daily": {
+				const daily = this.state.daily;
+				if (daily.status === "none" || daily.date !== date) return null;
+				const clipStart = dailyClipStart(daily.dailyNumber);
+				return clipStart === null ? null : clonePuzzleRound({
+					dailyNumber: daily.dailyNumber,
+					clipStart,
+					attempts: daily.attempts
+				});
+			}
+			case "classic": return clonePuzzleRound(this.state.classicRound);
+			default: return unsupportedPuzzleMode(mode);
+		}
 	}
 	startPuzzleRound(mode, date, round) {
-		const section = mode === "daily" ? "daily" : "classicRound";
-		if (mode === "daily") {
-			if (this.state.daily.status !== "none" && this.state.daily.date === date) return;
-			this.state = {
-				...this.state,
-				daily: {
-					status: "in-progress",
-					date,
-					dailyNumber: round.track.dailyNumber,
-					attempts: []
-				}
-			};
-		} else {
-			if (this.state.classicRound) return;
-			this.state = {
-				...this.state,
-				classicRound: {
-					dailyNumber: round.track.dailyNumber,
-					clipStart: round.clipStart,
-					attempts: []
-				}
-			};
+		let section;
+		switch (mode) {
+			case "daily":
+				if (this.state.daily.status !== "none" && this.state.daily.date === date) return;
+				this.state = {
+					...this.state,
+					daily: {
+						status: "in-progress",
+						date,
+						dailyNumber: round.track.dailyNumber,
+						attempts: []
+					}
+				};
+				section = "daily";
+				break;
+			case "classic":
+				if (this.state.classicRound) return;
+				this.state = {
+					...this.state,
+					classicRound: {
+						dailyNumber: round.track.dailyNumber,
+						clipStart: round.clipStart,
+						attempts: []
+					}
+				};
+				section = "classicRound";
+				break;
+			default: return unsupportedPuzzleMode(mode);
 		}
 		this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
 	}
 	updatePuzzleAttempts(mode, date, attempts) {
 		const persistedAttempts = attempts.map((attempt) => ({ ...attempt }));
-		const section = mode === "daily" ? "daily" : "classicRound";
-		if (mode === "daily") {
-			if (!dailyInProgress(this.state.daily, date)) return;
-			this.state = {
-				...this.state,
-				daily: {
-					...this.state.daily,
-					attempts: persistedAttempts
-				}
-			};
-		} else {
-			if (!this.state.classicRound) return;
-			this.state = {
-				...this.state,
-				classicRound: {
-					...this.state.classicRound,
-					attempts: persistedAttempts
-				}
-			};
+		let section;
+		switch (mode) {
+			case "daily":
+				if (!dailyInProgress(this.state.daily, date)) return;
+				this.state = {
+					...this.state,
+					daily: {
+						...this.state.daily,
+						attempts: persistedAttempts
+					}
+				};
+				section = "daily";
+				break;
+			case "classic":
+				if (!this.state.classicRound) return;
+				this.state = {
+					...this.state,
+					classicRound: {
+						...this.state.classicRound,
+						attempts: persistedAttempts
+					}
+				};
+				section = "classicRound";
+				break;
+			default: return unsupportedPuzzleMode(mode);
 		}
 		this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
 	}
 	clearPuzzleRound(mode, date) {
-		const section = mode === "daily" ? "daily" : "classicRound";
-		if (mode === "daily") {
-			if (!dailyInProgress(this.state.daily, date)) return;
-			this.state = {
-				...this.state,
-				daily: emptyDailyProgress()
-			};
-		} else {
-			if (!this.state.classicRound) return;
-			this.state = {
-				...this.state,
-				classicRound: null
-			};
+		let section;
+		switch (mode) {
+			case "daily":
+				if (!dailyInProgress(this.state.daily, date)) return;
+				this.state = {
+					...this.state,
+					daily: emptyDailyProgress()
+				};
+				section = "daily";
+				break;
+			case "classic":
+				if (!this.state.classicRound) return;
+				this.state = {
+					...this.state,
+					classicRound: null
+				};
+				section = "classicRound";
+				break;
+			default: return unsupportedPuzzleMode(mode);
 		}
 		this.pendingPersistence[section] = true;
 		this.persistPendingProgress();
@@ -1645,6 +1668,9 @@ var Progress = class {
 		if (this.persistencePending) this.options.onPersistenceFailure?.();
 	}
 };
+function unsupportedPuzzleMode(mode) {
+	throw new Error(`Unsupported puzzle persistence mode: ${String(mode)}`);
+}
 function finishRun(state, run) {
 	const session = run.session;
 	const mode = session.mode;
