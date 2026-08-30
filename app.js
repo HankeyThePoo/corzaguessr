@@ -848,7 +848,7 @@ function promptSlot(session, tracksLeft) {
 function composeSeekSlots(session) {
 	const position = session.position;
 	if (!position) return [];
-	const resolved = position.attempts.map((attempt) => ({
+	const resolved = (position.phase === "selecting" ? position.attempts : position.attempts.slice(1)).map((attempt) => ({
 		id: attempt.id,
 		text: `ROUND ${attempt.id} · ${seekAttemptPoints(attempt)} POINTS`,
 		tone: "neutral"
