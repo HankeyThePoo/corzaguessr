@@ -601,7 +601,7 @@ function composeClockViewModel(input) {
 		progress: 0
 	};
 	if (clockDisplayForMode(mode) === "position") return {
-		currentText: "?:??",
+		currentText: "0:00",
 		endText: "?:??",
 		progress: 0
 	};
@@ -985,10 +985,10 @@ var GameController = class {
 		this.view.focusAfterModeSelected();
 	}
 	play() {
-		this.handlePlay(false);
+		this.handlePlay();
 	}
 	playbackShortcut() {
-		this.handlePlay(true);
+		this.handlePlay();
 	}
 	skip() {
 		if (this.session.mode === "classic" && this.classicResumePending) {
@@ -1241,7 +1241,7 @@ var GameController = class {
 			this.render();
 		}
 	}
-	handlePlay(shortcut) {
+	handlePlay() {
 		if (this.session.mode === "daily") this.dailySchedule.reconcile();
 		const state = this.session;
 		const transport = this.playback.snapshot;
@@ -1266,7 +1266,7 @@ var GameController = class {
 			this.handleTimedPlay(round, requested);
 			return;
 		}
-		this.handleSnippetPlay(round, modeSnippetSeconds(state.mode, puzzleAttempt(state)), requested, shortcut);
+		this.handleSnippetPlay(round, modeSnippetSeconds(state.mode, puzzleAttempt(state)), requested);
 	}
 	handleTimedPlay(round, requested) {
 		if (requested) {
@@ -1279,13 +1279,10 @@ var GameController = class {
 		}
 		this.view.focusGuess();
 	}
-	handleSnippetPlay(round, seconds, requested, shortcut) {
-		const stopping = requested && !shortcut;
-		const pausing = requested || shortcut;
-		const elapsed = pausing ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
-		if (stopping) this.playback.rewind(round);
-		else if (pausing) this.playback.pause();
-		if (!stopping) this.playback.replay(round, elapsed > 0);
+	handleSnippetPlay(round, seconds, requested) {
+		const elapsed = requested ? this.clock.pause().elapsedMs : this.clock.snapshot().elapsedMs;
+		if (requested) this.playback.rewind(round);
+		else this.playback.replay(round, elapsed > 0);
 		this.view.resetTimeline();
 		this.clock.restart(seconds * 1e3);
 		this.render();
@@ -4146,7 +4143,7 @@ var TimelineView = class {
 		this.elements.positionRange.value = String(selected ?? 0);
 		this.elements.positionRange.setAttribute("aria-valuetext", selected === null ? "NO POSITION SELECTED" : formatClock(selected));
 		this.setPositionMarker(this.elements.positionGuess, selected, maximum);
-		this.elements.now.textContent = selected === null ? "?:??" : formatClock(selected);
+		this.elements.now.textContent = selected === null ? "0:00" : formatClock(selected);
 		if (state.phase === "selecting" || state.actualSecond === null) {
 			this.cancelPositionReveal();
 			this.elements.end.textContent = "?:??";
