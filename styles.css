@@ -725,7 +725,7 @@
   border: 0;
   border-radius: inherit;
   background: transparent;
-  cursor: col-resize;
+  cursor: pointer;
   opacity: 0;
 }
 
