@@ -51,8 +51,7 @@
   --duration-snippet: 400ms;
   --duration-slot: 250ms;
   --duration-discovery-card: 250ms;
-  --duration-discovery-scrim: 350ms;
-  --duration-discovery-modal: 350ms;
+  --duration-modal: 350ms;
   --duration-timeline-reset: 300ms;
   --duration-timeline-rewind: 200ms;
   --duration-position-reveal: 680ms;
@@ -690,6 +689,8 @@
   z-index: 0;
   width: 2px;
   background: var(--line);
+  opacity: 1;
+  transition: opacity var(--duration-timeline-reset) ease-out;
 }
 
 #corzaguessr .tick::before {
@@ -712,9 +713,12 @@
 }
 
 #corzaguessr.mode-selected.position .snippet,
-#corzaguessr.position .feedback,
-#corzaguessr.position .tick {
+#corzaguessr.position .feedback {
   display: none;
+}
+
+#corzaguessr.position .tick {
+  opacity: 0;
 }
 
 #corzaguessr .position-range {
@@ -1003,6 +1007,7 @@
   background: transparent;
   pointer-events: none;
   visibility: hidden;
+  transition: background var(--duration-modal) ease;
 }
 
 #corzaguessr .result-modal {
@@ -1012,12 +1017,18 @@
 #corzaguessr .result-open .result-modal {
   pointer-events: auto;
   visibility: visible;
+}
+
+#corzaguessr .result-visible .result-modal {
   background: var(--scrim);
 }
 
 #corzaguessr .result-shell,
 #corzaguessr .discovery-shell {
   width: min(96vw, 840px);
+  height: 0;
+  overflow: hidden;
+  transition: height var(--duration-modal) ease;
 }
 
 #corzaguessr .corzaguessr-modal {
@@ -1086,7 +1097,6 @@
 
 #corzaguessr .discovery-modal {
   z-index: 2;
-  transition: background var(--duration-discovery-scrim) ease;
 }
 
 #corzaguessr .discovery-modal:focus {
@@ -1100,12 +1110,6 @@
 
 #corzaguessr.discovery-visible .discovery-modal {
   background: var(--scrim);
-}
-
-#corzaguessr .discovery-shell {
-  height: 0;
-  overflow: hidden;
-  transition: height var(--duration-discovery-modal) ease;
 }
 
 #corzaguessr .discovery-panel {
