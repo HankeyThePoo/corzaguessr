@@ -691,8 +691,12 @@
   z-index: 0;
   width: 2px;
   background: var(--line);
-  opacity: 1;
+  opacity: 0;
   transition: opacity var(--duration-timeline-reset) ease-out;
+}
+
+#corzaguessr.mode-selected:not(.timed):not(.position) .tick {
+  opacity: 1;
 }
 
 #corzaguessr .tick::before {
@@ -719,10 +723,6 @@
   display: none;
 }
 
-#corzaguessr.position .tick {
-  opacity: 0;
-}
-
 #corzaguessr .position-range {
   position: absolute;
   inset: 0;
@@ -744,9 +744,8 @@
   position: absolute;
   inset-block: var(--gradient-border-width);
   z-index: 3;
-  width: 3px;
+  width: 2px;
   background: var(--gradient);
-  box-shadow: 0 0 8px rgb(from var(--gradient-middle) r g b / 50%);
   pointer-events: none;
   translate: -50% 0;
 }
