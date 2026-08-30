@@ -712,7 +712,6 @@
 }
 
 #corzaguessr.mode-selected.position .snippet,
-#corzaguessr.position .fill,
 #corzaguessr.position .feedback,
 #corzaguessr.position .tick {
   display: none;
