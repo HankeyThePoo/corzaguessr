@@ -174,6 +174,9 @@ function clockDisplayForMode(mode) {
 function snippetSeconds(attempt) {
 	return snippetDurations[Math.max(0, Math.min(puzzleAttemptCount - 1, attempt))];
 }
+function modeSnippetSeconds(mode, puzzleAttempt) {
+	return isPositionMode(mode) ? modeRules[mode].snippetSeconds : snippetSeconds(puzzleAttempt);
+}
 function skipLabel(mode, attempt) {
 	if (mode === "seek") return "GUESS";
 	if (isTimedMode(mode)) return "SKIP";
@@ -183,7 +186,7 @@ function skipLabel(mode, attempt) {
 function seekPoints(guessedSecond, actualSecond, duration) {
 	if (!Number.isFinite(duration) || duration <= 0) return 0;
 	const relativeError = Math.min(1, Math.abs(guessedSecond - actualSecond) / duration);
-	return Math.round(modeRules.seek.maxPointsPerRound * (1 - relativeError) ** 2);
+	return Math.round(modeRules.seek.maxPointsPerRound * (1 - relativeError) ** 3);
 }
 function seekAttemptPoints(attempt) {
 	return seekPoints(attempt.guessedSecond, attempt.actualSecond, attempt.trackDuration);
@@ -800,13 +803,13 @@ function composeGameViewModel(input) {
 		attemptEnabled,
 		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: session.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(attempt),
+		snippetSeconds: modeSnippetSeconds(session.mode, attempt),
 		skipText: seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: session.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(attempt),
+			snippetSeconds: modeSnippetSeconds(session.mode, attempt),
 			inputVisible,
 			clock: input.clock,
 			dailyStarted: dailyStarted(input.dailyProgress, input.dailyDate)
@@ -1144,7 +1147,7 @@ var GameController = class {
 			this.session = setRound(this.session, round);
 			const session = this.session;
 			if (!isTimedMode(session.mode)) {
-				const seconds = session.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(puzzleAttempt(session));
+				const seconds = modeSnippetSeconds(session.mode, puzzleAttempt(session));
 				this.clock.restart(seconds * 1e3);
 			}
 			this.clock.start();
@@ -1251,7 +1254,7 @@ var GameController = class {
 			this.handleTimedPlay(round, requested);
 			return;
 		}
-		this.handleSnippetPlay(round, state.mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(puzzleAttempt(state)), requested, shortcut);
+		this.handleSnippetPlay(round, modeSnippetSeconds(state.mode, puzzleAttempt(state)), requested, shortcut);
 	}
 	handleTimedPlay(round, requested) {
 		if (requested) {
@@ -1377,7 +1380,7 @@ var GameController = class {
 		const attempts = mode === "daily" ? this.progress.dailyAttempts(this.dailyDate) : mode === "classic" ? this.progress.classicRound?.attempts ?? [] : [];
 		const resumed = attempts.length;
 		this.session = createSession(mode, attempts);
-		const milliseconds = modeRules[mode].initialTimeMs ?? (mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(resumed)) * 1e3;
+		const milliseconds = modeRules[mode].initialTimeMs ?? modeSnippetSeconds(mode, resumed) * 1e3;
 		this.clock.configure(milliseconds);
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.prime();
@@ -1406,15 +1409,17 @@ var GameController = class {
 			if (track && restoredClassic.clipStart <= maximumClipStart) clipStart = restoredClassic.clipStart;
 			else {
 				this.progress.clearClassicRound();
+				this.session = createSession("classic");
+				this.clock.configure(snippetSeconds(0) * 1e3);
 				track = selectRandomTrack(this.tracks, failed, avoid, this.random);
 				if (!track) return null;
 				clipStart = randomClipStart(track, maxPuzzleSnippetSeconds, this.random);
 			}
 		} else {
-			const excluded = mode === "seek" ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
+			const excluded = isPositionMode(mode) ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
 			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
 			if (!track) return null;
-			const clipSeconds = mode === "seek" ? modeRules.seek.snippetSeconds : isTimedMode(mode) ? 60 : maxPuzzleSnippetSeconds;
+			const clipSeconds = isPositionMode(mode) ? modeRules[mode].snippetSeconds : isTimedMode(mode) ? 60 : maxPuzzleSnippetSeconds;
 			clipStart = randomClipStart(track, clipSeconds, this.random);
 		}
 		return {
