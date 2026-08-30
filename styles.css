@@ -681,30 +681,19 @@
   transform: none;
 }
 
-#corzaguessr .ticks {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  clip-path: inset(0 100% 0 0);
-  pointer-events: none;
-  transition: clip-path var(--duration-timeline-reset) ease-out;
-}
-
-#corzaguessr.mode-selected .ticks {
-  clip-path: inset(0);
-}
-
 #corzaguessr .tick {
   position: absolute;
   inset: var(--gradient-border-width) auto;
+  z-index: 0;
   width: 2px;
   background: var(--line);
-  opacity: 0;
+  opacity: 1;
   transition: opacity var(--duration-timeline-reset) ease-out;
 }
 
-#corzaguessr.mode-selected:not(.timed):not(.position) .tick {
-  opacity: 1;
+#corzaguessr.timed .tick,
+#corzaguessr.position .tick {
+  opacity: 0;
 }
 
 #corzaguessr .tick::before {
