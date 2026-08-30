@@ -3964,6 +3964,12 @@ var TimelineView = class {
 		if (!state) {
 			this.cancelSeekReveal();
 			this.elements.seekRange.disabled = true;
+			this.elements.seekRange.value = "0";
+			this.elements.seekRange.max = "0";
+			this.elements.seekRange.setAttribute("aria-valuetext", "NO POSITION SELECTED");
+			this.setSeekMarker(this.elements.seekGuess, null, 0);
+			this.setSeekMarker(this.elements.seekActual, null, 0);
+			this.hideSeekDistance();
 			return;
 		}
 		const maximum = Math.max(0, state.maximumSecond);
@@ -4089,10 +4095,12 @@ var TimelineView = class {
 	}
 	setSeekMarker(marker, second, maximum) {
 		marker.hidden = second === null;
-		if (second !== null) {
-			const percentage = maximum > 0 ? second / maximum * 100 : 0;
-			marker.style.left = `clamp(var(--gradient-border-width), ${percentage}%, calc(100% - var(--gradient-border-width)))`;
+		if (second === null) {
+			marker.style.left = "";
+			return;
 		}
+		const percentage = maximum > 0 ? second / maximum * 100 : 0;
+		marker.style.left = `clamp(var(--gradient-border-width), ${percentage}%, calc(100% - var(--gradient-border-width)))`;
 	}
 	showSeekDistance(guessed, actual, maximum) {
 		const start = Math.min(guessed, actual);
@@ -4103,6 +4111,8 @@ var TimelineView = class {
 	}
 	hideSeekDistance() {
 		this.elements.seekDistance.hidden = true;
+		this.elements.seekDistance.style.left = "";
+		this.elements.seekDistance.style.width = "";
 	}
 	cancelSeekReveal(clearKey = true) {
 		if (this.seekFrame) this.scheduler.cancelFrame(this.seekFrame);
