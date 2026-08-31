@@ -465,7 +465,7 @@ function validateTrackCatalog(value) {
 	if (value.length === 0) throw new Error("Track catalog is empty.");
 	const titles = /* @__PURE__ */ new Set();
 	const numbers = /* @__PURE__ */ new Set();
-	return value.map((candidate, index) => {
+	const tracks = value.map((candidate, index) => {
 		const fail = (reason) => {
 			throw new Error(`Track catalog entry ${index + 1} ${reason}`);
 		};
@@ -494,6 +494,8 @@ function validateTrackCatalog(value) {
 			isNew: record.isNew === true
 		};
 	});
+	if (tracks.length < modeRules.seek.roundCount) throw new Error(`Track catalog requires at least ${modeRules.seek.roundCount} tracks for Seek.`);
+	return tracks;
 }
 function stableHash(value) {
 	let hash = 2166136261;
@@ -952,6 +954,7 @@ var GameController = class {
 	persistenceFailureQueued = false;
 	pageVisible = true;
 	classicResumePending = false;
+	resultClosing = false;
 	constructor(catalog, progress, clock, playback, view, dailySchedule, openSpotifyLink, copyToClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
@@ -1037,6 +1040,7 @@ var GameController = class {
 		const mode = state.mode;
 		if (!mode) return;
 		if (state.result) {
+			this.resultClosing = true;
 			if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
 				this.startDailyCountdown();
 				this.session = dismissResult(this.session);
@@ -1054,6 +1058,12 @@ var GameController = class {
 			this.view.closeResult("play");
 			return;
 		}
+	}
+	onResultClosed() {
+		if (!this.resultClosing) return;
+		this.resultClosing = false;
+		this.prime();
+		this.render();
 	}
 	openDiscovery() {
 		if (this.discoveryOpen) {
@@ -1463,7 +1473,6 @@ var GameController = class {
 		this.sessionNumber += 1;
 		this.classicResumePending = false;
 		this.session = createSession("daily");
-		this.tracks = [];
 		this.catalogError = false;
 		this.catalogLoadingVisible = false;
 		this.render();
@@ -1493,7 +1502,7 @@ var GameController = class {
 					this.prime();
 					this.render();
 				}
-				this.view.focusAfterCatalogReady();
+				if (!this.activeOverlay) this.view.focusAfterCatalogReady();
 			},
 			onError: () => {
 				this.catalogLoadingVisible = false;
@@ -1510,6 +1519,7 @@ var GameController = class {
 		this.playback.prime();
 	}
 	dailyCatalogPending() {
+		if (this.session.mode === "daily" && this.catalogDate !== this.dailyDate) return true;
 		return dailyCatalogPending(this.session.mode, this.tracks, this.dailyDate, this.progress.daily);
 	}
 	gauntletUnlocked() {
@@ -1542,9 +1552,10 @@ var GameController = class {
 		});
 	}
 	get activeOverlay() {
-		return this.session.result ? "result" : this.discoveryOpen ? "discovery" : null;
+		return this.session.result || this.resultClosing ? "result" : this.discoveryOpen ? "discovery" : null;
 	}
 	get appStatus() {
+		if (this.session.mode === "daily" && this.catalogDate !== this.dailyDate) return "loading";
 		if (this.tracks.length) return this.session.mode ? "ready" : "awaiting-mode";
 		return this.catalogError ? "error" : "loading";
 	}
@@ -2290,30 +2301,33 @@ function parsePersonalBests(value) {
 		"seek",
 		"gauntlet"
 	])) return emptyPersonalBests();
+	const defaults = emptyPersonalBests();
 	const { classic, blitz, seek, gauntlet } = value;
-	if (!isRecord(classic) || !hasExactKeys(classic, [
-		"current",
-		"best",
-		"snippetTotal",
-		"bestSnippetTotal"
-	]) || !isNonNegativeInteger(classic.current) || !isNonNegativeInteger(classic.best) || !isNonNegativeInteger(classic.snippetTotal) || !isNonNegativeInteger(classic.bestSnippetTotal) || classic.best < classic.current || !validSnippetTotal(classic.current, classic.snippetTotal) || !validSnippetTotal(classic.best, classic.bestSnippetTotal) || classic.current === classic.best && classic.bestSnippetTotal > classic.snippetTotal || !validScoreBest(blitz) || !validSeekBest(seek) || !validGauntletBest(gauntlet)) return emptyPersonalBests();
 	return {
-		classic: {
+		classic: validClassicBest(classic) ? {
 			current: classic.current,
 			best: classic.best,
 			snippetTotal: classic.snippetTotal,
 			bestSnippetTotal: classic.bestSnippetTotal
-		},
-		blitz: {
+		} : defaults.classic,
+		blitz: validScoreBest(blitz) ? {
 			score: blitz.score,
 			accuracy: blitz.accuracy
-		},
-		seek: { score: seek.score },
-		gauntlet: {
+		} : defaults.blitz,
+		seek: validSeekBest(seek) ? { score: seek.score } : defaults.seek,
+		gauntlet: validGauntletBest(gauntlet) ? {
 			timeMs: gauntlet.timeMs,
 			trackCount: gauntlet.trackCount
-		}
+		} : defaults.gauntlet
 	};
+}
+function validClassicBest(value) {
+	return isRecord(value) && hasExactKeys(value, [
+		"current",
+		"best",
+		"snippetTotal",
+		"bestSnippetTotal"
+	]) && isNonNegativeInteger(value.current) && isNonNegativeInteger(value.best) && isNonNegativeInteger(value.snippetTotal) && isNonNegativeInteger(value.bestSnippetTotal) && value.best >= value.current && validSnippetTotal(value.current, value.snippetTotal) && validSnippetTotal(value.best, value.bestSnippetTotal) && (value.current !== value.best || value.bestSnippetTotal <= value.snippetTotal);
 }
 function validSeekBest(value) {
 	return isRecord(value) && hasExactKeys(value, ["score"]) && isIntegerBetween(value.score, 0, seekMaxScore);
@@ -2333,7 +2347,7 @@ function parseDiscoveries(value) {
 }
 function parsePuzzleAttempts(value, completedOutcome) {
 	if (!Array.isArray(value)) return null;
-	const minimum = completedOutcome ? 1 : 0;
+	const minimum = completedOutcome === "lost" ? puzzleAttemptCount : completedOutcome === "won" ? 1 : 0;
 	const maximum = completedOutcome ? puzzleAttemptCount : puzzleAttemptCount - 1;
 	if (!isIntegerBetween(value.length, minimum, maximum)) return null;
 	const attempts = [];
@@ -4673,7 +4687,10 @@ var GameView = class {
 	}
 	closeResult(focus) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
-		this.modal.closeResult(target, () => this.resultView.render(null));
+		this.modal.closeResult(target, () => {
+			this.resultView.render(null);
+			this.handlers?.resultClosed();
+		});
 	}
 	beginDiscoveryClose(request) {
 		return this.modal.closeDiscovery(this.elements.discoveryButton, () => queueMicrotask(() => {
@@ -5062,6 +5079,7 @@ if (root && !root.dataset.corzaguessrReady) {
 		positionRevealComplete: (roundId) => controller.onPositionRevealComplete(roundId),
 		guess: (dailyNumber) => controller.guess(dailyNumber),
 		resultAction: () => controller.resultAction(),
+		resultClosed: () => controller.onResultClosed(),
 		openDiscovery: () => controller.openDiscovery(),
 		closeDiscovery: () => controller.closeDiscovery(),
 		resetProgress: () => controller.resetProgress(),
