@@ -954,7 +954,6 @@ var GameController = class {
 	persistenceFailureQueued = false;
 	pageVisible = true;
 	classicResumePending = false;
-	resultClosing = false;
 	constructor(catalog, progress, clock, playback, view, dailySchedule, openSpotifyLink, copyToClipboard, random = Math.random) {
 		this.catalog = catalog;
 		this.progress = progress;
@@ -1038,32 +1037,25 @@ var GameController = class {
 	resultAction() {
 		const state = this.session;
 		const mode = state.mode;
-		if (!mode) return;
-		if (state.result) {
-			this.resultClosing = true;
-			if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
+		if (!mode || !state.result) return;
+		if (mode === "daily" && this.progress.dailyDone(this.latestDailyDate)) {
+			this.view.closeResult("classic", () => {
 				this.startDailyCountdown();
 				this.session = dismissResult(this.session);
 				this.render();
-				this.view.closeResult("classic");
-				return;
-			}
-			if (mode === "daily" && this.latestDailyDate && this.latestDailyDate !== this.dailyDate) {
-				this.dailyDate = this.latestDailyDate;
-				this.refreshDailyCatalog(this.dailyDate);
-				this.view.closeResult("play");
-				return;
-			}
-			this.resetForMode(mode);
-			this.view.closeResult("play");
+			});
 			return;
 		}
-	}
-	onResultClosed() {
-		if (!this.resultClosing) return;
-		this.resultClosing = false;
-		this.prime();
-		this.render();
+		if (mode === "daily" && this.latestDailyDate && this.latestDailyDate !== this.dailyDate) {
+			this.view.closeResult("play", () => {
+				this.dailyDate = this.latestDailyDate;
+				this.refreshDailyCatalog(this.dailyDate);
+			});
+			return;
+		}
+		this.view.closeResult("play", () => {
+			this.resetForMode(mode);
+		});
 	}
 	openDiscovery() {
 		if (this.discoveryOpen) {
@@ -1552,7 +1544,7 @@ var GameController = class {
 		});
 	}
 	get activeOverlay() {
-		return this.session.result || this.resultClosing ? "result" : this.discoveryOpen ? "discovery" : null;
+		return this.session.result ? "result" : this.discoveryOpen ? "discovery" : null;
 	}
 	get appStatus() {
 		if (this.session.mode === "daily" && this.catalogDate !== this.dailyDate) return "loading";
@@ -4625,7 +4617,7 @@ var GameView = class {
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
-		this.elements.headerAction.inert = state.overlay === "result";
+		this.elements.headerAction.inert = overlay;
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
 		this.elements.slots.inert = overlay || blockedBoard;
@@ -4685,11 +4677,11 @@ var GameView = class {
 	flashTimeChange(seconds) {
 		this.timeline.flashTimeAdjustment(seconds);
 	}
-	closeResult(focus) {
+	closeResult(focus, onClosed) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
 		this.modal.closeResult(target, () => {
 			this.resultView.render(null);
-			this.handlers?.resultClosed();
+			onClosed();
 		});
 	}
 	beginDiscoveryClose(request) {
@@ -5079,7 +5071,6 @@ if (root && !root.dataset.corzaguessrReady) {
 		positionRevealComplete: (roundId) => controller.onPositionRevealComplete(roundId),
 		guess: (dailyNumber) => controller.guess(dailyNumber),
 		resultAction: () => controller.resultAction(),
-		resultClosed: () => controller.onResultClosed(),
 		openDiscovery: () => controller.openDiscovery(),
 		closeDiscovery: () => controller.closeDiscovery(),
 		resetProgress: () => controller.resetProgress(),
