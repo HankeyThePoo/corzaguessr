@@ -4151,7 +4151,7 @@ var ResultView = class {
 		this.elements.action.textContent = result.primaryLabel;
 		this.elements.title.textContent = result.outcome;
 		this.elements.meta.dataset.mode = result.mode;
-		this.elements.meta.replaceChildren(...result.modules.map(createResultModule));
+		this.elements.meta.replaceChildren(...result.modules.map((module) => createResultModule(module, result.mode)));
 		this.elements.meta.dataset.announcement = result.announcement;
 		this.elements.secondaryLabel.textContent = result.secondary?.label ?? "";
 		if (result.secondary) this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
@@ -4185,7 +4185,7 @@ var ResultView = class {
 		}, this.durations.shareFade);
 	}
 };
-function createResultModule(result) {
+function createResultModule(result, mode) {
 	const module = document.createElement("div");
 	module.className = `result-module result-${result.kind}`;
 	const label = document.createElement("span");
@@ -4194,9 +4194,23 @@ function createResultModule(result) {
 	label.textContent = result.label;
 	const value = document.createElement("span");
 	value.className = "result-value";
-	value.textContent = result.value;
+	value.setAttribute("aria-label", result.value);
+	value.replaceChildren(...result.kind === "track" ? createTrackLines(result.value) : createMetricLines(result.value, mode));
 	module.replaceChildren(label, value);
 	return module;
+}
+function createTrackLines(value) {
+	const match = /^(.*)\s(\([^()]+\))$/.exec(value);
+	return [resultLine("result-track-primary", match?.[1] ?? value), ...match ? [resultLine("result-track-version", match[2])] : []];
+}
+function createMetricLines(value, mode) {
+	return (mode === "seek" && value.endsWith(" POINTS") ? [value.slice(0, -7), "POINTS"] : value.split(" · ")).map((part) => resultLine("result-metric", part));
+}
+function resultLine(className, text) {
+	const line = document.createElement("span");
+	line.className = className;
+	line.textContent = text;
+	return line;
 }
 var TimelineView = class {
 	elements;
