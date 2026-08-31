@@ -669,16 +669,15 @@ function emptyPersonalBests() {
 }
 function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	if (!result) return null;
-	const rows = resultRows(result);
-	const announcement = resultAnnouncement(result, rows, attempts);
+	const outcome = resultOutcome(result, attempts);
+	const modules = resultModules(result);
+	const announcement = announceResult(outcome, modules);
 	const daily = result.mode === "daily";
-	const timedOut = result.mode === "blitz" || result.mode === "gauntlet" && !result.won;
-	const puzzleMessage = puzzleResultMessage(result, attempts);
 	return {
-		titleHtml: result.mode === "seek" ? "&#10022; <span class=\"end\">SEEK COMPLETE</span> &#10022;" : result.mode === "gauntlet" && result.won ? "&#127937; <span class=\"end\">GAUNTLET COMPLETE</span> &#127937;" : timedOut ? "&#9201;&#65039; <span class=\"end\">TIME IS UP</span> &#9201;&#65039;" : `${result.won ? "&#127881;" : "&#10060;"} <span class="end">${puzzleMessage}</span> ${result.won ? "&#127881;" : "&#10060;"}`,
+		mode: result.mode,
+		outcome,
 		primaryLabel: daily ? "CLOSE" : "NEW GAME",
-		rows,
-		highlightPersonalBest: !daily && result.newPersonalBest,
+		modules,
 		announcement: persistenceFailed ? `${announcement} PROGRESS COULD NOT BE SAVED IN THIS BROWSER.` : announcement,
 		secondary: daily ? {
 			action: "share",
@@ -691,30 +690,37 @@ function composeResultViewModel(result, persistenceFailed, attempts = []) {
 		} : null
 	};
 }
-function resultRows(result) {
-	if (result.mode === "daily") return [["TRACK:", result.trackTitle], ["RUN:", formatAttempts(result.attempts)]];
+function resultModules(result) {
+	if (result.mode === "daily") return [resultModule("track", "TRACK", result.trackTitle), resultModule("run", "RUN", formatAttempts(result.attempts))];
 	if (result.mode === "classic") {
 		const run = result.won ? `STREAK: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}` : result.streak ? `STREAK ENDED: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}` : "NO RECORD";
 		const personalBest = result.bestStreak ? `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}` : "NO RECORD";
 		return [
-			["TRACK:", result.trackTitle],
-			["RUN:", run],
-			[result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]
+			resultModule("track", "TRACK", result.trackTitle),
+			resultModule("run", "RUN", run),
+			personalBestModule(personalBest, result.newPersonalBest)
 		];
 	}
 	if (result.mode === "blitz") {
 		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · SUCCESS RATE: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
-		return [["RUN:", `CORRECT GUESSES: ${result.correct} · SUCCESS RATE: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+		return [resultModule("run", "RUN", `CORRECT GUESSES: ${result.correct} · SUCCESS RATE: ${formatAccuracy(result.accuracy)}`), personalBestModule(personalBest, result.newPersonalBest)];
 	}
-	if (result.mode === "seek") return [["RUN:", `${result.score}/${seekMaxScore} POINTS`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `${result.bestScore}/${seekMaxScore} POINTS`]];
+	if (result.mode === "seek") return [resultModule("run", "RUN", formatSeekScore(result.score)), personalBestModule(result.bestScore ? formatSeekScore(result.bestScore) : "NO RECORD", result.newPersonalBest)];
 	if (result.mode === "gauntlet") {
 		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
-		return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+		return [resultModule("run", "RUN", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`), personalBestModule(personalBest, result.newPersonalBest)];
 	}
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
-function resultAnnouncement(result, rows = resultRows(result), attempts = []) {
-	return `${result.mode === "seek" ? "SEEK COMPLETE." : result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : `${puzzleResultMessage(result, attempts)}.`} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
+function announceResult(outcome, modules) {
+	return `${outcome}. ${modules.map((module) => `${module.label}. ${module.value}`).join(". ")}`.trim();
+}
+function resultOutcome(result, attempts) {
+	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
+	if (result.mode === "blitz") return "TIME IS UP";
+	if (result.mode === "seek") return "RUN COMPLETE";
+	if (result.mode === "gauntlet") return result.won ? "YOU SURVIVED" : "TIME IS UP";
+	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function puzzleResultMessage(result, attempts) {
 	if (result.mode !== "daily" && result.mode !== "classic") return "";
@@ -731,6 +737,24 @@ function formatAverage(value) {
 	if (!Number.isFinite(value) || value <= 0) return "--";
 	const rounded = Math.round(value * 10) / 10;
 	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
+}
+function formatSeekScore(value) {
+	return `${value.toLocaleString("en-US")} / ${seekMaxScore.toLocaleString("en-US")} POINTS`;
+}
+function resultModule(kind, label, value) {
+	return {
+		kind,
+		label,
+		value
+	};
+}
+function personalBestModule(value, newPersonalBest) {
+	return {
+		kind: "personal-best",
+		label: newPersonalBest ? "NEW PERSONAL BEST" : "PERSONAL BEST",
+		value,
+		...newPersonalBest ? { newPersonalBest: true } : {}
+	};
 }
 var maxVisibleTimedAttempts = 19;
 function acceptsAttempt(session, transport) {
@@ -4158,12 +4182,14 @@ var ResultView = class {
 		if (!result) {
 			this.elements.title.textContent = "";
 			this.elements.meta.replaceChildren();
+			delete this.elements.meta.dataset.mode;
 			this.elements.secondary.hidden = true;
 			return;
 		}
 		this.elements.action.textContent = result.primaryLabel;
-		this.elements.title.innerHTML = result.titleHtml;
-		this.elements.meta.replaceChildren(...result.rows.map((row) => createResultRow(row, result.highlightPersonalBest)));
+		this.elements.title.textContent = result.outcome;
+		this.elements.meta.dataset.mode = result.mode;
+		this.elements.meta.replaceChildren(...result.modules.map(createResultModule));
 		this.elements.meta.dataset.announcement = result.announcement;
 		this.elements.secondaryLabel.textContent = result.secondary?.label ?? "";
 		if (result.secondary) this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
@@ -4197,16 +4223,17 @@ var ResultView = class {
 		}, this.durations.shareFade);
 	}
 };
-function createResultRow(row, newPersonalBest) {
+function createResultModule(result) {
 	const module = document.createElement("div");
-	module.className = "result-module";
-	module.replaceChildren(...row.map((value, index) => {
-		const span = document.createElement("span");
-		span.className = index ? "result-value" : "result-label";
-		if (!index && newPersonalBest && value === "NEW PERSONAL BEST:") span.classList.add("blink");
-		span.textContent = value;
-		return span;
-	}));
+	module.className = `result-module result-${result.kind}`;
+	const label = document.createElement("span");
+	label.className = "result-label";
+	if (result.newPersonalBest) label.classList.add("new-personal-best");
+	label.textContent = result.label;
+	const value = document.createElement("span");
+	value.className = "result-value";
+	value.textContent = result.value;
+	module.replaceChildren(label, value);
 	return module;
 }
 var TimelineView = class {
