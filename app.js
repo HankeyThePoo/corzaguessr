@@ -175,12 +175,18 @@ function snippetSeconds(attempt) {
 	return snippetDurations[Math.max(0, Math.min(puzzleAttemptCount - 1, attempt))];
 }
 function modeSnippetSeconds(mode, puzzleAttempt) {
-	return isPositionMode(mode) ? modeRules[mode].snippetSeconds : snippetSeconds(puzzleAttempt);
+	if (mode === null || isPuzzleMode(mode)) return snippetSeconds(puzzleAttempt);
+	if (isPositionMode(mode)) return modeRules[mode].snippetSeconds;
+	throw new Error(`Unsupported snippet-duration mode: ${String(mode)}`);
 }
 function skipLabel(mode, attempt) {
+	if (mode === null) return "ADD 1S";
 	if (isTimedMode(mode)) return "SKIP";
-	if (attempt >= puzzleAttemptCount - 1) return "GIVE UP";
-	return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
+	if (isPuzzleMode(mode)) {
+		if (attempt >= puzzleAttemptCount - 1) return "GIVE UP";
+		return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
+	}
+	throw new Error(`Unsupported skip-label mode: ${String(mode)}`);
 }
 function seekPoints(guessedSecond, actualSecond, duration) {
 	if (!Number.isFinite(duration) || duration <= 0) return 0;
@@ -562,28 +568,37 @@ function composeClockViewModel(input) {
 		endText: "0:01",
 		progress: 0
 	};
-	if (clockDisplayForMode(mode) === "position") return {
-		currentText: "0:00",
-		endText: "?:??",
-		progress: 0
-	};
-	if (isTimedMode(mode)) {
-		const initial = modeRules[mode].initialTimeMs;
-		const showsElapsed = clockDisplayForMode(mode) === "elapsed";
-		const seconds = (showsElapsed ? clock.elapsedMs : clock.remainingMs) / 1e3;
-		const denominator = showsElapsed ? clock.maxRemainingMs : initial;
-		return {
-			currentText: formatClock(seconds),
-			endText: formatClock(showsElapsed ? Math.ceil(clock.remainingMs / 1e3) : initial / 1e3),
-			progress: denominator ? clock.remainingMs / denominator : 0
+	const display = clockDisplayForMode(mode);
+	switch (display) {
+		case "snippet": {
+			if (input.snippetSeconds === null) throw new Error(`Snippet clock requires a snippet duration for ${mode}`);
+			const seconds = clock.elapsedMs / 1e3;
+			return {
+				currentText: formatClock(seconds),
+				endText: `0:${String(input.snippetSeconds).padStart(2, "0")}`,
+				progress: seconds ? seconds / maxPuzzleSnippetSeconds + .0025 : 0
+			};
+		}
+		case "countdown": {
+			const initial = modeRules[mode].initialTimeMs;
+			return {
+				currentText: formatClock(clock.remainingMs / 1e3),
+				endText: formatClock(initial / 1e3),
+				progress: initial ? clock.remainingMs / initial : 0
+			};
+		}
+		case "elapsed": return {
+			currentText: formatClock(clock.elapsedMs / 1e3),
+			endText: formatClock(Math.ceil(clock.remainingMs / 1e3)),
+			progress: clock.maxRemainingMs ? clock.remainingMs / clock.maxRemainingMs : 0
 		};
+		case "position": return {
+			currentText: "0:00",
+			endText: "?:??",
+			progress: 0
+		};
+		default: throw new Error(`Unsupported clock display: ${String(display)}`);
 	}
-	const seconds = clock.elapsedMs / 1e3;
-	return {
-		currentText: formatClock(seconds),
-		endText: `0:${String(input.snippetSeconds).padStart(2, "0")}`,
-		progress: seconds ? seconds / maxPuzzleSnippetSeconds + .0025 : 0
-	};
 }
 function formatClock(seconds) {
 	const safe = Math.max(0, seconds);
@@ -690,8 +705,11 @@ function resultRows(result) {
 		return [["RUN:", `CORRECT GUESSES: ${result.correct} · SUCCESS RATE: ${formatAccuracy(result.accuracy)}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
 	}
 	if (result.mode === "seek") return [["RUN:", `${result.score}/${seekMaxScore} POINTS`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", `${result.bestScore}/${seekMaxScore} POINTS`]];
-	const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
-	return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+	if (result.mode === "gauntlet") {
+		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
+		return [["RUN:", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`], [result.newPersonalBest ? "NEW PERSONAL BEST:" : "PERSONAL BEST:", personalBest]];
+	}
+	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function resultAnnouncement(result, rows = resultRows(result), attempts = []) {
 	return `${result.mode === "seek" ? "SEEK COMPLETE." : result.mode === "gauntlet" ? result.won ? "GAUNTLET COMPLETE." : "TIME IS UP." : result.mode === "blitz" ? "TIME IS UP." : `${puzzleResultMessage(result, attempts)}.`} ${rows.map((row) => `${row[0]?.replace(/:$/, "") ?? "RESULT"}. ${row.slice(1).join(". ")}`.trim()).join(". ")}`.trim();
@@ -787,9 +805,10 @@ function composeGameViewModel(input) {
 	const playControlAvailable = !session.round || transport.retryNeeded || roundHeard || transport.pendingRoundId === session.round.id;
 	const inputVisible = guessInputVisible(session, transport);
 	const interactionEnabled = !!(input.appStatus === "ready" && session.round && !input.overlay && !transport.loading && acceptsAttempt(session, transport));
-	const attemptEnabled = interactionEnabled && inputVisible && !isPositionMode(session.mode);
+	const attemptEnabled = interactionEnabled && inputVisible;
 	const positionTimeline = composePositionTimeline(session, interactionEnabled);
 	const classicResumeChoice = session.mode === "classic" && input.classicResumePending;
+	const snippetDuration = isTimedMode(session.mode) ? null : modeSnippetSeconds(session.mode, attempt);
 	const actionEnabled = classicResumeChoice ? input.appStatus === "ready" && !input.overlay : session.mode === "seek" ? input.appStatus === "ready" && !!session.position && !session.result && !transport.loading && !input.overlay && (session.position.phase === "revealed" || interactionEnabled && session.position.selectedSecond !== null) : attemptEnabled;
 	return {
 		appStatus: input.appStatus,
@@ -801,14 +820,13 @@ function composeGameViewModel(input) {
 		attemptEnabled,
 		actionEnabled,
 		playbackIcon: requested ? isTimedMode(session.mode) ? "pause" : "stop" : "play",
-		snippetSeconds: modeSnippetSeconds(session.mode, attempt),
+		snippetSeconds: snippetDuration,
 		skipText: classicResumeChoice ? "GIVE UP" : seekActionLabel(session),
 		slots,
 		unavailableGuessIds: guessedTrackIds,
 		clock: composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: modeSnippetSeconds(session.mode, attempt),
-			inputVisible,
+			snippetSeconds: snippetDuration,
 			clock: input.clock
 		}),
 		positionTimeline,
@@ -827,12 +845,17 @@ function promptSlot(session, tracksLeft) {
 	if (isTimedMode(session.mode)) {
 		if (!session.started) return null;
 		const attemptNumber = session.attempts.length + 1;
+		let text;
+		if (session.mode === "gauntlet") text = `${tracksLeft} ${tracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT`;
+		else if (session.mode === "blitz") text = `GUESS #${attemptNumber}`;
+		else throw new Error(`Unsupported timed prompt mode: ${String(session.mode)}`);
 		return {
 			id: attemptNumber,
-			text: session.mode === "gauntlet" ? `${tracksLeft} ${tracksLeft === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${attemptNumber}`,
+			text,
 			tone: "prompt"
 		};
 	}
+	if (!isPuzzleMode(session.mode)) return null;
 	if (!session.round && session.attempts.length === 0) return null;
 	const attempt = puzzleAttempt(session);
 	return {
@@ -918,6 +941,7 @@ var GameController = class {
 	session = createSession();
 	catalogError = false;
 	catalogLoadingVisible = false;
+	catalogDate = null;
 	tracks = [];
 	latestDailyDate = "1970-01-01";
 	dailyDate = "1970-01-01";
@@ -943,29 +967,7 @@ var GameController = class {
 		this.latestDailyDate = date;
 		this.dailyDate = date;
 		this.render();
-		this.catalog.load(date, {
-			onLoading: () => {
-				this.catalogError = false;
-				this.catalogLoadingVisible = true;
-				this.render();
-				this.view.announce(copy.loadingCatalog);
-			},
-			onLoaded: (tracks) => {
-				this.catalogLoadingVisible = false;
-				this.catalogError = false;
-				this.tracks = tracks;
-				this.prime();
-				this.render();
-				this.view.focusAfterCatalogReady();
-			},
-			onError: () => {
-				this.catalogLoadingVisible = false;
-				if (this.tracks.length) return;
-				this.catalogError = true;
-				this.view.announce(copy.catalogError);
-				this.render();
-			}
-		});
+		this.loadCatalog(date);
 	}
 	selectMode(mode) {
 		const state = this.session;
@@ -974,6 +976,12 @@ var GameController = class {
 			const date = this.dailySchedule.start();
 			this.latestDailyDate = date;
 			this.dailyDate = date;
+			if (this.catalogDate !== date) {
+				this.refreshDailyCatalog(date);
+				this.view.announce(modeRules[mode].description);
+				this.view.focusAfterModeSelected();
+				return;
+			}
 		} else this.dailySchedule.stop();
 		this.resetForMode(mode);
 		this.view.announce(modeRules[mode].description);
@@ -1036,7 +1044,12 @@ var GameController = class {
 				this.view.closeResult("classic");
 				return;
 			}
-			if (mode === "daily" && this.latestDailyDate) this.dailyDate = this.latestDailyDate;
+			if (mode === "daily" && this.latestDailyDate && this.latestDailyDate !== this.dailyDate) {
+				this.dailyDate = this.latestDailyDate;
+				this.refreshDailyCatalog(this.dailyDate);
+				this.view.closeResult("play");
+				return;
+			}
 			this.resetForMode(mode);
 			this.view.closeResult("play");
 			return;
@@ -1087,8 +1100,7 @@ var GameController = class {
 	}
 	openSpotify() {
 		const result = this.session.result;
-		const spotify = result && (result.mode === "classic" || result.mode === "daily") ? result.spotify : "";
-		if (spotify) this.openSpotifyLink(spotify);
+		if (result?.mode === "classic" && result.spotify) this.openSpotifyLink(result.spotify);
 	}
 	shareDaily() {
 		const result = this.session.result;
@@ -1120,7 +1132,7 @@ var GameController = class {
 		this.dailyCountdownMs = 0;
 		if (!this.session.result) {
 			this.dailyDate = date;
-			this.resetForMode("daily");
+			this.refreshDailyCatalog(date);
 		}
 	}
 	handlePageVisible() {
@@ -1222,8 +1234,7 @@ var GameController = class {
 		if (isPositionMode(session.mode)) return;
 		this.view.renderClock(composeClockViewModel({
 			mode: session.mode,
-			snippetSeconds: snippetSeconds(puzzleAttempt(session)),
-			inputVisible: guessInputVisible(session, this.playback.snapshot),
+			snippetSeconds: isTimedMode(session.mode) ? null : snippetSeconds(puzzleAttempt(session)),
 			clock: snapshot
 		}));
 	}
@@ -1288,7 +1299,9 @@ var GameController = class {
 		const round = state.round;
 		const mode = state.mode;
 		if (!round || !mode || isPositionMode(mode) || !acceptsAttempt(state, this.playback.snapshot) || this.activeOverlay) return;
-		if (isTimedMode(mode)) {
+		const timed = isTimedMode(mode);
+		if (!timed && !isPuzzleMode(mode)) throw new Error(`Unsupported attempt mode: ${String(mode)}`);
+		if (timed) {
 			if (this.clock.pause().remainingMs <= 0) {
 				this.finishGame();
 				return;
@@ -1296,7 +1309,7 @@ var GameController = class {
 		}
 		this.view.resetGuessInput();
 		if (outcome === "correct") this.progress.recordDiscovery(round.track.dailyNumber);
-		if (isTimedMode(mode)) {
+		if (timed) {
 			this.resolveTimedAttempt(mode, outcome, guessed);
 			return;
 		}
@@ -1425,7 +1438,11 @@ var GameController = class {
 			const excluded = isPositionMode(mode) ? /* @__PURE__ */ new Set([...failed, ...positionUsedTrackIds(this.session)]) : failed;
 			track = selectRandomTrack(this.tracks, excluded, avoid, this.random);
 			if (!track) return null;
-			const clipSeconds = isPositionMode(mode) ? modeRules[mode].snippetSeconds : isTimedMode(mode) ? 60 : maxPuzzleSnippetSeconds;
+			let clipSeconds;
+			if (isPositionMode(mode)) clipSeconds = modeRules[mode].snippetSeconds;
+			else if (isTimedMode(mode)) clipSeconds = 60;
+			else if (isPuzzleMode(mode)) clipSeconds = maxPuzzleSnippetSeconds;
+			else throw new Error(`Unsupported round-creation mode: ${String(mode)}`);
 			clipStart = randomClipStart(track, clipSeconds, this.random);
 		}
 		return {
@@ -1438,6 +1455,53 @@ var GameController = class {
 		return this.progress.puzzleRound(mode, this.dailyDate, (dailyNumber) => {
 			const track = this.tracks.find((candidate) => candidate.dailyNumber === dailyNumber);
 			return track ? dailyClipStart(track, this.dailyDate) : null;
+		});
+	}
+	refreshDailyCatalog(date) {
+		this.clock.pause();
+		this.playback.reset();
+		this.sessionNumber += 1;
+		this.classicResumePending = false;
+		this.session = createSession("daily");
+		this.tracks = [];
+		this.catalogError = false;
+		this.catalogLoadingVisible = false;
+		this.render();
+		this.loadCatalog(date, () => {
+			if (this.session.mode === "daily" && this.dailyDate === date) this.resetForMode("daily");
+			else {
+				this.prime();
+				this.render();
+			}
+		});
+	}
+	loadCatalog(date, onReady) {
+		this.catalog.load(date, {
+			onLoading: () => {
+				this.catalogError = false;
+				this.catalogLoadingVisible = true;
+				this.render();
+				this.view.announce(copy.loadingCatalog);
+			},
+			onLoaded: (tracks) => {
+				this.catalogLoadingVisible = false;
+				this.catalogError = false;
+				this.catalogDate = date;
+				this.tracks = tracks;
+				if (onReady) onReady();
+				else {
+					this.prime();
+					this.render();
+				}
+				this.view.focusAfterCatalogReady();
+			},
+			onError: () => {
+				this.catalogLoadingVisible = false;
+				if (this.tracks.length) return;
+				this.catalogError = true;
+				this.view.announce(copy.catalogError);
+				this.render();
+			}
 		});
 	}
 	prime() {
@@ -1773,31 +1837,34 @@ function finishRun(state, run) {
 			}
 		};
 	}
-	const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
-	const completedTracks = correctTrackIds(attempts).size;
-	const catalogTrackCount = run.catalogTrackCount;
-	const completed = catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
-	const personalBests = cloneBests(state.personalBests);
-	const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
-	const nextState = update.changed ? {
-		...state,
-		personalBests
-	} : state;
-	const best = nextState.personalBests.gauntlet;
-	return {
-		state: nextState,
-		changedSections: update.changed ? ["personalBests"] : [],
-		result: {
-			mode: "gauntlet",
-			won: completed,
-			newPersonalBest: update.newPersonalBest,
-			elapsedMs,
-			completedTracks,
-			catalogTrackCount,
-			bestElapsedMs: best.timeMs,
-			bestTrackCount: best.trackCount
-		}
-	};
+	if (mode === "gauntlet") {
+		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
+		const completedTracks = correctTrackIds(attempts).size;
+		const catalogTrackCount = run.catalogTrackCount;
+		const completed = catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
+		const personalBests = cloneBests(state.personalBests);
+		const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
+		const nextState = update.changed ? {
+			...state,
+			personalBests
+		} : state;
+		const best = nextState.personalBests.gauntlet;
+		return {
+			state: nextState,
+			changedSections: update.changed ? ["personalBests"] : [],
+			result: {
+				mode: "gauntlet",
+				won: completed,
+				newPersonalBest: update.newPersonalBest,
+				elapsedMs,
+				completedTracks,
+				catalogTrackCount,
+				bestElapsedMs: best.timeMs,
+				bestTrackCount: best.trackCount
+			}
+		};
+	}
+	throw new Error(`Unsupported completed run mode: ${String(mode)}`);
 }
 function puzzleTrack(session) {
 	const track = session.round?.track;
@@ -2800,6 +2867,8 @@ var Playback = class {
 		};
 	}
 	configure(mode, factory) {
+		const failurePolicy = modeRules[mode].failurePolicy;
+		if (failurePolicy !== "fixed" && failurePolicy !== "heard-fixed" && failurePolicy !== "replace") throw new Error(`Unsupported playback failure policy: ${String(failurePolicy)}`);
 		const changingMode = this.mode !== mode;
 		this.stop();
 		this.mode = mode;
@@ -4555,7 +4624,7 @@ var GameView = class {
 		this.elements.icon.setAttribute("d", icons[state.playbackIcon]);
 		this.elements.play.setAttribute("aria-label", state.playbackIcon === "play" ? "PLAY" : state.playbackIcon === "pause" ? "PAUSE" : "STOP");
 		this.elements.skip.textContent = state.skipText;
-		this.elements.snippet.style.width = snippetPercentage(state.snippetSeconds);
+		if (state.snippetSeconds !== null) this.elements.snippet.style.width = snippetPercentage(state.snippetSeconds);
 		this.renderRules();
 		this.attempts.render(state.slots, sessionKey);
 		this.autocomplete.setDependencies(state.suggestionTracks, state.unavailableGuessIds);
