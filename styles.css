@@ -1103,7 +1103,7 @@
 
 #corzaguessr .result-track .result-value {
   color: var(--off-white);
-  font-size: 1rem;
+  font-size: var(--text-clock);
 }
 
 #corzaguessr .result-metric-primary {
