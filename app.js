@@ -691,29 +691,18 @@ function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	};
 }
 function resultModules(result) {
-	if (result.mode === "daily") return [resultModule("track", "TRACK", result.trackTitle), resultModule("run", "RUN", formatAttempts(result.attempts))];
+	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule(formatAttempts(result.attempts))];
 	if (result.mode === "classic") {
-		const run = result.won ? `STREAK: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}` : result.streak ? `STREAK ENDED: ${result.streak} · AVERAGE SNIPPET: ${formatAverage(result.average)}` : "NO RECORD";
-		const personalBest = result.bestStreak ? `STREAK: ${result.bestStreak} · AVERAGE SNIPPET: ${formatAverage(result.bestAverage)}` : "NO RECORD";
-		return [
-			resultModule("track", "TRACK", result.trackTitle),
-			resultModule("run", "RUN", run),
-			personalBestModule(personalBest, result.newPersonalBest)
-		];
+		const run = result.won ? `STREAK ${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}` : `STREAK ENDED ${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}`;
+		return [trackModule(result.trackTitle), runModule(run, result.newPersonalBest)];
 	}
-	if (result.mode === "blitz") {
-		const personalBest = result.bestCorrect ? `CORRECT GUESSES: ${result.bestCorrect} · SUCCESS RATE: ${formatAccuracy(result.bestAccuracy)}` : "NO RECORD";
-		return [resultModule("run", "RUN", `CORRECT GUESSES: ${result.correct} · SUCCESS RATE: ${formatAccuracy(result.accuracy)}`), personalBestModule(personalBest, result.newPersonalBest)];
-	}
-	if (result.mode === "seek") return [resultModule("run", "RUN", formatSeekScore(result.score)), personalBestModule(result.bestScore ? formatSeekScore(result.bestScore) : "NO RECORD", result.newPersonalBest)];
-	if (result.mode === "gauntlet") {
-		const personalBest = result.bestTrackCount ? `TIME: ${formatClock(result.bestElapsedMs / 1e3)} · ${result.bestTrackCount} TRACKS` : "NO RECORD";
-		return [resultModule("run", "RUN", `TIME: ${formatClock(result.elapsedMs / 1e3)} · TRACKS: ${result.completedTracks}/${result.catalogTrackCount}`), personalBestModule(personalBest, result.newPersonalBest)];
-	}
+	if (result.mode === "blitz") return [runModule(`${result.correct} · CORRECT GUESSES · ${formatAccuracy(result.accuracy)} SUCCESS RATE`, result.newPersonalBest)];
+	if (result.mode === "seek") return [runModule(formatSeekScore(result.score), result.newPersonalBest)];
+	if (result.mode === "gauntlet") return [runModule(`${formatClock(result.elapsedMs / 1e3)} · ${result.completedTracks} / ${result.catalogTrackCount} TRACKS`, result.newPersonalBest)];
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function announceResult(outcome, modules) {
-	return `${outcome}. ${modules.map((module) => `${module.label}. ${module.value}`).join(". ")}`.trim();
+	return `${outcome}. ${modules.flatMap((module) => [...module.newPersonalBest ? ["NEW PERSONAL BEST"] : [], module.label ? `${module.label}. ${module.value}` : module.value]).join(". ")}`.trim();
 }
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
@@ -731,7 +720,8 @@ function formatAccuracy(value) {
 	return Number.isSafeInteger(value) ? `${value}%` : "--";
 }
 function formatAttempts(value) {
-	return value ? `ATTEMPTS: ${value}` : "ATTEMPTS: --";
+	if (!value) return "-- ATTEMPTS";
+	return `${value} ${value === 1 ? "ATTEMPT" : "ATTEMPTS"}`;
 }
 function formatAverage(value) {
 	if (!Number.isFinite(value) || value <= 0) return "--";
@@ -739,19 +729,18 @@ function formatAverage(value) {
 	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
 }
 function formatSeekScore(value) {
-	return `${value.toLocaleString("en-US")} / ${seekMaxScore.toLocaleString("en-US")} POINTS`;
+	return `${value.toLocaleString("en-US")} · / ${seekMaxScore.toLocaleString("en-US")} POINTS`;
 }
-function resultModule(kind, label, value) {
+function trackModule(value) {
 	return {
-		kind,
-		label,
+		kind: "track",
+		label: "TRACK",
 		value
 	};
 }
-function personalBestModule(value, newPersonalBest) {
+function runModule(value, newPersonalBest = false) {
 	return {
-		kind: "personal-best",
-		label: newPersonalBest ? "NEW PERSONAL BEST" : "PERSONAL BEST",
+		kind: "run",
 		value,
 		...newPersonalBest ? { newPersonalBest: true } : {}
 	};
@@ -1772,13 +1761,11 @@ function finishRun(state, run) {
 			...state,
 			classicRound: null
 		} : state;
-		const nextState = update.changed ? {
-			...clearedState,
-			personalBests
-		} : clearedState;
-		const best = nextState.personalBests.classic;
 		return {
-			state: nextState,
+			state: update.changed ? {
+				...clearedState,
+				personalBests
+			} : clearedState,
 			changedSections: [...state.classicRound ? ["classicRound"] : [], ...update.changed ? ["personalBests"] : []],
 			result: {
 				mode: "classic",
@@ -1787,9 +1774,7 @@ function finishRun(state, run) {
 				spotify: track.spotify,
 				newPersonalBest: update.newPersonalBest,
 				streak: update.streak,
-				average: update.average,
-				bestStreak: best.best,
-				bestAverage: best.best ? best.bestSnippetTotal / best.best : 0
+				average: update.average
 			}
 		};
 	}
@@ -1798,21 +1783,17 @@ function finishRun(state, run) {
 		const runAccuracy = accuracy(correct, guesses);
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateBlitzBest(personalBests, correct, runAccuracy);
-		const nextState = update.changed ? {
-			...state,
-			personalBests
-		} : state;
-		const best = nextState.personalBests.blitz;
 		return {
-			state: nextState,
+			state: update.changed ? {
+				...state,
+				personalBests
+			} : state,
 			changedSections: update.changed ? ["personalBests"] : [],
 			result: {
 				mode: "blitz",
 				newPersonalBest: update.newPersonalBest,
 				correct,
-				accuracy: runAccuracy,
-				bestCorrect: best.score,
-				bestAccuracy: best.accuracy
+				accuracy: runAccuracy
 			}
 		};
 	}
@@ -1820,18 +1801,16 @@ function finishRun(state, run) {
 		const score = seekScore(session.position?.attempts ?? []);
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateSeekBest(personalBests, score);
-		const nextState = update.changed ? {
-			...state,
-			personalBests
-		} : state;
 		return {
-			state: nextState,
+			state: update.changed ? {
+				...state,
+				personalBests
+			} : state,
 			changedSections: update.changed ? ["personalBests"] : [],
 			result: {
 				mode: "seek",
 				newPersonalBest: update.newPersonalBest,
-				score,
-				bestScore: nextState.personalBests.seek.score
+				score
 			}
 		};
 	}
@@ -1842,13 +1821,11 @@ function finishRun(state, run) {
 		const completed = catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
-		const nextState = update.changed ? {
-			...state,
-			personalBests
-		} : state;
-		const best = nextState.personalBests.gauntlet;
 		return {
-			state: nextState,
+			state: update.changed ? {
+				...state,
+				personalBests
+			} : state,
 			changedSections: update.changed ? ["personalBests"] : [],
 			result: {
 				mode: "gauntlet",
@@ -1856,9 +1833,7 @@ function finishRun(state, run) {
 				newPersonalBest: update.newPersonalBest,
 				elapsedMs,
 				completedTracks,
-				catalogTrackCount,
-				bestElapsedMs: best.timeMs,
-				bestTrackCount: best.trackCount
+				catalogTrackCount
 			}
 		};
 	}
@@ -4151,7 +4126,7 @@ var ResultView = class {
 		this.elements.action.textContent = result.primaryLabel;
 		this.elements.title.textContent = result.outcome;
 		this.elements.meta.dataset.mode = result.mode;
-		this.elements.meta.replaceChildren(...result.modules.map((module) => createResultModule(module, result.mode)));
+		this.elements.meta.replaceChildren(...result.modules.map((module) => createResultModule(module)));
 		this.elements.meta.dataset.announcement = result.announcement;
 		this.elements.secondaryLabel.textContent = result.secondary?.label ?? "";
 		if (result.secondary) this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
@@ -4185,26 +4160,29 @@ var ResultView = class {
 		}, this.durations.shareFade);
 	}
 };
-function createResultModule(result, mode) {
+function createResultModule(result) {
 	const module = document.createElement("div");
 	module.className = `result-module result-${result.kind}`;
-	const label = document.createElement("span");
-	label.className = "result-label";
-	if (result.newPersonalBest) label.classList.add("new-personal-best");
-	label.textContent = result.label;
 	const value = document.createElement("span");
 	value.className = "result-value";
 	value.setAttribute("aria-label", result.value);
-	value.replaceChildren(...result.kind === "track" ? createTrackLines(result.value) : createMetricLines(result.value, mode));
-	module.replaceChildren(label, value);
+	value.replaceChildren(...result.kind === "track" ? createTrackLines(result.value) : createMetricLines(result.value));
+	module.replaceChildren(...result.newPersonalBest ? [createResultLabel("NEW PERSONAL BEST", true)] : [], ...result.label ? [createResultLabel(result.label)] : [], value);
 	return module;
+}
+function createResultLabel(text, personalBest = false) {
+	const label = document.createElement("span");
+	label.className = "result-label";
+	if (personalBest) label.classList.add("new-personal-best");
+	label.textContent = text;
+	return label;
 }
 function createTrackLines(value) {
 	const match = /^(.*)\s(\([^()]+\))$/.exec(value);
 	return [resultLine("result-track-primary", match?.[1] ?? value), ...match ? [resultLine("result-track-version", match[2])] : []];
 }
-function createMetricLines(value, mode) {
-	return (mode === "seek" && value.endsWith(" POINTS") ? [value.slice(0, -7), "POINTS"] : value.split(" · ")).map((part) => resultLine("result-metric", part));
+function createMetricLines(value) {
+	return value.split(" · ").map((part, index) => resultLine(index === 0 ? "result-metric result-metric-primary" : "result-metric", part));
 }
 function resultLine(className, text) {
 	const line = document.createElement("span");
