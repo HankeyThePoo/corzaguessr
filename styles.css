@@ -150,7 +150,8 @@
 
 #corzaguessr input,
 #corzaguessr .ruleset,
-#corzaguessr .slot {
+#corzaguessr .slot,
+#corzaguessr .result-module {
   border: var(--line-width) solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-dark);
@@ -1042,24 +1043,31 @@
   margin: 0;
 }
 
+#corzaguessr .modal-title {
+  color: var(--off-white);
+  font-size: var(--text-clock);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: var(--tracking-heading);
+}
+
 #corzaguessr .result-meta {
+  display: grid;
+  gap: calc(var(--space) * 3);
   width: 100%;
   font-weight: 800;
 }
 
 #corzaguessr .result-module {
   display: grid;
-  gap: var(--space);
-  padding-top: calc(var(--space) * 4);
-  margin-top: calc(var(--space) * 4);
-  border-top: var(--line-width) solid var(--line);
+  align-content: center;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 3);
+  overflow-wrap: anywhere;
 }
 
-#corzaguessr .result-module:first-child {
-  margin-top: 0;
-}
-
-#corzaguessr .result-module:not(:first-child) .result-value,
+#corzaguessr .result-run .result-value,
+#corzaguessr .result-personal-best .result-value,
 #corzaguessr .progress-best small {
   text-transform: none;
 }
@@ -1070,10 +1078,22 @@
   opacity: var(--opacity-muted);
 }
 
-#corzaguessr .end {
+#corzaguessr .result-value {
+  font-size: var(--text-body);
+  line-height: var(--line-height);
+}
+
+#corzaguessr .result-label.new-personal-best {
   background: var(--gradient);
+  -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  -webkit-text-fill-color: transparent;
+  opacity: 1;
+}
+
+#corzaguessr .result-meta[data-mode="seek"] .result-value {
+  white-space: nowrap;
 }
 
 #corzaguessr .mode-prompt,
