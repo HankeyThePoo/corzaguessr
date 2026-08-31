@@ -1513,11 +1513,6 @@
 }
 
 @media (max-width: 600px) {
-  #corzaguessr.discovery-open .header-action {
-    position: relative;
-    z-index: 3;
-  }
-
   #corzaguessr .ruleset.scroll .ruleset-track {
     justify-content: flex-start;
     min-width: max-content;
