@@ -691,18 +691,18 @@ function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	};
 }
 function resultModules(result) {
-	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule(formatAttempts(result.attempts))];
+	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule("TODAY'S SCORE", formatAttempts(result.attempts))];
 	if (result.mode === "classic") {
-		const run = result.won ? `STREAK ${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}` : `STREAK ENDED ${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}`;
-		return [trackModule(result.trackTitle), runModule(run, result.newPersonalBest)];
+		const run = `${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}`;
+		return [trackModule(result.trackTitle), runModule("CURRENT STREAK", run, result.newPersonalBest)];
 	}
-	if (result.mode === "blitz") return [runModule(`${result.correct} · CORRECT GUESSES · ${formatAccuracy(result.accuracy)} SUCCESS RATE`, result.newPersonalBest)];
-	if (result.mode === "seek") return [runModule(formatSeekScore(result.score), result.newPersonalBest)];
-	if (result.mode === "gauntlet") return [runModule(`${formatClock(result.elapsedMs / 1e3)} · ${result.completedTracks} / ${result.catalogTrackCount} TRACKS`, result.newPersonalBest)];
+	if (result.mode === "blitz") return [runModule("RUN SCORE", `${result.correct} · CORRECT GUESSES · ${formatAccuracy(result.accuracy)} SUCCESS RATE`, result.newPersonalBest)];
+	if (result.mode === "seek") return [runModule("RUN SCORE", `${formatSeekScore(result.score)} · AVERAGE ERROR ${formatAverageError(result.averageErrorSeconds)}`, result.newPersonalBest)];
+	if (result.mode === "gauntlet") return [runModule("RUN TIME", `${formatClock(result.elapsedMs / 1e3)} · ${result.completedTracks} / ${result.catalogTrackCount} TRACKS`, result.newPersonalBest)];
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function announceResult(outcome, modules) {
-	return `${outcome}. ${modules.flatMap((module) => [...module.newPersonalBest ? ["NEW PERSONAL BEST"] : [], module.label ? `${module.label}. ${module.value}` : module.value]).join(". ")}`.trim();
+	return `${outcome}. ${modules.map((module) => `${module.label}. ${module.value}`).join(". ")}`.trim();
 }
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
@@ -720,8 +720,7 @@ function formatAccuracy(value) {
 	return Number.isSafeInteger(value) ? `${value}%` : "--";
 }
 function formatAttempts(value) {
-	if (!value) return "-- ATTEMPTS";
-	return `${value} ${value === 1 ? "ATTEMPT" : "ATTEMPTS"}`;
+	return `${value || "--"} / ${puzzleAttemptCount} · ATTEMPTS`;
 }
 function formatAverage(value) {
 	if (!Number.isFinite(value) || value <= 0) return "--";
@@ -731,6 +730,11 @@ function formatAverage(value) {
 function formatSeekScore(value) {
 	return `${value.toLocaleString("en-US")} · / ${seekMaxScore.toLocaleString("en-US")} POINTS`;
 }
+function formatAverageError(value) {
+	if (!Number.isFinite(value) || value < 0) return "--";
+	const rounded = Math.round(value * 10) / 10;
+	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
+}
 function trackModule(value) {
 	return {
 		kind: "track",
@@ -738,9 +742,10 @@ function trackModule(value) {
 		value
 	};
 }
-function runModule(value, newPersonalBest = false) {
+function runModule(label, value, newPersonalBest = false) {
 	return {
 		kind: "run",
+		label: newPersonalBest ? "NEW PERSONAL BEST" : label,
 		value,
 		...newPersonalBest ? { newPersonalBest: true } : {}
 	};
@@ -1798,7 +1803,9 @@ function finishRun(state, run) {
 		};
 	}
 	if (mode === "seek") {
-		const score = seekScore(session.position?.attempts ?? []);
+		const positionAttempts = session.position?.attempts ?? [];
+		const score = seekScore(positionAttempts);
+		const averageErrorSeconds = positionAttempts.length ? positionAttempts.reduce((total, attempt) => total + Math.abs(attempt.guessedSecond - attempt.actualSecond), 0) / positionAttempts.length : 0;
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateSeekBest(personalBests, score);
 		return {
@@ -1810,7 +1817,8 @@ function finishRun(state, run) {
 			result: {
 				mode: "seek",
 				newPersonalBest: update.newPersonalBest,
-				score
+				score,
+				averageErrorSeconds
 			}
 		};
 	}
@@ -4167,7 +4175,7 @@ function createResultModule(result) {
 	value.className = "result-value";
 	value.setAttribute("aria-label", result.value);
 	value.replaceChildren(...result.kind === "track" ? createTrackLines(result.value) : createMetricLines(result.value));
-	module.replaceChildren(...result.newPersonalBest ? [createResultLabel("NEW PERSONAL BEST", true)] : [], ...result.label ? [createResultLabel(result.label)] : [], value);
+	module.replaceChildren(createResultLabel(result.label, result.newPersonalBest), value);
 	return module;
 }
 function createResultLabel(text, personalBest = false) {
