@@ -1055,6 +1055,7 @@
   display: grid;
   gap: calc(var(--space) * 3);
   width: 100%;
+  max-width: calc(var(--button-width) * 4);
   font-weight: 800;
 }
 
@@ -1084,6 +1085,8 @@
 }
 
 #corzaguessr .result-label.new-personal-best {
+  width: fit-content;
+  justify-self: center;
   background: var(--gradient);
   -webkit-background-clip: text;
   background-clip: text;
@@ -1222,35 +1225,6 @@
   margin-top: 0;
   padding-top: calc(var(--space) * 4);
   border-top: var(--line-width) solid var(--line);
-}
-
-#corzaguessr .reset-confirmation {
-  display: grid;
-  gap: var(--space);
-  margin-top: 0;
-  padding-top: calc(var(--space) * 4);
-  border-top: var(--line-width) solid var(--line);
-  text-align: center;
-  text-transform: uppercase;
-}
-
-#corzaguessr .reset-confirmation[hidden] {
-  display: none;
-}
-
-#corzaguessr .reset-confirmation strong {
-  font-size: var(--text-body);
-  letter-spacing: var(--tracking-label);
-}
-
-#corzaguessr .reset-confirmation > span {
-  font-size: var(--text-meta);
-  line-height: 1.35;
-  opacity: var(--opacity-muted);
-}
-
-#corzaguessr .reset-confirmation .actions {
-  margin-top: calc(var(--space) * 3);
 }
 
 #corzaguessr .discovery-items {
