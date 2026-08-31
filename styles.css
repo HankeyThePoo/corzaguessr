@@ -1057,7 +1057,7 @@
 
 #corzaguessr .result-meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   border-bottom: var(--line-width) solid var(--line);
   font-weight: 800;
@@ -1074,21 +1074,14 @@
 }
 
 #corzaguessr .result-track {
-  grid-column: 1 / -1;
   padding-top: 0;
 }
 
-#corzaguessr .result-run,
-#corzaguessr .result-personal-best {
+#corzaguessr .result-run {
   border-top: var(--line-width) solid var(--line);
 }
 
-#corzaguessr .result-meta[data-mode="daily"] .result-run {
-  grid-column: 1 / -1;
-}
-
 #corzaguessr .result-run .result-value,
-#corzaguessr .result-personal-best .result-value,
 #corzaguessr .progress-best small {
   text-transform: none;
 }
@@ -1111,6 +1104,11 @@
 #corzaguessr .result-track .result-value {
   color: var(--off-white);
   font-size: 1rem;
+}
+
+#corzaguessr .result-metric-primary {
+  font-size: var(--text-display);
+  line-height: 1;
 }
 
 #corzaguessr .result-label.new-personal-best {
@@ -1700,10 +1698,6 @@
 
   #corzaguessr .timeline {
     height: 42px;
-  }
-
-  #corzaguessr .result-meta {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   #corzaguessr .result-shell,
