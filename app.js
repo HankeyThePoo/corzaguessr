@@ -1115,15 +1115,6 @@ var GameController = class {
 		this.prime();
 		this.render();
 	}
-	resetProgress() {
-		if (!this.discoveryOpen) return;
-		if (!this.progress.resetProgress()) {
-			this.view.announce("PROGRESS COULD NOT BE RESET IN THIS BROWSER.");
-			return;
-		}
-		this.resetToModeSelection();
-		this.view.announce("ALL PROGRESS RESET.");
-	}
 	openSpotify() {
 		const result = this.session.result;
 		if (result?.mode === "classic" && result.spotify) this.openSpotifyLink(result.spotify);
@@ -1430,15 +1421,6 @@ var GameController = class {
 		this.prime();
 		this.render();
 	}
-	resetToModeSelection() {
-		this.dailySchedule.stop();
-		this.sessionNumber += 1;
-		this.classicResumePending = false;
-		this.playback.reset();
-		this.session = createSession();
-		this.clock.configure(1e3);
-		this.render();
-	}
 	createRound(mode, failed, avoid) {
 		let track;
 		let clipStart;
@@ -1732,17 +1714,6 @@ var Progress = class {
 		};
 		this.pendingPersistence.discoveries = true;
 		this.persistPendingProgress();
-	}
-	resetProgress() {
-		if (!this.storage.clearProgress()) return false;
-		this.state = {
-			discoveries: /* @__PURE__ */ new Set(),
-			daily: emptyDailyProgress(),
-			classicRound: null,
-			personalBests: emptyPersonalBests()
-		};
-		this.pendingPersistence = emptyPendingPersistence();
-		return true;
 	}
 	finish(run) {
 		const transition = finishRun(this.state, run);
@@ -2244,12 +2215,9 @@ var JsonStorage = class {
 		}
 	}
 	remove(key) {
-		return this.removeMany([key]);
-	}
-	removeMany(keys) {
 		try {
 			if (!this.storage) return false;
-			for (const key of keys) this.storage.removeItem(key);
+			this.storage.removeItem(key);
 			return true;
 		} catch {
 			return false;
@@ -2425,9 +2393,6 @@ var ProgressStorage = class {
 	saveDiscoveries(discoveries) {
 		const values = [...discoveries].sort((left, right) => left - right);
 		return values.length ? this.storage.write(storageKeys.discoveries, values) : this.storage.remove(storageKeys.discoveries);
-	}
-	clearProgress() {
-		return this.storage.removeMany(Object.values(storageKeys));
 	}
 	saveDaily(progress) {
 		return this.storage.write(storageKeys.daily, progress);
@@ -3909,9 +3874,6 @@ var ModalController = class {
 		this.announce = announce;
 		this.scheduler = scheduler;
 	}
-	get discoveryLayoutActive() {
-		return this.kind === "discovery" && !this.closing;
-	}
 	get resultLayoutActive() {
 		return this.kind === "result";
 	}
@@ -4579,9 +4541,6 @@ var GameView = class {
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
-		if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => {
-			if (this.modal.discoveryLayoutActive) this.elements.discoveryShell.style.height = `${this.elements.discoveryPanel.offsetHeight}px`;
-		}).observe(this.elements.discoveryPanel);
 	}
 	bind(handlers) {
 		this.handlers = handlers;
@@ -4600,13 +4559,6 @@ var GameView = class {
 		});
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
-		this.elements.discoveryReset.addEventListener("click", () => this.showResetConfirmation());
-		this.elements.resetCancel.addEventListener("click", () => this.hideResetConfirmation(true));
-		this.elements.resetConfirm.addEventListener("click", () => {
-			this.hideResetConfirmation(false);
-			handlers.resetProgress();
-			this.elements.discoveryClose.focus({ preventScroll: true });
-		});
 		this.elements.discoveryModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
 		});
@@ -4670,7 +4622,6 @@ var GameView = class {
 		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
 		if (openingOverlay === "result") this.modal.openResult();
 		else if (openingOverlay === "discovery") {
-			this.hideResetConfirmation(false);
 			this.discovery.collapseAll();
 			this.modal.openDiscovery();
 		}
@@ -4766,18 +4717,6 @@ var GameView = class {
 	renderDiscovery(state) {
 		this.discovery.render(state.tracks, state.discoveries);
 	}
-	showResetConfirmation() {
-		if (this.resetConfirmationOpen) return;
-		this.elements.discoveryActions.hidden = true;
-		this.elements.resetConfirmation.hidden = false;
-		this.elements.resetCancel.focus({ preventScroll: true });
-	}
-	hideResetConfirmation(returnFocus) {
-		if (!this.resetConfirmationOpen) return;
-		this.elements.resetConfirmation.hidden = true;
-		this.elements.discoveryActions.hidden = false;
-		if (returnFocus) this.elements.discoveryReset.focus({ preventScroll: true });
-	}
 	bindPreview(element, preview) {
 		element.addEventListener("pointerenter", () => {
 			if (this.finePointer.matches && this.previewAllowed()) {
@@ -4807,9 +4746,6 @@ var GameView = class {
 	previewAllowed() {
 		return !!this.state && ["awaiting-mode", "ready"].includes(this.state.appStatus) && this.state.overlay === null && !this.state.inputVisible;
 	}
-	get resetConfirmationOpen() {
-		return !this.elements.resetConfirmation.hidden;
-	}
 	handleRootKeydown(event) {
 		if (!this.handlers || !this.state) return;
 		const pointerAnchor = this.inputModality === "pointer-fine" && this.hoveredButton && this.canNavigateTo(this.hoveredButton) ? this.hoveredButton : null;
@@ -4825,8 +4761,7 @@ var GameView = class {
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				if (this.state.overlay === "discovery" && this.resetConfirmationOpen) this.hideResetConfirmation(true);
-				else this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.resultAction();
+				this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.resultAction();
 				return;
 			}
 			if (this.state.overlay === "result" && event.key === "Enter" && document.activeElement !== this.elements.resultSecondary) {
@@ -4864,7 +4799,7 @@ var GameView = class {
 		return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight";
 	}
 	moveModalFocus(overlay, key, pointerAnchor) {
-		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : this.resetConfirmationOpen ? [this.elements.resetCancel, this.elements.resetConfirm] : [this.elements.discoveryClose, this.elements.discoveryReset];
+		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : [this.elements.discoveryClose];
 		this.cycleFocus(candidates, key, candidates[0], pointerAnchor);
 	}
 	movePrimaryFocus(key, pointerAnchor) {
@@ -4989,11 +4924,6 @@ var GameView = class {
 			discoveryShell: this.required(".discovery-shell"),
 			discoveryPanel: this.required(".discovery-panel"),
 			discoveryClose: this.required(".discovery-close"),
-			discoveryReset: this.required(".discovery-reset"),
-			discoveryActions: this.required(".discovery-actions"),
-			resetConfirmation: this.required(".reset-confirmation"),
-			resetCancel: this.required(".reset-cancel"),
-			resetConfirm: this.required(".reset-confirm"),
 			discoveryCount: this.required(".discovery-title small"),
 			discoveryItems: this.required(".discovery-items"),
 			progressBests: this.required(".progress-bests"),
@@ -5028,7 +4958,7 @@ function markup() {
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
-		`<div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions discovery-actions"><button type="button" class="button discovery-close">CLOSE</button><button type="button" class="button discovery-reset">RESET</button></div><section class="reset-confirmation" role="group" aria-labelledby="corzaguessr-reset-title" aria-describedby="corzaguessr-reset-warning" hidden><strong id="corzaguessr-reset-title">RESET ALL PROGRESS?</strong><span id="corzaguessr-reset-warning">THIS ERASES DISCOVERY, DAILY PROGRESS, AND RECORDS.</span><div class="actions"><button type="button" class="button reset-cancel">CANCEL</button><button type="button" class="button reset-confirm">RESET</button></div></section></div></div></div>`,
+		`<div id="corzaguessr-discovery" class="discovery-modal" role="dialog" aria-modal="true" aria-label="PROGRESS" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
 		`<p class="mode-prompt" role="status" aria-hidden="false">${copy.modePrompt}</p>`,
@@ -5100,7 +5030,6 @@ if (root && !root.dataset.corzaguessrReady) {
 		resultAction: () => controller.resultAction(),
 		openDiscovery: () => controller.openDiscovery(),
 		closeDiscovery: () => controller.closeDiscovery(),
-		resetProgress: () => controller.resetProgress(),
 		openSpotify: () => controller.openSpotify(),
 		shareDaily: () => controller.shareDaily(),
 		openDiscoverySpotify: (dailyNumber) => controller.openDiscoverySpotify(dailyNumber),
