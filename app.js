@@ -1068,12 +1068,12 @@ var GameController = class {
 			this.view.closeResult("play", () => {
 				this.dailyDate = this.latestDailyDate;
 				this.refreshDailyCatalog(this.dailyDate);
-			});
+			}, true);
 			return;
 		}
 		this.view.closeResult("play", () => {
 			this.resetForMode(mode);
-		});
+		}, true);
 	}
 	openDiscovery() {
 		if (this.discoveryOpen) {
@@ -3190,6 +3190,14 @@ var AttemptHistoryView = class {
 		}
 		this.applySnapshot(snapshot, !this.hasRenderedSlots() && snapshot.slots.length > 0);
 	}
+	beginReset() {
+		if (this.pendingSnapshot || !this.hasRenderedSlots()) return;
+		this.pendingSnapshot = {
+			slots: [],
+			sessionKey: this.sessionKey
+		};
+		this.collapseSlots();
+	}
 	applySnapshot(snapshot, reveal = false) {
 		this.sessionKey = snapshot.sessionKey;
 		this.renderSlots(snapshot.slots, snapshot.sessionKey);
@@ -4651,12 +4659,12 @@ var GameView = class {
 	flashTimeChange(seconds) {
 		this.timeline.flashTimeAdjustment(seconds);
 	}
-	closeResult(focus, onClosed) {
+	closeResult(focus, onClosed, resetBoard = false) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
-		this.modal.closeResult(target, () => {
+		if (this.modal.closeResult(target, () => {
 			this.resultView.render(null);
 			onClosed();
-		});
+		}) && resetBoard) this.beginBoardReset();
 	}
 	beginDiscoveryClose(request) {
 		return this.modal.closeDiscovery(this.elements.discoveryButton, () => queueMicrotask(() => {
@@ -4674,6 +4682,11 @@ var GameView = class {
 		this.preview = null;
 		this.autocomplete.reset();
 		this.renderRules();
+	}
+	beginBoardReset() {
+		this.timeline.beginReset();
+		this.timeline.setProgress("0:00", 0);
+		this.attempts.beginReset();
 	}
 	focusPlay() {
 		if (!this.elements.play.disabled && !this.elements.play.closest("[inert]")) this.elements.play.focus({ preventScroll: true });
