@@ -4300,7 +4300,9 @@ var TimelineView = class {
 	}
 	beginReset(rewindPlayback = false) {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
+		if (!rewindPlayback && this.progressListener && this.elements.fill.style.transition) return;
 		const previousScale = this.progressScale();
+		if (!rewindPlayback && previousScale <= 1e-4) return;
 		this.cancelProgressMotion();
 		const generation = ++this.motionGeneration;
 		if (rewindPlayback) {
@@ -4485,7 +4487,6 @@ var GameView = class {
 	preview = null;
 	rulesSignature = "";
 	announcementFrame = 0;
-	coordinatedBoardReset = false;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
@@ -4581,7 +4582,7 @@ var GameView = class {
 		const openingOverlay = state.overlay !== previousOverlay ? state.overlay : null;
 		this.state = state;
 		this.sessionKey = sessionKey;
-		if (sessionChanged && !this.coordinatedBoardReset) this.timeline.beginReset();
+		if (sessionChanged) this.timeline.beginReset();
 		if (sessionChanged || openingOverlay) this.resetTransientUi();
 		const transportVisible = state.transportText !== "";
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
@@ -4660,7 +4661,6 @@ var GameView = class {
 		this.modal.closeResult(target, () => {
 			this.resultView.render(null);
 			onClosed();
-			if (resetBoard) this.finishBoardReset();
 		}, resetBoard ? () => this.beginBoardReset() : void 0);
 	}
 	beginDiscoveryClose(request) {
@@ -4681,15 +4681,11 @@ var GameView = class {
 		this.renderRules();
 	}
 	beginBoardReset() {
-		this.coordinatedBoardReset = true;
 		this.timeline.beginReset();
 		this.timeline.setProgress("0:00", 0);
 		const snippetSeconds = isPositionMode(this.state?.mode ?? null) ? this.state?.snippetSeconds ?? snippetDurations[0] : snippetDurations[0];
 		this.elements.snippet.style.width = snippetPercentage(snippetSeconds);
 		this.attempts.beginReset();
-	}
-	finishBoardReset() {
-		this.coordinatedBoardReset = false;
 	}
 	focusPlay() {
 		if (!this.elements.play.disabled && !this.elements.play.closest("[inert]")) this.elements.play.focus({ preventScroll: true });
