@@ -4174,7 +4174,7 @@ function createResultModule(result) {
 	const value = document.createElement("span");
 	value.className = "result-value";
 	value.setAttribute("aria-label", result.value);
-	value.replaceChildren(...result.kind === "track" ? createTrackLines(result.value) : createMetricLines(result.value));
+	value.replaceChildren(...result.kind === "track" ? [resultLine("result-track-title", result.value)] : createMetricLines(result.value));
 	module.replaceChildren(createResultLabel(result.label, result.newPersonalBest), value);
 	return module;
 }
@@ -4184,10 +4184,6 @@ function createResultLabel(text, personalBest = false) {
 	if (personalBest) label.classList.add("new-personal-best");
 	label.textContent = text;
 	return label;
-}
-function createTrackLines(value) {
-	const match = /^(.*)\s(\([^()]+\))$/.exec(value);
-	return [resultLine("result-track-primary", match?.[1] ?? value), ...match ? [resultLine("result-track-version", match[2])] : []];
 }
 function createMetricLines(value) {
 	return value.split(" · ").map((part, index) => resultLine(index === 0 ? "result-metric result-metric-primary" : "result-metric", part));
