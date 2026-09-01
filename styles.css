@@ -1059,8 +1059,6 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   width: 100%;
-  max-width: calc(var(--button-width) * 4);
-  border-bottom: var(--line-width) solid var(--line);
   font-weight: 800;
 }
 
@@ -1075,11 +1073,15 @@
 }
 
 #corzaguessr .result-track {
+  width: 100%;
   padding-top: 0;
 }
 
 #corzaguessr .result-run {
-  border-top: var(--line-width) solid var(--line);
+  width: 100%;
+  max-width: calc(var(--button-width) * 4);
+  justify-self: center;
+  border-block: var(--line-width) solid var(--line);
 }
 
 #corzaguessr .result-run .result-value,
