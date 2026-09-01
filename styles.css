@@ -46,19 +46,9 @@
   --tracking-label: 0.08em;
   --tracking-heading: 0.1em;
   --opacity-muted: 70%;
-  --duration-fast: 160ms;
-  --duration-time-adjustment-feedback: 680ms;
-  --duration-share-visible: 680ms;
-  --duration-wiggle: 400ms;
-  --duration-snippet: 400ms;
-  --duration-slot: 250ms;
-  --duration-discovery-card: 250ms;
-  --duration-modal: 350ms;
-  --duration-timeline-reset: 300ms;
-  --duration-timeline-rewind: 200ms;
-  --duration-position-reveal: 680ms;
-  --duration-share-fade: 200ms;
-  --duration-time-adjustment-flash: 520ms;
+  --duration-fast: 150ms;
+  --duration-standard: 350ms;
+  --duration-long: 600ms;
   --control-height: 46px;
   --button-width: 128px;
   --play-size: 68px;
@@ -227,7 +217,7 @@
 #corzaguessr .attempt-area {
   display: grid;
   overflow: hidden;
-  transition: height var(--duration-slot) ease;
+  transition: height var(--duration-standard) ease;
 }
 
 #corzaguessr .attempt-area:has(.slots:empty) {
@@ -325,7 +315,7 @@
 
 #corzaguessr .result-secondary-label {
   opacity: 1;
-  transition: opacity var(--duration-share-fade) ease;
+  transition: opacity var(--duration-fast) ease;
 }
 
 #corzaguessr .result-secondary-label.fading {
@@ -407,7 +397,7 @@
   min-height: var(--play-size);
   transition:
     filter var(--duration-fast) ease,
-    opacity var(--duration-timeline-reset) ease-out,
+    opacity var(--duration-standard) ease-out,
     box-shadow var(--duration-fast) ease;
 }
 
@@ -551,7 +541,7 @@
   background: var(--gradient);
   clip-path: inset(0 100% 0 0);
   pointer-events: none;
-  transition: clip-path var(--duration-timeline-reset) ease-out;
+  transition: clip-path var(--duration-standard) ease-out;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -570,7 +560,7 @@
 }
 
 #corzaguessr .timeline.progress-rewinding::after {
-  animation: corzaguessr-progress-rewind var(--duration-timeline-rewind) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: corzaguessr-progress-rewind var(--duration-fast) cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes corzaguessr-progress-rewind {
@@ -601,12 +591,12 @@
   z-index: 1;
   background: var(--timeline-progress);
   opacity: 20%;
-  transition: width var(--duration-snippet);
+  transition: width var(--duration-standard);
 }
 
 #corzaguessr.mode-selected:not(.timed) .snippet {
   display: block;
-  animation: corzaguessr-timeline-accent var(--duration-timeline-reset) ease-out;
+  animation: corzaguessr-timeline-accent var(--duration-standard) ease-out;
   transform-origin: left;
 }
 
@@ -645,7 +635,7 @@
 
 #corzaguessr .feedback.time-adjustment-penalty,
 #corzaguessr .feedback.time-adjustment-reward {
-  animation: corzaguessr-time-adjustment-flash var(--duration-time-adjustment-flash) cubic-bezier(0.16, 1, 0.3, 1);
+  animation: corzaguessr-time-adjustment-flash var(--duration-long) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #corzaguessr .feedback.time-adjustment-reward {
@@ -673,7 +663,7 @@
 }
 
 #corzaguessr .time-change.time-adjustment-active span {
-  animation: corzaguessr-time-adjustment-hit var(--duration-time-adjustment-feedback) cubic-bezier(0.16, 1, 0.3, 1);
+  animation: corzaguessr-time-adjustment-hit var(--duration-long) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 #corzaguessr .time-change.time-adjustment-static span {
@@ -688,7 +678,7 @@
   width: 2px;
   background: var(--line);
   opacity: 1;
-  transition: opacity var(--duration-timeline-reset) ease-out;
+  transition: opacity var(--duration-standard) ease-out;
 }
 
 #corzaguessr.timed .tick,
@@ -703,7 +693,7 @@
   background: var(--gradient);
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform var(--duration-timeline-reset) ease-out;
+  transition: transform var(--duration-standard) ease-out;
   will-change: transform;
 }
 
@@ -831,7 +821,7 @@
   transition:
     background var(--duration-fast) ease,
     border-color var(--duration-fast) ease,
-    text-indent var(--duration-slot) ease;
+    text-indent var(--duration-standard) ease;
 }
 
 #corzaguessr input::placeholder {
@@ -860,7 +850,7 @@
   min-width: 100%;
   opacity: 1;
   translate: 0 0;
-  transition: translate var(--duration-slot) ease;
+  transition: translate var(--duration-standard) ease;
   white-space: nowrap;
 }
 
@@ -942,8 +932,8 @@
   overflow-wrap: anywhere;
   white-space: normal;
   transition:
-    opacity var(--duration-slot) ease,
-    translate var(--duration-slot) ease;
+    opacity var(--duration-standard) ease,
+    translate var(--duration-standard) ease;
   translate: 0 0;
 }
 
@@ -982,7 +972,7 @@
 }
 
 #corzaguessr .slot.wiggle {
-  animation: wiggle var(--duration-wiggle);
+  animation: wiggle var(--duration-long);
 }
 
 #corzaguessr .blink {
@@ -1001,7 +991,7 @@
   background: transparent;
   pointer-events: none;
   visibility: hidden;
-  transition: background var(--duration-modal) ease;
+  transition: background var(--duration-standard) ease;
 }
 
 #corzaguessr .result-modal {
@@ -1022,7 +1012,7 @@
   width: min(96vw, 840px);
   height: 0;
   overflow: hidden;
-  transition: height var(--duration-modal) ease;
+  transition: height var(--duration-standard) ease;
 }
 
 #corzaguessr .corzaguessr-modal {
@@ -1301,7 +1291,7 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
-  transition: height var(--duration-discovery-card) ease;
+  transition: height var(--duration-standard) ease;
 }
 
 #corzaguessr .discovery-item-known::before,
@@ -1319,7 +1309,7 @@
   background-size: cover;
   filter: blur(24px) saturate(1.3) brightness(0.9);
   transform: scale(1.14);
-  transition: opacity var(--duration-discovery-card) ease;
+  transition: opacity var(--duration-standard) ease;
 }
 
 #corzaguessr .discovery-item-known::after {
