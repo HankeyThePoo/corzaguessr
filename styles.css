@@ -1059,6 +1059,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   width: 100%;
+  max-width: calc(var(--button-width) * 4);
   border-bottom: var(--line-width) solid var(--line);
   font-weight: 800;
 }
@@ -1068,8 +1069,8 @@
   min-width: 0;
   align-content: start;
   justify-items: center;
-  gap: calc(var(--space) * 2);
-  padding: calc(var(--space) * 4);
+  gap: calc(var(--space) * 3);
+  padding: calc(var(--space) * 5) calc(var(--space) * 4);
   overflow-wrap: anywhere;
 }
 
@@ -1095,7 +1096,7 @@
 #corzaguessr .result-value {
   display: grid;
   justify-items: center;
-  gap: var(--space);
+  gap: calc(var(--space) * 2);
   width: 100%;
   font-size: var(--text-body);
   line-height: var(--line-height);
@@ -1103,11 +1104,11 @@
 
 #corzaguessr .result-track .result-value {
   color: var(--off-white);
-  font-size: var(--text-clock);
+  font-size: 1rem;
 }
 
 #corzaguessr .result-metric-primary {
-  font-size: var(--text-display);
+  font-size: 3rem;
   line-height: 1;
 }
 
