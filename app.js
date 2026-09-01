@@ -3874,8 +3874,8 @@ var ModalController = class {
 	openDiscovery() {
 		this.openModal("discovery");
 	}
-	closeResult(fallbackFocus, onClosed = () => {}) {
-		return this.closeModal("result", fallbackFocus, onClosed);
+	closeResult(fallbackFocus, onClosed = () => {}, onClosing = () => {}) {
+		return this.closeModal("result", fallbackFocus, onClosed, null, onClosing);
 	}
 	closeDiscovery(fallbackFocus, onClosed, focusOverride = null) {
 		return this.closeModal("discovery", fallbackFocus, onClosed, focusOverride);
@@ -3912,10 +3912,11 @@ var ModalController = class {
 		}
 		return true;
 	}
-	closeModal(kind, fallbackFocus, onClosed, focusOverride = null) {
+	closeModal(kind, fallbackFocus, onClosed, focusOverride = null, onClosing = () => {}) {
 		if (this.closing || this.kind !== kind) return false;
 		const parts = this.parts(kind);
 		this.closing = true;
+		onClosing();
 		const generation = ++this.transitionGeneration;
 		this.scheduler.cancelFrame(this.openFrame);
 		this.openFrame = 0;
@@ -4316,7 +4317,7 @@ var TimelineView = class {
 		}
 		if (this.reducedMotion.matches || this.durations.reset <= 0) return;
 		this.elements.fill.style.transform = `scaleX(${previousScale})`;
-		this.elements.fill.style.transition = "transform var(--duration-timeline-reset) ease-out";
+		this.elements.fill.style.transition = "transform var(--duration-standard) ease-out";
 		this.elements.fill.offsetWidth;
 		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.reset, generation, (event) => {
 			const transition = event;
@@ -4484,6 +4485,7 @@ var GameView = class {
 	preview = null;
 	rulesSignature = "";
 	announcementFrame = 0;
+	coordinatedBoardReset = false;
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
@@ -4494,15 +4496,9 @@ var GameView = class {
 		this.modeButtons = Object.fromEntries(regularModes.map((mode) => [mode, this.required(`[data-mode="${mode}"]`)]));
 		const styles = getComputedStyle(root);
 		this.durations = {
-			timeAdjustmentFeedback: duration(styles, "--duration-time-adjustment-feedback"),
-			shareVisible: duration(styles, "--duration-share-visible"),
-			shareFade: duration(styles, "--duration-share-fade"),
-			wiggle: duration(styles, "--duration-wiggle"),
-			slot: duration(styles, "--duration-slot"),
-			modal: duration(styles, "--duration-modal"),
-			timelineReset: duration(styles, "--duration-timeline-reset"),
-			timelineRewind: duration(styles, "--duration-timeline-rewind"),
-			positionReveal: duration(styles, "--duration-position-reveal")
+			fast: duration(styles, "--duration-fast"),
+			standard: duration(styles, "--duration-standard"),
+			long: duration(styles, "--duration-long")
 		};
 		this.resultView = new ResultView({
 			action: this.elements.resultAction,
@@ -4511,18 +4507,18 @@ var GameView = class {
 			title: this.elements.resultTitle,
 			meta: this.elements.resultMeta
 		}, {
-			shareVisible: this.durations.shareVisible,
-			shareFade: this.durations.shareFade
+			shareVisible: this.durations.long,
+			shareFade: this.durations.fast
 		}, this.reducedMotion);
-		this.modal = new ModalController(root, this.elements, this.durations.modal, this.reducedMotion, (message) => this.announce(message));
+		this.modal = new ModalController(root, this.elements, this.durations.standard, this.reducedMotion, (message) => this.announce(message));
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
 			list: this.elements.slots
 		}, {
-			slot: this.durations.slot,
-			wiggle: this.durations.wiggle,
-			collapse: () => this.durations.slot
+			slot: this.durations.standard,
+			wiggle: this.durations.long,
+			collapse: () => this.durations.standard
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
@@ -4537,10 +4533,10 @@ var GameView = class {
 			positionActual: this.elements.positionActual,
 			positionDistance: this.elements.positionDistance
 		}, {
-			reset: this.durations.timelineReset,
-			rewind: this.durations.timelineRewind,
-			timeAdjustmentFeedback: this.durations.timeAdjustmentFeedback,
-			positionReveal: this.durations.positionReveal
+			reset: this.durations.standard,
+			rewind: this.durations.fast,
+			timeAdjustmentFeedback: this.durations.long,
+			positionReveal: this.durations.long
 		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
 		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
@@ -4585,7 +4581,7 @@ var GameView = class {
 		const openingOverlay = state.overlay !== previousOverlay ? state.overlay : null;
 		this.state = state;
 		this.sessionKey = sessionKey;
-		if (sessionChanged) this.timeline.beginReset();
+		if (sessionChanged && !this.coordinatedBoardReset) this.timeline.beginReset();
 		if (sessionChanged || openingOverlay) this.resetTransientUi();
 		const transportVisible = state.transportText !== "";
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
@@ -4661,10 +4657,11 @@ var GameView = class {
 	}
 	closeResult(focus, onClosed, resetBoard = false) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
-		if (this.modal.closeResult(target, () => {
+		this.modal.closeResult(target, () => {
 			this.resultView.render(null);
 			onClosed();
-		}) && resetBoard) this.beginBoardReset();
+			if (resetBoard) this.finishBoardReset();
+		}, resetBoard ? () => this.beginBoardReset() : void 0);
 	}
 	beginDiscoveryClose(request) {
 		return this.modal.closeDiscovery(this.elements.discoveryButton, () => queueMicrotask(() => {
@@ -4684,9 +4681,15 @@ var GameView = class {
 		this.renderRules();
 	}
 	beginBoardReset() {
+		this.coordinatedBoardReset = true;
 		this.timeline.beginReset();
 		this.timeline.setProgress("0:00", 0);
+		const snippetSeconds = isPositionMode(this.state?.mode ?? null) ? this.state?.snippetSeconds ?? snippetDurations[0] : snippetDurations[0];
+		this.elements.snippet.style.width = snippetPercentage(snippetSeconds);
 		this.attempts.beginReset();
+	}
+	finishBoardReset() {
+		this.coordinatedBoardReset = false;
 	}
 	focusPlay() {
 		if (!this.elements.play.disabled && !this.elements.play.closest("[inert]")) this.elements.play.focus({ preventScroll: true });
