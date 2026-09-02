@@ -3791,10 +3791,19 @@ var DiscoveryListView = class {
 		if (this.expandedTrackId !== trackId) return;
 		const item = this.items.querySelector(`.discovery-item[data-track-id="${trackId}"]`);
 		if (!item) return;
-		const top = item.offsetTop;
-		const bottom = top + item.offsetHeight;
-		if (top < this.items.scrollTop) this.items.scrollTop = top;
-		else if (bottom > this.items.scrollTop + this.items.clientHeight) this.items.scrollTop = bottom - this.items.clientHeight;
+		const heightTransition = typeof item.getAnimations === "function" ? item.getAnimations().find((animation) => "transitionProperty" in animation && animation.transitionProperty === "height") : void 0;
+		if (heightTransition) {
+			heightTransition.finished.then(() => this.scrollExpandedItemIntoView(trackId, item), () => void 0);
+			return;
+		}
+		this.scrollExpandedItemIntoView(trackId, item);
+	}
+	scrollExpandedItemIntoView(trackId, item) {
+		if (this.expandedTrackId !== trackId || !item.classList.contains("expanded")) return;
+		const itemBounds = item.getBoundingClientRect();
+		const listBounds = this.items.getBoundingClientRect();
+		if (itemBounds.top < listBounds.top) this.items.scrollTop += itemBounds.top - listBounds.top;
+		else if (itemBounds.bottom > listBounds.bottom) this.items.scrollTop += itemBounds.bottom - listBounds.bottom;
 	}
 };
 function splitTrackTitle(value) {
@@ -4302,7 +4311,6 @@ var TimelineView = class {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
 		if (!rewindPlayback && this.progressListener && this.elements.fill.style.transition) return;
 		const previousScale = this.progressScale();
-		if (!rewindPlayback && previousScale <= 1e-4) return;
 		this.cancelProgressMotion();
 		const generation = ++this.motionGeneration;
 		if (rewindPlayback) {
