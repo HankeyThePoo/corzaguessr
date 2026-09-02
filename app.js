@@ -3793,7 +3793,15 @@ var DiscoveryListView = class {
 		if (!item) return;
 		const heightTransition = typeof item.getAnimations === "function" ? item.getAnimations().find((animation) => "transitionProperty" in animation && animation.transitionProperty === "height") : void 0;
 		if (heightTransition) {
-			heightTransition.finished.then(() => this.scrollExpandedItemIntoView(trackId, item), () => void 0);
+			const observer = new ResizeObserver(() => {
+				this.scrollExpandedItemIntoView(trackId, item);
+			});
+			observer.observe(item);
+			const finish = () => {
+				observer.disconnect();
+				this.scrollExpandedItemIntoView(trackId, item);
+			};
+			heightTransition.finished.then(finish, finish);
 			return;
 		}
 		this.scrollExpandedItemIntoView(trackId, item);
