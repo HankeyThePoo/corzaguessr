@@ -1,3 +1,9 @@
+@property --mode-fill-opacity {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 12%;
+}
+
 #corzaguessr {
   --off-white: #F7F7F7;
   --near-black: #101010;
@@ -14,7 +20,7 @@
     var(--gradient-middle) 50%,
     var(--gradient-end)
   );
-  --gradient-background-soft: linear-gradient(
+  --gradient-background: linear-gradient(
     135deg,
     rgb(from var(--gradient-start) r g b / 12%),
     rgb(from var(--gradient-middle) r g b / 12%) 50%,
@@ -333,7 +339,7 @@
 }
 
 #corzaguessr .discovery-button[aria-expanded="true"]::before {
-  background: var(--gradient-background-soft), var(--surface-dark);
+  background: var(--gradient-background), var(--surface-dark);
 }
 
 #corzaguessr .discovery-button[aria-expanded="true"]::after {
@@ -365,8 +371,24 @@
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"],
 #corzaguessr button.skip:not(:disabled) {
-  background: var(--gradient-background-soft), var(--surface-dark);
   box-shadow: none;
+}
+
+#corzaguessr .mode-navigation .mode[aria-pressed="true"] {
+  --mode-fill-opacity: 12%;
+  background:
+    linear-gradient(
+      135deg,
+      rgb(from var(--gradient-start) r g b / var(--mode-fill-opacity)),
+      rgb(from var(--gradient-middle) r g b / var(--mode-fill-opacity)) 50%,
+      rgb(from var(--gradient-end) r g b / var(--mode-fill-opacity))
+    ),
+    var(--surface-dark);
+  animation: corzaguessr-mode-commit var(--duration-fast) ease-out;
+}
+
+#corzaguessr button.skip:not(:disabled) {
+  background: var(--gradient-background), var(--surface-dark);
 }
 
 #corzaguessr .play:not(:disabled) {
@@ -576,6 +598,16 @@
   100% {
     opacity: 0;
     transform: scaleX(0);
+  }
+}
+
+@keyframes corzaguessr-mode-commit {
+  from {
+    --mode-fill-opacity: 24%;
+  }
+
+  to {
+    --mode-fill-opacity: 12%;
   }
 }
 
@@ -949,7 +981,7 @@
 
 #corzaguessr .slot.correct.gauntlet-milestone {
   border-color: transparent;
-  background: var(--gradient-background-soft);
+  background: var(--gradient-background);
 }
 
 #corzaguessr .slot.correct.gauntlet-milestone::after {
