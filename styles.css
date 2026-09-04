@@ -382,7 +382,7 @@
   background: var(--gradient);
   opacity: var(--mode-fill-opacity);
   pointer-events: none;
-  animation: corzaguessr-mode-commit var(--duration-fast) ease-out;
+  animation: corzaguessr-mode-commit var(--duration-standard) ease-out;
 }
 
 #corzaguessr button.skip:not(:disabled) {
@@ -600,12 +600,13 @@
 }
 
 @keyframes corzaguessr-mode-commit {
-  from {
-    opacity: calc(var(--mode-fill-opacity) * 2);
+  0%,
+  100% {
+    opacity: var(--mode-fill-opacity);
   }
 
-  to {
-    opacity: var(--mode-fill-opacity);
+  35% {
+    opacity: calc(var(--mode-fill-opacity) * 2);
   }
 }
 
