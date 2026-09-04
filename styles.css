@@ -1,9 +1,3 @@
-@property --mode-fill-opacity {
-  syntax: "<percentage>";
-  inherits: false;
-  initial-value: 12%;
-}
-
 #corzaguessr {
   --off-white: #F7F7F7;
   --near-black: #101010;
@@ -376,14 +370,18 @@
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
   --mode-fill-opacity: 12%;
-  background:
-    linear-gradient(
-      135deg,
-      rgb(from var(--gradient-start) r g b / var(--mode-fill-opacity)),
-      rgb(from var(--gradient-middle) r g b / var(--mode-fill-opacity)) 50%,
-      rgb(from var(--gradient-end) r g b / var(--mode-fill-opacity))
-    ),
-    var(--surface-dark);
+  background: var(--surface-dark);
+}
+
+#corzaguessr .mode-navigation .mode[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--gradient);
+  opacity: var(--mode-fill-opacity);
+  pointer-events: none;
   animation: corzaguessr-mode-commit var(--duration-fast) ease-out;
 }
 
@@ -603,11 +601,11 @@
 
 @keyframes corzaguessr-mode-commit {
   from {
-    --mode-fill-opacity: 24%;
+    opacity: calc(var(--mode-fill-opacity) * 2);
   }
 
   to {
-    --mode-fill-opacity: 12%;
+    opacity: var(--mode-fill-opacity);
   }
 }
 
