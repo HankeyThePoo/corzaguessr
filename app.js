@@ -697,12 +697,19 @@ function resultModules(result) {
 		return [trackModule(result.trackTitle), runModule(result.won ? "CURRENT STREAK" : "STREAK ENDED", run, result.newPersonalBest)];
 	}
 	if (result.mode === "blitz") return [runModule("RUN SCORE", `${result.correct} · CORRECT GUESSES · ${formatAccuracy(result.accuracy)} SUCCESS RATE`, result.newPersonalBest)];
-	if (result.mode === "seek") return [runModule("RUN SCORE", `${formatSeekScore(result.score)} · AVERAGE ERROR ${formatAverageError(result.averageErrorSeconds)}`, result.newPersonalBest)];
+	if (result.mode === "seek") return [runModule("RUN SCORE", formatSeekScore(result.score), result.newPersonalBest), {
+		kind: "recap",
+		label: "ROUND RECAP",
+		items: result.rounds.map((round) => ({
+			meta: `ROUND ${round.round} · ${round.points.toLocaleString("en-US")} POINTS`,
+			title: round.trackTitle
+		}))
+	}];
 	if (result.mode === "gauntlet") return [runModule("RUN TIME", `${formatClock(result.elapsedMs / 1e3)} · ${result.completedTracks} / ${result.catalogTrackCount} TRACKS`, result.newPersonalBest)];
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function announceResult(outcome, modules) {
-	return `${outcome}. ${modules.map((module) => `${module.label}. ${module.value}`).join(". ")}`.trim();
+	return `${outcome}. ${modules.map((module) => module.kind === "recap" ? `${module.label}. ${module.items.map((item) => `${item.meta}. ${item.title}`).join(". ")}` : `${module.label}. ${module.value}`).join(". ")}`.trim();
 }
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
@@ -729,11 +736,6 @@ function formatAverage(value) {
 }
 function formatSeekScore(value) {
 	return `${value.toLocaleString("en-US")} · / ${seekMaxScore.toLocaleString("en-US")} POINTS`;
-}
-function formatAverageError(value) {
-	if (!Number.isFinite(value) || value < 0) return "--";
-	const rounded = Math.round(value * 10) / 10;
-	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
 }
 function trackModule(value) {
 	return {
@@ -1395,7 +1397,8 @@ var GameController = class {
 			session: state,
 			elapsedMs: clock.elapsedMs,
 			dailyDate: this.dailyDate,
-			catalogTrackCount: this.tracks.length
+			catalogTrackCount: this.tracks.length,
+			tracks: this.tracks
 		});
 		this.session = finishSession(this.session, result);
 		this.render();
@@ -1805,7 +1808,16 @@ function finishRun(state, run) {
 	if (mode === "seek") {
 		const positionAttempts = session.position?.attempts ?? [];
 		const score = seekScore(positionAttempts);
-		const averageErrorSeconds = positionAttempts.length ? positionAttempts.reduce((total, attempt) => total + Math.abs(attempt.guessedSecond - attempt.actualSecond), 0) / positionAttempts.length : 0;
+		const tracksByNumber = new Map(run.tracks.map((track) => [track.dailyNumber, track]));
+		const rounds = [...positionAttempts].reverse().map((attempt) => {
+			const track = tracksByNumber.get(attempt.trackNumber);
+			if (!track) throw new Error(`Seek result track ${attempt.trackNumber} is missing from the catalog.`);
+			return {
+				round: attempt.id,
+				points: seekAttemptPoints(attempt),
+				trackTitle: track.title
+			};
+		});
 		const personalBests = cloneBests(state.personalBests);
 		const update = updateSeekBest(personalBests, score);
 		return {
@@ -1818,7 +1830,7 @@ function finishRun(state, run) {
 				mode: "seek",
 				newPersonalBest: update.newPersonalBest,
 				score,
-				averageErrorSeconds
+				rounds
 			}
 		};
 	}
@@ -4197,6 +4209,18 @@ var ResultView = class {
 function createResultModule(result) {
 	const module = document.createElement("div");
 	module.className = `result-module result-${result.kind}`;
+	if (result.kind === "recap") {
+		const items = document.createElement("div");
+		items.className = "result-recap-items";
+		items.replaceChildren(...result.items.map((item) => {
+			const recap = document.createElement("div");
+			recap.className = "result-recap-item";
+			recap.replaceChildren(resultLine("result-recap-meta", item.meta), resultLine("result-recap-title", item.title));
+			return recap;
+		}));
+		module.replaceChildren(createResultLabel(result.label), items);
+		return module;
+	}
 	const value = document.createElement("span");
 	value.className = "result-value";
 	value.setAttribute("aria-label", result.value);
