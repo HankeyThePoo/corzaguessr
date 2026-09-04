@@ -694,7 +694,7 @@ function resultModules(result) {
 	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule("TODAY'S SCORE", formatAttempts(result.attempts))];
 	if (result.mode === "classic") {
 		const run = `${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}`;
-		return [trackModule(result.trackTitle), runModule("CURRENT STREAK", run, result.newPersonalBest)];
+		return [trackModule(result.trackTitle), runModule(result.won ? "CURRENT STREAK" : "STREAK ENDED", run, result.newPersonalBest)];
 	}
 	if (result.mode === "blitz") return [runModule("RUN SCORE", `${result.correct} · CORRECT GUESSES · ${formatAccuracy(result.accuracy)} SUCCESS RATE`, result.newPersonalBest)];
 	if (result.mode === "seek") return [runModule("RUN SCORE", `${formatSeekScore(result.score)} · AVERAGE ERROR ${formatAverageError(result.averageErrorSeconds)}`, result.newPersonalBest)];
