@@ -1106,6 +1106,48 @@
   border-block: var(--line-width) solid var(--line);
 }
 
+#corzaguessr .result-recap {
+  width: 100%;
+  max-width: calc(var(--button-width) * 4);
+  padding-top: 0;
+  justify-self: center;
+}
+
+#corzaguessr .result-recap-items,
+#corzaguessr .result-recap-item {
+  display: grid;
+  width: 100%;
+}
+
+#corzaguessr .result-recap-items {
+  gap: calc(var(--space) * 3);
+}
+
+#corzaguessr .result-recap-item {
+  gap: var(--space);
+  padding-bottom: calc(var(--space) * 3);
+  border-bottom: var(--line-width) solid var(--line);
+}
+
+#corzaguessr .result-recap-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+#corzaguessr .result-recap-meta {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  opacity: var(--opacity-muted);
+}
+
+#corzaguessr .result-recap-title {
+  width: 100%;
+  font-size: var(--text-body);
+  line-height: var(--line-height);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 #corzaguessr .result-run .result-value,
 #corzaguessr .progress-best small {
   text-transform: none;
@@ -1151,7 +1193,7 @@
   opacity: 1;
 }
 
-#corzaguessr .result-meta[data-mode="seek"] .result-value {
+#corzaguessr .result-meta[data-mode="seek"] .result-run .result-value {
   white-space: nowrap;
 }
 
