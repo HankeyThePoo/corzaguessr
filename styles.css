@@ -371,6 +371,9 @@
 #corzaguessr .mode-navigation .mode[aria-pressed="true"] {
   --mode-fill-opacity: 12%;
   background: var(--surface-dark);
+  z-index: 1;
+  cursor: default;
+  opacity: 1;
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::before {
@@ -392,12 +395,6 @@
 #corzaguessr .play:not(:disabled) {
   background: var(--gradient);
   color: var(--near-black);
-}
-
-#corzaguessr .mode-navigation .mode[aria-pressed="true"] {
-  z-index: 1;
-  cursor: default;
-  opacity: 1;
 }
 
 #corzaguessr .mode-navigation .mode[aria-pressed="true"]::after,
@@ -1164,13 +1161,16 @@
   justify-items: center;
   gap: calc(var(--space) * 2);
   width: 100%;
-  font-size: var(--text-body);
   line-height: var(--line-height);
+}
+
+#corzaguessr .result-value,
+#corzaguessr .result-track .result-value {
+  font-size: var(--text-body);
 }
 
 #corzaguessr .result-track .result-value {
   color: var(--off-white);
-  font-size: var(--text-body);
 }
 
 #corzaguessr .result-track-title {
@@ -1698,12 +1698,7 @@
     padding: 0;
   }
 
-  #corzaguessr .discovery-artist {
-    display: block;
-    overflow: visible;
-    -webkit-line-clamp: unset;
-  }
-
+  #corzaguessr .discovery-artist,
   #corzaguessr .discovery-song-title {
     display: block;
     overflow: visible;
