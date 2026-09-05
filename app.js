@@ -196,9 +196,6 @@ function seekPoints(guessedSecond, actualSecond, duration) {
 function seekAttemptPoints(attempt) {
 	return seekPoints(attempt.guessedSecond, attempt.actualSecond, attempt.trackDuration);
 }
-function seekScore(attempts) {
-	return attempts.reduce((total, attempt) => total + seekAttemptPoints(attempt), 0);
-}
 function accuracy(correct, guesses) {
 	return guesses > 0 ? Math.round(correct * 100 / guesses) : 0;
 }
@@ -236,50 +233,35 @@ function updateBlitzBest(bests, score, runAccuracy) {
 	const current = bests.blitz;
 	const higherScore = score > current.score;
 	const strongerTie = score > 0 && score === current.score && runAccuracy > (current.accuracy ?? -1);
-	if (!higherScore && !strongerTie) return {
-		changed: false,
-		newPersonalBest: false
-	};
+	if (!higherScore && !strongerTie) return false;
 	bests.blitz = {
 		score,
 		accuracy: runAccuracy
 	};
-	return {
-		changed: true,
-		newPersonalBest: true
-	};
+	return true;
 }
 function updateGauntletBest(bests, won, elapsedMs, trackCount) {
-	if (!won || trackCount <= 0) return {
-		changed: false,
-		newPersonalBest: false
-	};
+	if (!won || trackCount <= 0) return false;
 	const current = bests.gauntlet;
 	const largerCatalog = trackCount > current.trackCount;
 	const fasterCurrentCatalog = trackCount === current.trackCount && (current.trackCount === 0 || elapsedMs < current.timeMs);
-	if (!largerCatalog && !fasterCurrentCatalog) return {
-		changed: false,
-		newPersonalBest: false
-	};
+	if (!largerCatalog && !fasterCurrentCatalog) return false;
 	bests.gauntlet = {
 		timeMs: elapsedMs,
 		trackCount
 	};
-	return {
-		changed: true,
-		newPersonalBest: true
-	};
+	return true;
 }
 function updateSeekBest(bests, score) {
-	if (score <= bests.seek.score) return {
-		changed: false,
-		newPersonalBest: false
-	};
+	if (score <= bests.seek.score) return false;
 	bests.seek = { score };
-	return {
-		changed: true,
-		newPersonalBest: true
-	};
+	return true;
+}
+function seekResultScore(result) {
+	return result.rounds.reduce((total, round) => total + round.points, 0);
+}
+function gauntletCompleted(result) {
+	return result.catalogTrackCount > 0 && result.completedTracks >= result.catalogTrackCount;
 }
 function createSession(mode = null, attempts = []) {
 	return {
@@ -410,9 +392,18 @@ function puzzleGuessedTrackIds(state) {
 	if (!isPuzzleMode(state.mode)) return /* @__PURE__ */ new Set();
 	return new Set(state.attempts.map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
 }
+function timedStats(state) {
+	const attempts = isTimedMode(state.mode) ? state.attempts : [];
+	return {
+		guesses: attempts.length,
+		correct: attempts.filter((attempt) => attempt.outcome === "correct").length
+	};
+}
 function gauntletFoundTrackIds(state) {
-	if (state.mode !== "gauntlet") return /* @__PURE__ */ new Set();
-	return new Set(state.attempts.filter((attempt) => attempt.outcome === "correct").map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
+	return state.mode === "gauntlet" ? correctTrackIds(state.attempts) : /* @__PURE__ */ new Set();
+}
+function correctTrackIds(attempts) {
+	return new Set(attempts.filter((attempt) => attempt.outcome === "correct").map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
 }
 function createAttempt(id, outcome, guessed) {
 	return {
@@ -529,14 +520,16 @@ function isDailyTrackAvailable(tracks, date, dailyNumber) {
 function hasDailyTrackAvailable(tracks, date) {
 	return tracks.some((track) => isReleasedBy(track, date));
 }
+function maximumClipStart(track, clipSeconds) {
+	const clip = Math.min(clipSeconds, track.duration);
+	return Math.max(0, Math.floor(track.duration - clip));
+}
 function dailyClipStart(track, date) {
-	const clip = Math.min(maxPuzzleSnippetSeconds, track.duration);
-	const maximum = Math.max(0, Math.floor(track.duration - clip));
+	const maximum = maximumClipStart(track, maxPuzzleSnippetSeconds);
 	return stableHash(`corzaguessr-daily-clip:${date}:${track.dailyNumber}`) % (maximum + 1);
 }
 function randomClipStart(track, clipSeconds, random = Math.random) {
-	const clip = Math.min(clipSeconds, track.duration);
-	const maximum = Math.max(0, Math.floor(track.duration - clip));
+	const maximum = maximumClipStart(track, clipSeconds);
 	return Math.floor(clampRandom(random()) * (maximum + 1));
 }
 function selectRandomTrack(tracks, failed, previousTrackId, random = Math.random) {
@@ -563,6 +556,10 @@ var copy = {
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
 };
+function seekFeedback(attempt) {
+	const distance = Math.abs(attempt.guessedSecond - attempt.actualSecond);
+	return [`${distance} SECOND${distance === 1 ? "" : "S"} AWAY`, `${seekAttemptPoints(attempt)} POINTS`];
+}
 function composeClockViewModel(input) {
 	const { mode, clock } = input;
 	if (!mode) return {
@@ -606,8 +603,7 @@ function formatClock(seconds) {
 	const safe = Math.max(0, seconds);
 	return `${Math.floor(safe / 60)}:${String(Math.floor(safe) % 60).padStart(2, "0")}`;
 }
-var shareUrl = "https://stolenvalorhq.com/corzaguessr";
-var months$1 = [
+var months = [
 	"January",
 	"February",
 	"March",
@@ -621,16 +617,33 @@ var months$1 = [
 	"November",
 	"December"
 ];
+function formatOrdinalDate(value) {
+	const parts = dateParts(value);
+	if (!parts) return value;
+	const { year, monthName, day: numericDay } = parts;
+	const remainder = numericDay % 100;
+	const suffix = remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH";
+	return `${monthName.toUpperCase()} ${numericDay}${suffix}, ${year}`;
+}
+function formatShareDate(value) {
+	const parts = dateParts(value);
+	return parts ? `${parts.monthName} ${parts.day}, ${parts.year}` : value;
+}
+function dateParts(value) {
+	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
+	const monthName = month ? months[Number(month) - 1] : void 0;
+	return year && monthName && day ? {
+		year,
+		monthName,
+		day: Number(day)
+	} : null;
+}
+var shareUrl = "https://stolenvalorhq.com/corzaguessr";
 function formatDailyShare(date, result) {
 	const attempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(result.attempts)));
 	const squares = Array.from({ length: puzzleAttemptCount }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
 	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : `I didn't get it in ${puzzleAttemptCount} tries!`;
 	return `CORZAGUESSR✦ DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${shareUrl}`;
-}
-function formatShareDate(value) {
-	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
-	const monthName = month ? months$1[Number(month) - 1] : void 0;
-	return year && monthName && day ? `${monthName} ${Number(day)}, ${year}` : value;
 }
 function emptyDailyProgress() {
 	return { status: "none" };
@@ -691,13 +704,17 @@ function composeResultViewModel(result, persistenceFailed, attempts = []) {
 	};
 }
 function resultModules(result) {
-	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule("TODAY'S SCORE", formatAttempts(result.attempts))];
+	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule("TODAY'S SCORE", [formatAttempts(result.attempts), "ATTEMPTS"])];
 	if (result.mode === "classic") {
-		const run = `${result.streak} · AVERAGE SNIPPET ${formatAverage(result.average)}`;
+		const run = [String(result.streak), `AVERAGE SNIPPET ${formatAverage(result.average)}`];
 		return [trackModule(result.trackTitle), runModule(result.won ? "CURRENT STREAK" : "STREAK ENDED", run, result.newPersonalBest)];
 	}
-	if (result.mode === "blitz") return [runModule("RUN SCORE", `${result.correct} · CORRECT GUESSES · ${formatAccuracy(result.accuracy)} SUCCESS RATE`, result.newPersonalBest)];
-	if (result.mode === "seek") return [runModule("RUN SCORE", formatSeekScore(result.score), result.newPersonalBest), {
+	if (result.mode === "blitz") return [runModule("RUN SCORE", [
+		String(result.correct),
+		"CORRECT GUESSES",
+		`${formatAccuracy(result.accuracy)} SUCCESS RATE`
+	], result.newPersonalBest)];
+	if (result.mode === "seek") return [runModule("RUN SCORE", [formatSeekScore(seekResultScore(result)), `/ ${seekMaxScore.toLocaleString("en-US")} POINTS`], result.newPersonalBest), {
 		kind: "recap",
 		label: "ROUND RECAP",
 		items: result.rounds.map((round) => ({
@@ -705,17 +722,17 @@ function resultModules(result) {
 			title: round.trackTitle
 		}))
 	}];
-	if (result.mode === "gauntlet") return [runModule("RUN TIME", `${formatClock(result.elapsedMs / 1e3)} · ${result.completedTracks} / ${result.catalogTrackCount} TRACKS`, result.newPersonalBest)];
+	if (result.mode === "gauntlet") return [runModule("RUN TIME", [formatClock(result.elapsedMs / 1e3), `${result.completedTracks} / ${result.catalogTrackCount} TRACKS`], result.newPersonalBest)];
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function announceResult(outcome, modules) {
-	return `${outcome}. ${modules.map((module) => module.kind === "recap" ? `${module.label}. ${module.items.map((item) => `${item.meta}. ${item.title}`).join(". ")}` : `${module.label}. ${module.value}`).join(". ")}`.trim();
+	return `${outcome}. ${modules.map((module) => module.kind === "recap" ? `${module.label}. ${module.items.map((item) => `${item.meta}. ${item.title}`).join(". ")}` : `${module.label}. ${resultModuleValue(module)}`).join(". ")}`.trim();
 }
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
 	if (result.mode === "blitz") return "TIME IS UP";
 	if (result.mode === "seek") return "RUN COMPLETE";
-	if (result.mode === "gauntlet") return result.won ? "YOU SURVIVED" : "TIME IS UP";
+	if (result.mode === "gauntlet") return gauntletCompleted(result) ? "YOU SURVIVED" : "TIME IS UP";
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function puzzleResultMessage(result, attempts) {
@@ -727,7 +744,7 @@ function formatAccuracy(value) {
 	return Number.isSafeInteger(value) ? `${value}%` : "--";
 }
 function formatAttempts(value) {
-	return `${value || "--"} / ${puzzleAttemptCount} · ATTEMPTS`;
+	return `${value || "--"} / ${puzzleAttemptCount}`;
 }
 function formatAverage(value) {
 	if (!Number.isFinite(value) || value <= 0) return "--";
@@ -735,7 +752,7 @@ function formatAverage(value) {
 	return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}s`;
 }
 function formatSeekScore(value) {
-	return `${value.toLocaleString("en-US")} · / ${seekMaxScore.toLocaleString("en-US")} POINTS`;
+	return value.toLocaleString("en-US");
 }
 function trackModule(value) {
 	return {
@@ -744,13 +761,16 @@ function trackModule(value) {
 		value
 	};
 }
-function runModule(label, value, newPersonalBest = false) {
+function runModule(label, lines, newPersonalBest = false) {
 	return {
 		kind: "run",
 		label: newPersonalBest ? "NEW PERSONAL BEST" : label,
-		value,
+		lines,
 		...newPersonalBest ? { newPersonalBest: true } : {}
 	};
+}
+function resultModuleValue(module) {
+	return module.kind === "run" ? module.lines.join(" · ") : module.value;
 }
 var maxVisibleTimedAttempts = 19;
 function acceptsAttempt(session, transport) {
@@ -766,21 +786,18 @@ function dailyCatalogPending(mode, tracks, dailyDate, progress) {
 }
 function rulesText(input) {
 	const { session, dailyProgress, dailyDate } = input;
+	if (input.appStatus === "error") return copy.catalogError;
 	if (session.mode === "daily" && dailyCompleted(dailyProgress, dailyDate)) {
 		const attempts = dailyAttempt(dailyProgress) + 1;
 		return `${dailyWon(dailyProgress, dailyDate) ? "COMPLETED" : "FAILED"} IN ${attempts} ATTEMPT${attempts === 1 ? "" : "S"}, COME BACK IN ${formatDailyCountdown(input.dailyCountdownMs)}`;
 	}
 	if (input.appStatus === "loading") return input.catalogLoadingVisible ? copy.loadingCatalog : copy.modePrompt;
-	if (input.appStatus === "error") return copy.catalogError;
 	if (!session.mode) return copy.modePrompt;
 	if (session.mode === "classic" && input.classicResumePending) return "PRESS PLAY TO CONTINUE OR GIVE UP THE CURRENT ROUND";
 	if (input.transport.retryNeeded) return copy.trackError;
 	if (session.mode === "seek" && session.position) {
 		const latest = session.position.attempts[0];
-		if (session.position.phase !== "selecting" && latest) {
-			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
-			return `${distance} SECOND${distance === 1 ? "" : "S"} AWAY · ${seekAttemptPoints(latest)} POINTS`;
-		}
+		if (session.position.phase !== "selecting" && latest) return seekFeedback(latest).join(" · ");
 		if (session.round) return "PLACE YOUR GUESS ON THE TIMELINE";
 	}
 	if (session.mode === "daily") {
@@ -812,7 +829,7 @@ function composeGameViewModel(input) {
 	let headSlot = (session.mode === "daily" || session.mode === "classic") && (!!session.result || completedDaily) ? null : promptSlot(session, tracksLeft);
 	if (session.result && isTimedMode(session.mode)) headSlot = {
 		id: attemptNumber,
-		text: session.result.mode === "gauntlet" && session.result.won ? "GAUNTLET COMPLETE" : "TIME'S UP",
+		text: session.result.mode === "gauntlet" && gauntletCompleted(session.result) ? "GAUNTLET COMPLETE" : "TIME'S UP",
 		tone: "neutral"
 	};
 	else if (transport.retryNeeded && headSlot) headSlot = {
@@ -857,7 +874,6 @@ function composeGameViewModel(input) {
 		personalBests: input.personalBests,
 		dailyDate: input.dailyDate,
 		discoveries: input.discoveries,
-		suggestionTracks: session.mode === "daily" ? input.tracks.filter((track) => isReleasedBy(track, input.dailyDate)) : input.tracks,
 		tracks: input.tracks,
 		overlay: input.overlay
 	};
@@ -961,8 +977,7 @@ var GameController = class {
 	copyToClipboard;
 	random;
 	session = createSession();
-	catalogError = false;
-	catalogLoadingVisible = false;
+	catalogPhase = "quiet";
 	catalogDate = null;
 	tracks = [];
 	latestDailyDate = "1970-01-01";
@@ -988,12 +1003,11 @@ var GameController = class {
 	bootstrap(date) {
 		this.latestDailyDate = date;
 		this.dailyDate = date;
-		this.render();
 		this.loadCatalog(date);
 	}
 	selectMode(mode) {
 		const state = this.session;
-		if (this.activeOverlay || this.catalogError || state.mode === mode) return;
+		if (this.activeOverlay || this.appStatus === "error" && !this.tracks.length || state.mode === mode) return;
 		if (mode === "daily") {
 			const date = this.dailySchedule.start();
 			this.latestDailyDate = date;
@@ -1007,7 +1021,6 @@ var GameController = class {
 		} else this.dailySchedule.stop();
 		this.resetForMode(mode);
 		this.view.announce(modeRules[mode].description);
-		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.startDailyCountdown();
 		this.view.focusAfterModeSelected();
 	}
 	play() {
@@ -1038,8 +1051,7 @@ var GameController = class {
 		this.session = completePositionReveal(this.session);
 		const latest = this.session.position?.attempts[0];
 		if (this.session.mode === "seek" && latest) {
-			const distance = Math.abs(latest.guessedSecond - latest.actualSecond);
-			this.view.announce(`${distance} SECOND${distance === 1 ? "" : "S"} AWAY. ${seekAttemptPoints(latest)} POINTS.`);
+			this.view.announce(`${seekFeedback(latest).join(". ")}.`);
 			this.render();
 			this.view.focusAttemptAction();
 			return;
@@ -1397,7 +1409,6 @@ var GameController = class {
 			session: state,
 			elapsedMs: clock.elapsedMs,
 			dailyDate: this.dailyDate,
-			catalogTrackCount: this.tracks.length,
 			tracks: this.tracks
 		});
 		this.session = finishSession(this.session, result);
@@ -1417,6 +1428,7 @@ var GameController = class {
 		this.playback.configure(mode, (failed, avoid) => this.createRound(mode, failed, avoid));
 		this.prime();
 		this.render();
+		if (mode === "daily" && this.progress.dailyDone(this.dailyDate)) this.startDailyCountdown();
 	}
 	createRound(mode, failed, avoid) {
 		let track;
@@ -1428,8 +1440,7 @@ var GameController = class {
 			clipStart = restoredPuzzle?.clipStart ?? dailyClipStart(track, this.dailyDate);
 		} else if (restoredPuzzle) {
 			track = this.tracks.find((candidate) => candidate.dailyNumber === restoredPuzzle.dailyNumber) ?? null;
-			const maximumClipStart = track ? Math.max(0, Math.floor(track.duration - Math.min(maxPuzzleSnippetSeconds, track.duration))) : -1;
-			if (track && restoredPuzzle.clipStart <= maximumClipStart) clipStart = restoredPuzzle.clipStart;
+			if (track && restoredPuzzle.clipStart <= maximumClipStart(track, maxPuzzleSnippetSeconds)) clipStart = restoredPuzzle.clipStart;
 			else {
 				this.classicResumePending = false;
 				this.progress.clearPuzzleRound("classic", this.dailyDate);
@@ -1468,9 +1479,6 @@ var GameController = class {
 		this.sessionNumber += 1;
 		this.classicResumePending = false;
 		this.session = createSession("daily");
-		this.catalogError = false;
-		this.catalogLoadingVisible = false;
-		this.render();
 		this.loadCatalog(date, () => {
 			if (this.session.mode === "daily" && this.dailyDate === date) this.resetForMode("daily");
 			else {
@@ -1480,16 +1488,16 @@ var GameController = class {
 		});
 	}
 	loadCatalog(date, onReady) {
+		this.catalogPhase = "quiet";
+		this.render();
 		this.catalog.load(date, {
 			onLoading: () => {
-				this.catalogError = false;
-				this.catalogLoadingVisible = true;
+				this.catalogPhase = "loading";
 				this.render();
-				this.view.announce(copy.loadingCatalog);
+				if (this.appStatus === "loading") this.view.announce(copy.loadingCatalog);
 			},
 			onLoaded: (tracks) => {
-				this.catalogLoadingVisible = false;
-				this.catalogError = false;
+				this.catalogPhase = "quiet";
 				this.catalogDate = date;
 				this.tracks = tracks;
 				if (onReady) onReady();
@@ -1500,10 +1508,8 @@ var GameController = class {
 				if (!this.activeOverlay) this.view.focusAfterCatalogReady();
 			},
 			onError: () => {
-				this.catalogLoadingVisible = false;
-				if (this.tracks.length) return;
-				this.catalogError = true;
-				this.view.announce(copy.catalogError);
+				this.catalogPhase = "error";
+				if (this.appStatus === "error") this.view.announce(copy.catalogError);
 				this.render();
 			}
 		});
@@ -1524,7 +1530,7 @@ var GameController = class {
 		const transport = this.playback.snapshot;
 		const viewModel = composeGameViewModel({
 			appStatus: this.appStatus,
-			catalogLoadingVisible: this.catalogLoadingVisible,
+			catalogLoadingVisible: this.catalogPhase === "loading",
 			session: this.session,
 			transport,
 			clock: this.clock.snapshot(),
@@ -1550,9 +1556,8 @@ var GameController = class {
 		return this.session.result ? "result" : this.discoveryOpen ? "discovery" : null;
 	}
 	get appStatus() {
-		if (this.session.mode === "daily" && this.catalogDate !== this.dailyDate) return "loading";
-		if (this.tracks.length) return this.session.mode ? "ready" : "awaiting-mode";
-		return this.catalogError ? "error" : "loading";
+		if (!this.tracks.length || this.session.mode === "daily" && this.catalogDate !== this.dailyDate) return this.catalogPhase === "error" ? "error" : "loading";
+		return this.session.mode ? "ready" : "awaiting-mode";
 	}
 };
 var Progress = class {
@@ -1787,19 +1792,19 @@ function finishRun(state, run) {
 		};
 	}
 	if (mode === "blitz") {
-		const { guesses, correct } = timedStats(attempts);
+		const { guesses, correct } = timedStats(session);
 		const runAccuracy = accuracy(correct, guesses);
 		const personalBests = cloneBests(state.personalBests);
-		const update = updateBlitzBest(personalBests, correct, runAccuracy);
+		const newPersonalBest = updateBlitzBest(personalBests, correct, runAccuracy);
 		return {
-			state: update.changed ? {
+			state: newPersonalBest ? {
 				...state,
 				personalBests
 			} : state,
-			changedSections: update.changed ? ["personalBests"] : [],
+			changedSections: newPersonalBest ? ["personalBests"] : [],
 			result: {
 				mode: "blitz",
-				newPersonalBest: update.newPersonalBest,
+				newPersonalBest,
 				correct,
 				accuracy: runAccuracy
 			}
@@ -1807,7 +1812,6 @@ function finishRun(state, run) {
 	}
 	if (mode === "seek") {
 		const positionAttempts = session.position?.attempts ?? [];
-		const score = seekScore(positionAttempts);
 		const tracksByNumber = new Map(run.tracks.map((track) => [track.dailyNumber, track]));
 		const rounds = [...positionAttempts].reverse().map((attempt) => {
 			const track = tracksByNumber.get(attempt.trackNumber);
@@ -1819,17 +1823,16 @@ function finishRun(state, run) {
 			};
 		});
 		const personalBests = cloneBests(state.personalBests);
-		const update = updateSeekBest(personalBests, score);
+		const newPersonalBest = updateSeekBest(personalBests, seekResultScore({ rounds }));
 		return {
-			state: update.changed ? {
+			state: newPersonalBest ? {
 				...state,
 				personalBests
 			} : state,
-			changedSections: update.changed ? ["personalBests"] : [],
+			changedSections: newPersonalBest ? ["personalBests"] : [],
 			result: {
 				mode: "seek",
-				newPersonalBest: update.newPersonalBest,
-				score,
+				newPersonalBest,
 				rounds
 			}
 		};
@@ -1837,20 +1840,22 @@ function finishRun(state, run) {
 	if (mode === "gauntlet") {
 		const elapsedMs = Math.floor(run.elapsedMs / 1e3) * 1e3;
 		const completedTracks = correctTrackIds(attempts).size;
-		const catalogTrackCount = run.catalogTrackCount;
-		const completed = catalogTrackCount > 0 && completedTracks >= catalogTrackCount;
+		const catalogTrackCount = run.tracks.length;
+		const completed = gauntletCompleted({
+			completedTracks,
+			catalogTrackCount
+		});
 		const personalBests = cloneBests(state.personalBests);
-		const update = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
+		const newPersonalBest = updateGauntletBest(personalBests, completed, elapsedMs, catalogTrackCount);
 		return {
-			state: update.changed ? {
+			state: newPersonalBest ? {
 				...state,
 				personalBests
 			} : state,
-			changedSections: update.changed ? ["personalBests"] : [],
+			changedSections: newPersonalBest ? ["personalBests"] : [],
 			result: {
 				mode: "gauntlet",
-				won: completed,
-				newPersonalBest: update.newPersonalBest,
+				newPersonalBest,
 				elapsedMs,
 				completedTracks,
 				catalogTrackCount
@@ -1864,15 +1869,6 @@ function puzzleTrack(session) {
 	if (!track) throw new Error("A completed puzzle run requires its selected track.");
 	return track;
 }
-function timedStats(attempts) {
-	return {
-		guesses: attempts.length,
-		correct: attempts.filter((attempt) => attempt.outcome === "correct").length
-	};
-}
-function correctTrackIds(attempts) {
-	return new Set(attempts.filter((attempt) => attempt.outcome === "correct").map((attempt) => attempt.trackNumber).filter((trackNumber) => trackNumber !== null));
-}
 function emptyPendingPersistence() {
 	return {
 		daily: false,
@@ -1882,7 +1878,7 @@ function emptyPendingPersistence() {
 	};
 }
 function cloneDaily(progress) {
-	return progress.status === "none" ? progress : {
+	return progress.status === "none" ? { ...progress } : {
 		...progress,
 		attempts: progress.attempts.map((attempt) => ({ ...attempt }))
 	};
@@ -1906,12 +1902,13 @@ function trackAssetNumber(dailyNumber) {
 }
 var CatalogLoadError = class extends Error {
 	kind;
-	retryable;
+	get retryable() {
+		return this.kind !== "invalid-date";
+	}
 	constructor(kind, message, options) {
 		super(message, options);
 		this.kind = kind;
 		this.name = "CatalogLoadError";
-		this.retryable = kind !== "invalid-date";
 	}
 };
 var CatalogSource = class {
@@ -1974,7 +1971,6 @@ var DailySchedule = class {
 	nextBoundaryAt = 0;
 	countdownTick = null;
 	currentDate = "";
-	active = false;
 	constructor(onDateChanged, runtime = browserRuntime) {
 		this.onDateChanged = onDateChanged;
 		this.runtime = runtime;
@@ -1985,15 +1981,13 @@ var DailySchedule = class {
 		return date;
 	}
 	start() {
-		this.active = true;
 		this.currentDate = dailyDate(new Date(this.runtime.now()));
 		this.scheduleNextBoundary();
 		return this.currentDate;
 	}
 	startCountdown(onTick) {
 		this.countdownTick = onTick;
-		if (!this.active) return;
-		if (!this.nextBoundaryAt) this.scheduleNextBoundary();
+		if (!this.nextBoundaryAt) return;
 		this.emitCountdown();
 	}
 	stopCountdown() {
@@ -2007,21 +2001,19 @@ var DailySchedule = class {
 			this.currentDate = date;
 			this.onDateChanged(date);
 		}
-		if (this.active) {
+		if (this.nextBoundaryAt) {
 			this.scheduleNextBoundary();
 			if (this.countdownTick) this.emitCountdown();
 		}
 		return date;
 	}
 	stop() {
-		this.active = false;
 		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
 		this.boundaryTimer = 0;
 		this.nextBoundaryAt = 0;
 		this.stopCountdown();
 	}
 	scheduleNextBoundary() {
-		if (!this.active) return;
 		if (this.boundaryTimer) this.runtime.clearTimeout(this.boundaryTimer);
 		this.boundaryTimer = 0;
 		const now = this.runtime.now();
@@ -2038,7 +2030,7 @@ var DailySchedule = class {
 		this.boundaryTimer = this.runtime.setTimeout(() => this.reconcile(), Math.max(1, upper - now));
 	}
 	emitCountdown() {
-		if (!this.active || !this.countdownTick) return;
+		if (!this.nextBoundaryAt || !this.countdownTick) return;
 		if (this.countdownTimer) this.runtime.clearTimeout(this.countdownTimer);
 		this.countdownTimer = 0;
 		const remainingMs = Math.max(0, this.nextBoundaryAt - this.runtime.now());
@@ -2360,8 +2352,7 @@ function isRecord(value) {
 	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function hasExactKeys(value, expected) {
-	const actual = Object.keys(value).sort();
-	return actual.length === expected.length && [...expected].sort().every((key, index) => actual[index] === key);
+	return Object.keys(value).length === expected.length && expected.every((key) => Object.hasOwn(value, key));
 }
 function isPositiveInteger(value) {
 	return Number.isSafeInteger(value) && Number(value) > 0;
@@ -2513,7 +2504,7 @@ var AudioPlayer = class {
 		try {
 			playPromise = slot.element.play();
 		} catch {
-			if (this.isCurrentPlaybackOperation(slot, operation)) this.fail(slot, "primary", "primary-play");
+			if (this.isCurrentPlaybackOperation(slot, operation)) this.fail(slot, "primary-play");
 			return false;
 		}
 		if (this.isCurrentPlaybackOperation(slot, operation)) this.startPlaybackWatchdog(slot, operation);
@@ -2526,7 +2517,7 @@ var AudioPlayer = class {
 				this.callbacks.onBlocked(round);
 				return;
 			}
-			this.fail(slot, "primary", "primary-play");
+			this.fail(slot, "primary-play");
 		});
 		return true;
 	}
@@ -2639,7 +2630,7 @@ var AudioPlayer = class {
 		slot.element.src = this.sourceForRound(round);
 		slot.element.load();
 		if (slot.element.error) {
-			this.fail(slot, channel, channel === "primary" ? "primary-load" : "preload-load");
+			this.fail(slot, channel === "primary" ? "primary-load" : "preload-load");
 			return false;
 		}
 		if (slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
@@ -2710,9 +2701,8 @@ var AudioPlayer = class {
 		}, { signal: controller.signal });
 		slot.element.addEventListener("error", () => {
 			if (!live() || !slot.element.error) return;
-			const currentChannel = slot === this.preloadSlot ? "preload" : "primary";
-			const stage = currentChannel === "preload" ? "preload-load" : slot.hasRequestedPlayback ? "primary-play" : "primary-load";
-			this.fail(slot, currentChannel, stage);
+			const stage = (slot === this.preloadSlot ? "preload" : "primary") === "preload" ? "preload-load" : slot.hasRequestedPlayback ? "primary-play" : "primary-load";
+			this.fail(slot, stage);
 		}, { signal: controller.signal });
 	}
 	markReady(slot) {
@@ -2724,15 +2714,14 @@ var AudioPlayer = class {
 			round: slot.round
 		});
 	}
-	fail(slot, channel, stage) {
+	fail(slot, stage) {
 		if (slot.failed || !slot.round) return;
 		slot.failed = true;
 		const failure = {
-			channel,
 			stage,
 			round: slot.round
 		};
-		if (channel === "preload") {
+		if (stage === "preload-load") {
 			if (this.preloadSlot === slot) this.preloadSlot = null;
 			this.releaseSlot(slot);
 			this.emitFailure(failure);
@@ -2747,7 +2736,7 @@ var AudioPlayer = class {
 			this.callbacks.onFailure(failure);
 			return;
 		}
-		if (failure.channel === "preload") this.suspension.preloadFailures.push(failure);
+		if (failure.stage === "preload-load") this.suspension.preloadFailures.push(failure);
 		else this.suspension.primaryFailure = failure;
 	}
 	startPlaybackWatchdog(slot, operation) {
@@ -2755,7 +2744,7 @@ var AudioPlayer = class {
 		this.watchdogTimer = this.timing.setTimeout(() => {
 			if (!this.isCurrentPlaybackOperation(slot, operation) || !this.operation || !["starting", "buffering"].includes(this.operation.phase)) return;
 			this.watchdogTimer = 0;
-			this.fail(slot, "primary", "primary-play");
+			this.fail(slot, "primary-play");
 		}, this.playbackTimeoutMs);
 	}
 	cancelPlaybackWatchdog(operation) {
@@ -2907,7 +2896,7 @@ var Playback = class {
 			round = this.next;
 			if (!this.audio.promotePreload(round)) {
 				this.next = null;
-				this.handleCurrentFailure(round, "preload-promotion", true);
+				this.handleCurrentFailure(round, "preload-promotion");
 				return false;
 			}
 			this.next = null;
@@ -3054,7 +3043,7 @@ var Playback = class {
 	}
 	handleFailure(failure) {
 		if (this.suspended) return;
-		if (failure.channel === "preload") {
+		if (failure.stage === "preload-load") {
 			if (this.next?.id !== failure.round.id) return;
 			this.next = null;
 			if (this.mode && modeRules[this.mode].failurePolicy !== "fixed") this.failedTrackIds.add(failure.round.track.dailyNumber);
@@ -3063,12 +3052,12 @@ var Playback = class {
 			return;
 		}
 		if (!this.owns(failure.round)) return;
-		this.handleCurrentFailure(failure.round, failure.stage, false, this.restoringFromSuspension);
+		this.handleCurrentFailure(failure.round, failure.stage, this.restoringFromSuspension);
 	}
-	handleCurrentFailure(round, stage, promotionFailure, requireExplicitPlay = false) {
+	handleCurrentFailure(round, stage, requireExplicitPlay = false) {
 		const phase = this.current?.round.id === round.id ? this.current.phase : null;
 		const wasPrepared = phase === "prepared";
-		const shouldResume = promotionFailure || phase === "pending" || stage === "primary-play";
+		const shouldResume = stage === "preload-promotion" || phase === "pending" || stage === "primary-play";
 		const failurePolicy = this.mode ? modeRules[this.mode].failurePolicy : "replace";
 		const preserveIdentity = failurePolicy === "fixed" || failurePolicy === "heard-fixed" && phase === "active";
 		this.operationGeneration += 1;
@@ -3076,16 +3065,7 @@ var Playback = class {
 		if (failurePolicy !== "fixed") this.failedTrackIds.add(round.track.dailyNumber);
 		this.current = null;
 		this.audio.releasePrimary();
-		if (requireExplicitPlay) {
-			this.current = {
-				phase: "retry",
-				round
-			};
-			this.manualRetryRequired = true;
-			this.callbacks.onRecovery(failurePolicy === "replace" ? "manual-retry" : "selected-track-retry");
-			return;
-		}
-		if (!preserveIdentity) {
+		if (!requireExplicitPlay && !preserveIdentity) {
 			this.currentRecoveryFailures += 1;
 			if (this.currentRecoveryFailures <= maximumAutomaticRecoveries) {
 				if (wasPrepared || !shouldResume) this.defer(() => this.prime());
@@ -3110,7 +3090,7 @@ var Playback = class {
 		const round = this.factory(this.failedTrackIds, owned.track.dailyNumber);
 		if (!round) return;
 		this.next = round;
-		if (!this.audio.loadPreload(round) && this.next?.id === round.id) this.handleRejected(round, "preload-load", "preload");
+		if (!this.audio.loadPreload(round) && this.next?.id === round.id) this.handleRejected(round, "preload-load");
 	}
 	owns(round) {
 		return this.current?.round.id === round.id;
@@ -3118,9 +3098,8 @@ var Playback = class {
 	isCurrent(round, phase) {
 		return this.current?.round.id === round.id && this.current.phase === phase;
 	}
-	handleRejected(round, stage, channel = "primary") {
+	handleRejected(round, stage) {
 		this.handleFailure({
-			channel,
 			stage,
 			round
 		});
@@ -3177,7 +3156,6 @@ var AttemptHistoryView = class {
 	fadeGenerations = /* @__PURE__ */ new WeakMap();
 	collapseTimer = 0;
 	collapseListener = null;
-	collapseTarget = null;
 	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
@@ -3234,7 +3212,7 @@ var AttemptHistoryView = class {
 			const element = child;
 			return [element.dataset.slotKey ?? "", element];
 		}));
-		const previousIndexes = new Map(previousSlots.map((entry, index) => [entry.key, index]));
+		const previousEntries = new Map(previousSlots.map((entry) => [entry.key, entry]));
 		const fadeNodes = [];
 		const wiggleNodes = [];
 		const nodes = rendered.map((entry) => {
@@ -3246,12 +3224,12 @@ var AttemptHistoryView = class {
 				element.dataset.slotKey = entry.key;
 			}
 			existing.delete(entry.key);
-			const previousTone = element.dataset.tone ?? "";
-			const previousText = element.dataset.slotText ?? "";
-			const wasMilestone = element.classList.contains("gauntlet-milestone");
-			const changedHead = (isNew || previousText !== entry.text || previousTone !== entry.tone || wasMilestone !== entry.gauntletMilestone) && previousIndexes.get(entry.key) === 0;
+			const previous = previousEntries.get(entry.key);
+			const previousTone = previous?.tone ?? "";
+			const previousText = previous?.text ?? "";
+			const wasMilestone = previous?.gauntletMilestone ?? false;
+			const changedHead = (isNew || previousText !== entry.text || previousTone !== entry.tone || wasMilestone !== entry.gauntletMilestone) && previousSlots[0]?.key === entry.key;
 			this.applyTone(element, previousTone, entry.tone);
-			element.dataset.slotText = entry.text;
 			element.textContent = entry.text;
 			this.applyGauntletMilestone(element, entry.gauntletMilestone, entry.text);
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
@@ -3270,7 +3248,7 @@ var AttemptHistoryView = class {
 		return this.elements.list.children.length > 0;
 	}
 	collapseSlots() {
-		this.startCollapse(this.elements.container, [...this.elements.list.children], this.durations.collapse(), () => {
+		this.startCollapse(this.elements.container, [...this.elements.list.children], this.durations.collapse, () => {
 			const pending = this.pendingSnapshot;
 			this.pendingSnapshot = null;
 			this.clearRenderedSlots();
@@ -3279,7 +3257,7 @@ var AttemptHistoryView = class {
 	}
 	revealAttempts() {
 		const container = this.elements.container;
-		const duration = this.durations.collapse();
+		const duration = this.durations.collapse;
 		this.cancelCollapse();
 		if (this.reducedMotion.matches || duration <= 0) {
 			container.style.height = "";
@@ -3290,18 +3268,9 @@ var AttemptHistoryView = class {
 		container.offsetHeight;
 		container.style.height = `${targetHeight}px`;
 		const generation = ++this.renderGeneration;
-		const finish = () => {
-			if (generation !== this.renderGeneration) return;
-			this.cancelCollapse(false);
+		this.waitForHeightTransition(container, duration, generation, () => {
 			container.style.height = "";
-		};
-		this.collapseTarget = container;
-		this.collapseListener = (event) => {
-			const transition = event;
-			if (event.target === container && (!transition.propertyName || transition.propertyName === "height")) finish();
-		};
-		container.addEventListener("transitionend", this.collapseListener);
-		this.collapseTimer = this.scheduler.setTimer(finish, duration);
+		});
 	}
 	startCollapse(container, fading, duration, onFinished) {
 		this.cancelCollapse();
@@ -3334,12 +3303,14 @@ var AttemptHistoryView = class {
 			element.style.removeProperty("translate");
 		}
 		container.style.height = "0px";
+		this.waitForHeightTransition(container, duration, generation, onFinished);
+	}
+	waitForHeightTransition(container, duration, generation, onFinished) {
 		const finish = () => {
 			if (generation !== this.renderGeneration) return;
 			this.cancelCollapse(false);
 			onFinished();
 		};
-		this.collapseTarget = container;
 		this.collapseListener = (event) => {
 			const transition = event;
 			if (event.target === container && (!transition.propertyName || transition.propertyName === "height")) finish();
@@ -3350,10 +3321,9 @@ var AttemptHistoryView = class {
 	cancelCollapse(resetHeight = true) {
 		if (this.collapseTimer) this.scheduler.clearTimer(this.collapseTimer);
 		this.collapseTimer = 0;
-		if (this.collapseListener && this.collapseTarget) this.collapseTarget.removeEventListener("transitionend", this.collapseListener);
+		if (this.collapseListener) this.elements.container.removeEventListener("transitionend", this.collapseListener);
+		if (resetHeight && this.collapseListener) this.elements.container.style.height = "";
 		this.collapseListener = null;
-		if (resetHeight && this.collapseTarget) this.collapseTarget.style.height = "";
-		this.collapseTarget = null;
 	}
 	clearRenderedSlots() {
 		this.renderedSlots = [];
@@ -3370,7 +3340,6 @@ var AttemptHistoryView = class {
 		if (previous === next) return;
 		element.classList.remove(...toneClasses(previous));
 		element.classList.add(...toneClasses(next));
-		element.dataset.tone = next;
 	}
 	applyGauntletMilestone(element, gauntletMilestone, text) {
 		element.classList.toggle("gauntlet-milestone", gauntletMilestone);
@@ -3489,48 +3458,50 @@ var Autocomplete = class {
 	onPlaybackShortcut;
 	tracks = [];
 	searchIndex = [];
+	releaseDate = null;
 	unavailable = /* @__PURE__ */ new Set();
 	suggestions = [];
 	selectedIndex = -1;
-	unavailableSignature = "";
-	suspended = false;
 	constructor(input, list, onGuess, onPlaybackShortcut) {
 		this.input = input;
 		this.list = list;
 		this.onGuess = onGuess;
 		this.onPlaybackShortcut = onPlaybackShortcut;
 		input.addEventListener("input", () => {
-			if (!this.suspended) this.update();
+			if (!this.input.disabled) this.update();
 		});
 		input.addEventListener("keydown", (event) => this.handleKeydown(event));
 		list.addEventListener("pointerover", (event) => {
-			if (this.suspended) return;
+			if (this.input.disabled) return;
 			const option = event.target instanceof Element ? event.target.closest("[role=option]") : null;
 			if (!option) return;
 			const index = [...this.list.children].indexOf(option);
 			if (index >= 0) this.select(index);
 		});
 		list.addEventListener("click", (event) => {
-			if (this.suspended) return;
+			if (this.input.disabled) return;
 			const option = event.target instanceof Element ? event.target.closest("[role=option]") : null;
 			if (!option) return;
 			const track = this.suggestions[[...this.list.children].indexOf(option)];
 			if (track) this.onGuess(track.dailyNumber);
 		});
 	}
-	setDependencies(tracks, unavailable) {
-		const unavailableSignature = [...unavailable].sort((left, right) => left - right).join(",");
-		if (tracks === this.tracks && unavailableSignature === this.unavailableSignature) return;
+	setDependencies(tracks, unavailable, releaseDate = null) {
+		const unavailableChanged = unavailable.size !== this.unavailable.size || [...unavailable].some((id) => !this.unavailable.has(id));
+		const catalogChanged = tracks !== this.tracks || releaseDate !== this.releaseDate;
+		if (!catalogChanged && !unavailableChanged) return;
 		const selectedId = this.suggestions[this.selectedIndex]?.dailyNumber ?? null;
-		this.tracks = tracks;
-		this.searchIndex = createTrackSearchIndex(tracks);
-		this.unavailableSignature = unavailableSignature;
+		if (catalogChanged) {
+			this.tracks = tracks;
+			this.releaseDate = releaseDate;
+			this.searchIndex = createTrackSearchIndex(releaseDate === null ? tracks : tracks.filter((track) => isReleasedBy(track, releaseDate)));
+		}
 		this.unavailable = new Set(unavailable);
-		if (this.input.value.trim() && !this.suspended) this.update(selectedId);
+		if (this.input.value.trim() && !this.input.disabled) this.update(selectedId);
 	}
 	setSuspended(suspended) {
-		if (suspended === this.suspended) return;
-		this.suspended = suspended;
+		if (suspended === this.input.disabled) return;
+		this.input.disabled = suspended;
 		this.suggestions = [];
 		this.selectedIndex = -1;
 		this.render();
@@ -3558,7 +3529,7 @@ var Autocomplete = class {
 			this.reset();
 			return;
 		}
-		if (this.suspended) {
+		if (this.input.disabled) {
 			if (event.key === "Enter") {
 				event.preventDefault();
 				if (!this.input.value.trim()) this.onPlaybackShortcut();
@@ -3621,28 +3592,6 @@ var Autocomplete = class {
 		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
-var months = [
-	"JANUARY",
-	"FEBRUARY",
-	"MARCH",
-	"APRIL",
-	"MAY",
-	"JUNE",
-	"JULY",
-	"AUGUST",
-	"SEPTEMBER",
-	"OCTOBER",
-	"NOVEMBER",
-	"DECEMBER"
-];
-function formatOrdinalDate(value) {
-	const [, year, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? [];
-	const monthName = month ? months[Number(month) - 1] : void 0;
-	if (!year || !monthName || !day) return value;
-	const numericDay = Number(day);
-	const remainder = numericDay % 100;
-	return `${monthName} ${numericDay}${remainder >= 11 && remainder <= 13 ? "TH" : numericDay % 10 === 1 ? "ST" : numericDay % 10 === 2 ? "ND" : numericDay % 10 === 3 ? "RD" : "TH"}, ${year}`;
-}
 function formatReleaseDate(value) {
 	return value === null ? "TBA" : formatOrdinalDate(value);
 }
@@ -3884,7 +3833,6 @@ var ModalController = class {
 	openFrame = 0;
 	transitionGeneration = 0;
 	closeListener = null;
-	closeTarget = null;
 	lockedScroll = null;
 	constructor(root, elements, duration, reducedMotion, announce, scheduler = browserAnimationScheduler) {
 		this.root = root;
@@ -3897,8 +3845,8 @@ var ModalController = class {
 	get resultLayoutActive() {
 		return this.kind === "result";
 	}
-	openResult() {
-		if (this.openModal("result")) this.announce(this.elements.resultMeta.dataset.announcement || "RESULT");
+	openResult(announcement = "RESULT") {
+		if (this.openModal("result")) this.announce(announcement || "RESULT");
 	}
 	openDiscovery() {
 		this.openModal("discovery");
@@ -3977,7 +3925,6 @@ var ModalController = class {
 			return true;
 		}
 		const transitionTarget = parts.shell;
-		this.closeTarget = transitionTarget;
 		this.closeListener = (event) => {
 			const transition = event;
 			if (event.target === transitionTarget && (!transition.propertyName || transition.propertyName === "height")) finish();
@@ -4048,9 +3995,8 @@ var ModalController = class {
 	cancelCloseWait() {
 		if (this.closeTimer) this.scheduler.clearTimer(this.closeTimer);
 		this.closeTimer = 0;
-		if (this.closeListener && this.closeTarget) this.closeTarget.removeEventListener("transitionend", this.closeListener);
+		if (this.closeListener && this.kind) this.parts(this.kind).shell.removeEventListener("transitionend", this.closeListener);
 		this.closeListener = null;
-		this.closeTarget = null;
 	}
 	parts(kind) {
 		return kind === "result" ? {
@@ -4173,7 +4119,6 @@ var ResultView = class {
 		this.elements.title.textContent = result.outcome;
 		this.elements.meta.dataset.mode = result.mode;
 		this.elements.meta.replaceChildren(...result.modules.map((module) => createResultModule(module)));
-		this.elements.meta.dataset.announcement = result.announcement;
 		this.elements.secondaryLabel.textContent = result.secondary?.label ?? "";
 		if (result.secondary) this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
 		else this.elements.secondary.removeAttribute("aria-label");
@@ -4223,8 +4168,8 @@ function createResultModule(result) {
 	}
 	const value = document.createElement("span");
 	value.className = "result-value";
-	value.setAttribute("aria-label", result.value);
-	value.replaceChildren(...result.kind === "track" ? [resultLine("result-track-title", result.value)] : createMetricLines(result.value));
+	value.setAttribute("aria-label", resultModuleValue(result));
+	value.replaceChildren(...result.kind === "track" ? [resultLine("result-track-title", result.value)] : createMetricLines(result.lines));
 	module.replaceChildren(createResultLabel(result.label, result.newPersonalBest), value);
 	return module;
 }
@@ -4235,8 +4180,8 @@ function createResultLabel(text, personalBest = false) {
 	label.textContent = text;
 	return label;
 }
-function createMetricLines(value) {
-	return value.split(" · ").map((part, index) => resultLine(index === 0 ? "result-metric result-metric-primary" : "result-metric", part));
+function createMetricLines(lines) {
+	return lines.map((part, index) => resultLine(index === 0 ? "result-metric result-metric-primary" : "result-metric", part));
 }
 function resultLine(className, text) {
 	const line = document.createElement("span");
@@ -4270,7 +4215,6 @@ var TimelineView = class {
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
 	}
 	renderPosition(state, onRevealComplete) {
-		this.elements.timeline.classList.toggle("position-timeline", state !== null);
 		if (!state) {
 			this.cancelPositionReveal();
 			this.elements.positionRange.disabled = true;
@@ -4490,7 +4434,6 @@ var VolumeControl = class {
 	}
 	render(volume) {
 		const activeBars = volume === 0 ? 0 : Math.ceil(volume * barCount / 100);
-		this.container.dataset.volume = String(volume);
 		this.container.classList.toggle("muted", volume === 0);
 		this.input.setAttribute("aria-valuetext", volume === 0 ? "Muted" : `${volume} percent`);
 		this.bars.forEach((bar, index) => {
@@ -4557,9 +4500,8 @@ var GameView = class {
 			container: this.required(".attempt-area"),
 			list: this.elements.slots
 		}, {
-			slot: this.durations.standard,
 			wiggle: this.durations.long,
-			collapse: () => this.durations.standard
+			collapse: this.durations.standard
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
@@ -4633,7 +4575,6 @@ var GameView = class {
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
 		this.elements.skip.disabled = !state.actionEnabled;
-		this.elements.guess.disabled = !state.attemptEnabled;
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
@@ -4644,7 +4585,7 @@ var GameView = class {
 		for (const mode of regularModes) {
 			const button = this.modeButtons[mode];
 			const selected = mode === state.mode;
-			button.disabled = state.appStatus === "error" || selected || state.overlay === "discovery";
+			button.disabled = state.appStatus === "error" && !state.tracks.length || selected || state.overlay === "discovery";
 			button.setAttribute("aria-pressed", String(selected));
 		}
 		this.elements.icon.setAttribute("d", icons[state.playbackIcon]);
@@ -4653,7 +4594,7 @@ var GameView = class {
 		if (state.snippetSeconds !== null) this.elements.snippet.style.width = snippetPercentage(state.snippetSeconds);
 		this.renderRules();
 		this.attempts.render(state.slots, sessionKey);
-		this.autocomplete.setDependencies(state.suggestionTracks, state.unavailableGuessIds);
+		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds, state.mode === "daily" ? state.dailyDate : null);
 		if (state.overlay === "discovery") {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.personalBests, state.dailyProgress, state.dailyDate);
@@ -4661,7 +4602,7 @@ var GameView = class {
 		if (state.result || !this.modal.resultLayoutActive) this.resultView.render(state.result);
 		this.renderClock(state.clock);
 		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
-		if (openingOverlay === "result") this.modal.openResult();
+		if (openingOverlay === "result") this.modal.openResult(state.result?.announcement);
 		else if (openingOverlay === "discovery") {
 			this.discovery.collapseAll();
 			this.modal.openDiscovery();
@@ -4937,7 +4878,6 @@ var GameView = class {
 			slots: this.required(".slots"),
 			card: this.required(".card"),
 			play: this.required(".play"),
-			skipRow: this.required(".skip-row"),
 			skip: this.required(".skip"),
 			guess: this.required(".guess"),
 			suggest: this.required(".suggest"),
