@@ -3397,6 +3397,7 @@ var TimelineView = class {
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
 	}
 	renderPosition(state, onRevealComplete) {
+		this.elements.timeline.classList.remove("position-resetting");
 		if (!state) {
 			this.cancelPositionReveal();
 			this.elements.positionRange.disabled = true;
@@ -3464,6 +3465,11 @@ var TimelineView = class {
 			onRevealComplete(state.roundId);
 		};
 		this.positionFrame = this.scheduler.requestFrame(animate);
+	}
+	beginPositionReset() {
+		this.cancelPositionReveal();
+		this.elements.positionRange.disabled = true;
+		this.elements.timeline.classList.add("position-resetting");
 	}
 	beginReset(rewindPlayback = false) {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
@@ -3846,7 +3852,9 @@ var GameView = class {
 	}
 	beginBoardReset() {
 		this.timeline.beginReset();
-		this.timeline.setProgress("0:00", 0);
+		const mode = this.state?.mode ?? null;
+		this.timeline.setProgress(mode === "blitz" ? "1:00" : "0:00", isTimedMode(mode) ? 1 : 0);
+		if (isPositionMode(mode)) this.timeline.beginPositionReset();
 		const snippetSeconds = isPositionMode(this.state?.mode ?? null) ? this.state?.snippetSeconds ?? snippetDurations[0] : snippetDurations[0];
 		this.elements.snippet.style.width = snippetPercentage(snippetSeconds);
 		this.attempts.beginReset();
