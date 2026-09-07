@@ -1423,7 +1423,7 @@ function dateParts(value) {
 		day: Number(day)
 	} : null;
 }
-var shareUrl = "https://stolenvalorhq.com/corzaguessr";
+var shareUrl = "https://itsstolenvalor.com/corzaguessr";
 function formatDailyShare(date, result) {
 	const attempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(result.attempts)));
 	const squares = Array.from({ length: puzzleAttemptCount }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
@@ -1859,6 +1859,10 @@ var Application = class {
 				type: "reveal",
 				roundId
 			}),
+			positionResetComplete: (roundId) => this.dispatch({
+				type: "position-reset",
+				roundId
+			}),
 			openDiscovery: () => this.dispatch({ type: "progress" }),
 			closeDiscovery: () => this.dispatch({ type: "close-progress" }),
 			startGauntlet: () => this.dispatch({ type: "gauntlet" }),
@@ -2006,6 +2010,15 @@ var Application = class {
 					run.phase = { kind: "revealed" };
 					this.announce(`${seekFeedback(run.answers[0]).join(". ")}.`);
 					this.focusAfterTransition = "focusAttemptAction";
+				}
+				return;
+			case "position-reset":
+				if (run.mode === "seek" && run.phase.kind === "advancing" && current?.round.id === event.roundId) {
+					run.phase = {
+						kind: "selecting",
+						second: null
+					};
+					this.startRound();
 				}
 				return;
 			case "ready":
@@ -2415,13 +2428,7 @@ var Application = class {
 		const s = this.active, run = s.run, current = s.rounds.current;
 		if (run.mode !== "seek" || !interactions(s, this.loading).action || !current) return;
 		if (run.phase.kind === "revealed") if (run.answers.length >= modeRules.seek.roundCount) this.finish();
-		else {
-			run.phase = {
-				kind: "selecting",
-				second: null
-			};
-			this.startRound();
-		}
+		else run.phase = { kind: "advancing" };
 		else if (run.phase.kind === "selecting" && run.phase.second !== null) {
 			this.clock.pause();
 			this.audio.pause();
@@ -3659,6 +3666,7 @@ var TimelineView = class {
 	timeAdjustmentGeneration = 0;
 	positionFrame = 0;
 	positionRevealKey = "";
+	positionResetTimer = 0;
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
@@ -3671,9 +3679,9 @@ var TimelineView = class {
 		this.elements.fill.style.transform = `scaleX(${scale})`;
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
 	}
-	renderPosition(state, onRevealComplete) {
-		this.elements.timeline.classList.remove("position-resetting");
+	renderPosition(state, onRevealComplete, onResetComplete) {
 		if (!state) {
+			this.cancelPositionReset();
 			this.cancelPositionReveal();
 			this.elements.positionRange.disabled = true;
 			this.elements.positionRange.value = "0";
@@ -3693,17 +3701,20 @@ var TimelineView = class {
 		this.setPositionMarker(this.elements.positionGuess, selected, maximum);
 		this.elements.now.textContent = selected === null ? "0:00" : formatClock(selected);
 		if (state.phase === "selecting" || state.actualSecond === null) {
+			this.cancelPositionReset();
 			this.cancelPositionReveal();
 			this.elements.end.textContent = "?:??";
 			this.setPositionMarker(this.elements.positionActual, null, maximum);
 			this.hidePositionDistance();
 			return;
 		}
-		if (state.phase === "revealed") {
+		if (state.phase === "revealed" || state.phase === "advancing") {
 			this.cancelPositionReveal();
 			this.elements.end.textContent = formatClock(state.actualSecond);
 			this.setPositionMarker(this.elements.positionActual, state.actualSecond, maximum);
 			this.showPositionDistance(selected ?? 0, state.actualSecond, maximum);
+			if (state.phase === "advancing") this.beginPositionReset(() => onResetComplete(state.roundId));
+			else this.cancelPositionReset();
 			return;
 		}
 		const key = `${state.roundId}:${selected}:${state.actualSecond}`;
@@ -3741,10 +3752,23 @@ var TimelineView = class {
 		};
 		this.positionFrame = this.scheduler.requestFrame(animate);
 	}
-	beginPositionReset() {
+	beginPositionReset(onComplete) {
 		this.cancelPositionReveal();
 		this.elements.positionRange.disabled = true;
+		if (this.elements.timeline.classList.contains("position-resetting")) return;
 		this.elements.timeline.classList.add("position-resetting");
+		if (!onComplete) return;
+		const finish = () => {
+			if (!this.elements.timeline.classList.contains("position-resetting")) return;
+			this.positionResetTimer = 0;
+			this.elements.timeline.classList.remove("position-resetting");
+			onComplete();
+		};
+		if (this.reducedMotion.matches || this.durations.reset <= 0) {
+			queueMicrotask(finish);
+			return;
+		}
+		this.positionResetTimer = this.scheduler.setTimer(finish, this.durations.reset);
 	}
 	beginReset(rewindPlayback = false) {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
@@ -3835,6 +3859,11 @@ var TimelineView = class {
 		if (this.positionFrame) this.scheduler.cancelFrame(this.positionFrame);
 		this.positionFrame = 0;
 		if (clearKey) this.positionRevealKey = "";
+	}
+	cancelPositionReset() {
+		if (this.positionResetTimer) this.scheduler.clearTimer(this.positionResetTimer);
+		this.positionResetTimer = 0;
+		this.elements.timeline.classList.remove("position-resetting");
 	}
 	progressScale() {
 		const computed = getComputedStyle(this.elements.fill).transform;
@@ -4075,7 +4104,7 @@ var GameView = class {
 		}
 		if (state.result || !this.modal.resultLayoutActive) this.resultView.render(state.result);
 		this.renderClock(state.clock);
-		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
+		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId), (roundId) => this.handlers?.positionResetComplete(roundId));
 		if (openingOverlay === "result") this.modal.openResult(state.result?.announcement);
 		else if (openingOverlay === "discovery") {
 			this.discovery.collapseAll();
