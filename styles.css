@@ -1006,11 +1006,11 @@
 }
 
 #corzaguessr .slot.wiggle {
-  animation: wiggle var(--duration-long);
+  animation: corzaguessr-wiggle var(--duration-long);
 }
 
 #corzaguessr .blink {
-  animation: blink 2s infinite;
+  animation: corzaguessr-blink 2s infinite;
 }
 
 #corzaguessr .result-modal,
@@ -1795,13 +1795,13 @@
   display: none !important;
 }
 
-@keyframes blink {
+@keyframes corzaguessr-blink {
   50% {
     opacity: 0.5;
   }
 }
 
-@keyframes wiggle {
+@keyframes corzaguessr-wiggle {
   20%,
   60% {
     transform: translateX(-4px);
@@ -1875,4 +1875,33 @@
     box-shadow: none;
     forced-color-adjust: none;
   }
+}
+
+#corzaguessr.discovery-open .header-action {
+  position: relative;
+  z-index: 3;
+  pointer-events: none;
+}
+#corzaguessr.discovery-open .discovery-button { pointer-events: auto; }
+
+@media (max-width: 600px) {
+  #corzaguessr.discovery-open .header-action { height: var(--progress-height); }
+  #corzaguessr.discovery-open .discovery-button {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    translate: -50% 0;
+  }
+  #corzaguessr .discovery-panel {
+    height: min(80dvh, calc(100dvh - 120px));
+    max-height: min(80dvh, calc(100dvh - 120px));
+  }
+}
+
+#corzaguessr .save-notice {
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
 }
