@@ -1156,74 +1156,12 @@ var DailySchedule = class {
 		this.countdownTimer = this.runtime.setTimeout(() => this.emitCountdown(), untilNextSecond);
 	}
 };
-var CatalogLoadError = class extends Error {
-	kind;
-	status;
-	get retryable() {
-		return this.kind === "network" || this.kind === "http" && (this.status === 408 || this.status === 429 || this.status !== void 0 && this.status >= 500);
-	}
-	constructor(kind, message, options, status) {
-		super(message, options);
-		this.kind = kind;
-		this.status = status;
-		this.name = "CatalogLoadError";
-	}
-};
-var CatalogSource = class {
-	url;
-	fetchCatalog;
-	assetRevision = null;
-	assetUrl(path) {
-		if (!this.assetRevision) throw new Error("Catalog assets are not loaded.");
-		return `https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@${this.assetRevision}/${path}`;
-	}
-	constructor(url, fetchCatalog = (input, init) => fetch(input, init)) {
-		this.url = url;
-		this.fetchCatalog = fetchCatalog;
-	}
-	async load(signal) {
-		const url = new URL(this.url);
-		const init = {
-			cache: "no-cache",
-			headers: { Accept: "application/json" }
-		};
-		if (signal) init.signal = signal;
-		let response;
-		try {
-			response = await this.fetchCatalog(url, init);
-		} catch (cause) {
-			if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
-			throw new CatalogLoadError("network", "Track catalog could not be downloaded.", { cause });
-		}
-		if (!response.ok) throw new CatalogLoadError("http", `Track catalog returned ${response.status}.`, void 0, response.status);
-		let text;
-		try {
-			text = await response.text();
-		} catch (cause) {
-			throw new CatalogLoadError("network", "Track catalog download was interrupted.", { cause });
-		}
-		signal?.throwIfAborted();
-		let value;
-		try {
-			value = JSON.parse(text);
-		} catch (cause) {
-			throw new CatalogLoadError("invalid-json", "Track catalog is not valid JSON.", { cause });
-		}
-		try {
-			const { tracks, assetRevision } = validateCatalogManifest(value);
-			this.assetRevision = assetRevision;
-			return tracks;
-		} catch (cause) {
-			throw new CatalogLoadError("invalid-catalog", cause instanceof Error ? cause.message : "Track catalog is invalid.", { cause });
-		}
-	}
-};
 function browserServices(elements, audioUrl, catalog) {
 	return {
 		createClock: (callbacks) => new GameClock(callbacks),
 		createCalendar: (onDay) => new DailySchedule(onDay),
 		createAudio: (callbacks) => new AudioPlayer(elements, audioUrl, callbacks),
-		catalog: catalog instanceof URL ? new CatalogSource(catalog) : catalog,
+		catalog,
 		timers: {
 			setTimeout: (callback, delay) => window.setTimeout(callback, delay),
 			clearTimeout: (handle) => window.clearTimeout(handle)
@@ -1255,19 +1193,17 @@ function finished(state) {
 	return run.mode === null ? false : run.mode === "daily" ? run.finished : run.finished !== null;
 }
 function found(attempts) {
-	return new Set(attempts.filter((a) => a.outcome === "correct" && a.trackNumber !== null).map((a) => a.trackNumber));
+	return new Set(attempts.flatMap((a) => a.outcome === "correct" ? [a.trackNumber] : []));
 }
 function newRun(mode, date, state) {
 	switch (mode) {
 		case "daily": return {
 			mode,
 			date,
-			engaged: false,
 			finished: false
 		};
 		case "classic": return {
 			mode,
-			engaged: false,
 			resumeChoice: state.player.classic !== null,
 			finished: null
 		};
@@ -1298,6 +1234,9 @@ function dailyUnavailable(state) {
 }
 function snippet(state) {
 	return modeSnippetSeconds(state.run.mode, Math.min(puzzleAttemptCount - 1, attempts(state).length));
+}
+function initialClockMs(mode) {
+	return modeRules[mode].initialTimeMs ?? modeSnippetSeconds(mode, 0) * 1e3;
 }
 function validClassic(state) {
 	const saved = state.player.classic;
@@ -1376,7 +1315,7 @@ function complete(state, elapsedMs) {
 }
 function interactions(state, loading) {
 	const { run, rounds, player } = state;
-	const ready = state.catalogPhase === "ready" && run.mode !== null && state.overlay.kind === "none" && !loading;
+	const ready = state.catalog.length > 0 && run.mode !== null && state.overlay.kind === "none" && !loading;
 	const complete = finished(state);
 	const retry = rounds.current?.phase === "retry" || rounds.exhausted;
 	const heard = rounds.current?.phase === "heard";
@@ -1557,19 +1496,12 @@ function resultModules(result) {
 		"CORRECT GUESSES",
 		`${formatAccuracy(result.accuracy)} SUCCESS RATE`
 	], result.newPersonalBest)];
-	if (result.mode === "seek") return [runModule("RUN SCORE", [formatSeekScore(seekResultScore(result)), `/ ${seekMaxScore.toLocaleString("en-US")} POINTS`], result.newPersonalBest), {
-		kind: "recap",
-		label: "ROUND RECAP",
-		items: result.rounds.map((round) => ({
-			meta: `ROUND ${round.round} · ${round.points.toLocaleString("en-US")} POINTS`,
-			title: round.trackTitle
-		}))
-	}];
+	if (result.mode === "seek") return [runModule("RUN SCORE", [formatSeekScore(seekResultScore(result)), `/ ${seekMaxScore.toLocaleString("en-US")} POINTS`], result.newPersonalBest)];
 	if (result.mode === "gauntlet") return [runModule("RUN TIME", [formatClock(result.elapsedMs / 1e3), `${result.completedTracks} / ${result.catalogTrackCount} TRACKS`], result.newPersonalBest)];
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function announceResult(outcome, modules) {
-	return `${outcome}. ${modules.map((module) => module.kind === "recap" ? `${module.label}. ${module.items.map((item) => `${item.meta}. ${item.title}`).join(". ")}` : `${module.label}. ${resultModuleValue(module)}`).join(". ")}`.trim();
+	return `${outcome}. ${modules.map((module) => `${module.label}. ${resultModuleValue(module)}`).join(". ")}`.trim();
 }
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
@@ -1615,28 +1547,55 @@ function runModule(label, lines, newPersonalBest = false) {
 function resultModuleValue(module) {
 	return module.kind === "run" ? module.lines.join(" · ") : module.value;
 }
+function boardResetViewModel(state) {
+	const mode = state.run.mode;
+	if (mode === null) throw new Error("Board reset requires an active game mode");
+	const positionMode = isPositionMode(mode);
+	const snippetSeconds = positionMode ? modeRules[mode].snippetSeconds : snippetDurations[0];
+	const initialMs = initialClockMs(mode);
+	return {
+		clock: composeClockViewModel({
+			mode,
+			snippetSeconds: isTimedMode(mode) ? null : snippetSeconds,
+			clock: {
+				elapsedMs: 0,
+				remainingMs: initialMs,
+				maxRemainingMs: initialMs,
+				running: false
+			}
+		}),
+		snippetSeconds,
+		position: positionMode
+	};
+}
 function resultFor(state) {
-	const { run, rounds } = state;
+	const { run } = state;
 	if (!finished(state)) return null;
 	const values = attempts(state);
-	const track = rounds.current?.round.track;
 	switch (run.mode) {
-		case "daily": return track ? {
-			mode: "daily",
-			won: values[0]?.outcome === "correct",
-			trackTitle: track.title,
-			spotify: track.spotify,
-			attempts: values.length
-		} : null;
-		case "classic": return track && run.finished ? {
-			mode: "classic",
-			won: values[0]?.outcome === "correct",
-			trackTitle: track.title,
-			spotify: track.spotify,
-			newPersonalBest: run.finished.newPersonalBest,
-			streak: run.finished.streak,
-			average: run.finished.average
-		} : null;
+		case "daily": {
+			const progress = state.player.daily;
+			const track = progress?.date === run.date ? state.catalog.find((candidate) => candidate.dailyNumber === progress.dailyNumber) : null;
+			return track ? {
+				mode: "daily",
+				won: values[0]?.outcome === "correct",
+				trackTitle: track.title,
+				attempts: values.length
+			} : null;
+		}
+		case "classic": {
+			if (!run.finished) return null;
+			const track = state.catalog.find((candidate) => candidate.dailyNumber === run.finished.challenge.dailyNumber);
+			return track ? {
+				mode: "classic",
+				won: values[0]?.outcome === "correct",
+				trackTitle: track.title,
+				spotify: track.spotify,
+				newPersonalBest: run.finished.newPersonalBest,
+				streak: run.finished.streak,
+				average: run.finished.average
+			} : null;
+		}
 		case "blitz": {
 			const correct = values.filter((a) => a.outcome === "correct").length;
 			return {
@@ -1676,7 +1635,7 @@ function present(state, facts) {
 	const doneDaily = mode === "daily" && dailyCompleted(player.daily, date);
 	const attempt = Math.min(puzzleAttemptCount - 1, completed || doneDaily ? Math.max(0, values.length - 1) : values.length);
 	const overlay = state.overlay.kind === "none" ? null : state.overlay.kind;
-	const appStatus = state.catalogPhase === "ready" ? mode ? "ready" : "awaiting-mode" : state.catalogPhase === "error" ? "error" : "loading";
+	const appStatus = state.catalog.length ? mode ? "ready" : "awaiting-mode" : state.catalogPhase === "error" ? "error" : "loading";
 	const unavailable = mode === "daily" && dailyUnavailable(state);
 	const allowed = interactions(state, facts.loading);
 	const inputVisible = mode !== "seek" && !!round && !completed && !retry;
@@ -1708,7 +1667,7 @@ function present(state, facts) {
 	const seen = /* @__PURE__ */ new Set();
 	if (mode === "gauntlet") for (let i = values.length - 1; i >= 0; i--) {
 		const a = values[i];
-		if (a.outcome === "correct" && a.trackNumber !== null && !seen.has(a.trackNumber)) {
+		if (a.outcome === "correct" && !seen.has(a.trackNumber)) {
 			seen.add(a.trackNumber);
 			milestones.add(values.length - i);
 		}
@@ -1728,8 +1687,8 @@ function present(state, facts) {
 		};
 	});
 	let head = null;
-	if (isTimedMode(mode) && run.mode !== null && run.engaged) {
-		const left = Math.max(0, state.catalog.length - found(values).size);
+	if ((run.mode === "blitz" || run.mode === "gauntlet") && run.engaged) {
+		const left = Math.max(0, state.catalog.length - seen.size);
 		head = {
 			id: values.length + 1,
 			text: completed ? mode === "gauntlet" && left === 0 ? "GAUNTLET COMPLETE" : "TIME'S UP" : mode === "gauntlet" ? `${left} ${left === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${values.length + 1}`,
@@ -1994,15 +1953,15 @@ var Application = class {
 		const current = s.rounds.current;
 		switch (event.type) {
 			case "catalog":
-				if (s.catalogPhase === "ready") return;
+				if (s.catalog.length) return;
 				s.catalog = Object.freeze(event.tracks.map((track) => Object.freeze({ ...track })));
-				s.catalogPhase = "ready";
+				s.catalogPhase = "quiet";
 				this.validateRestore();
 				this.prime();
 				if (s.overlay.kind === "none") this.focusAfterTransition = "focusAfterCatalogReady";
 				return;
 			case "catalog-status":
-				if (s.catalogPhase === "ready") return;
+				if (s.catalog.length) return;
 				s.catalogPhase = event.phase;
 				this.announce(event.phase === "error" ? copy.catalogError : copy.loadingCatalog);
 				return;
@@ -2251,13 +2210,13 @@ var Application = class {
 		if (mode === "daily") this.calendar.start();
 		s.run = newRun(mode, this.calendar.date, s);
 		this.validateRestore();
-		this.clock.configure(modeRules[mode].initialTimeMs ?? snippet(s) * 1e3);
+		this.clock.configure(initialClockMs(mode));
 		if (mode === "daily" && this.dailyDone()) this.startCountdown();
 		this.prime();
 	}
 	validateRestore() {
 		const s = this.active;
-		if (s.run.mode === "classic" && s.catalogPhase === "ready" && s.player.classic && !validClassic(s)) {
+		if (s.run.mode === "classic" && s.catalog.length && s.player.classic && !validClassic(s)) {
 			s.player.classic = null;
 			s.run.resumeChoice = false;
 			this.clock.configure(1e3);
@@ -2266,7 +2225,7 @@ var Application = class {
 	}
 	prime() {
 		const s = this.active;
-		if (!this.unblocked() || s.catalogPhase !== "ready" || !s.run.mode || finished(s) || this.dailyDone() || s.rounds.current || s.rounds.exhausted) return;
+		if (!this.unblocked() || !s.catalog.length || !s.run.mode || finished(s) || this.dailyDone() || s.rounds.current || s.rounds.exhausted) return;
 		const round = chooseRound(s, ++this.nextRound, s.rounds.previous, this.random);
 		if (!round) return;
 		s.rounds.current = {
@@ -2335,7 +2294,7 @@ var Application = class {
 		if (!current || current.phase === "retry") return;
 		current.phase = "pending";
 		if (!this.audio.playPrimary(current.round, false)) return;
-		if (s.run.mode !== null) s.run.engaged = true;
+		if (s.run.mode === "blitz" || s.run.mode === "gauntlet" || s.run.mode === "seek") s.run.engaged = true;
 		this.rememberPuzzle(current.round);
 		this.clearLoading();
 		this.notice(current.round);
@@ -2546,7 +2505,7 @@ var Application = class {
 					mode: run.mode
 				}
 			};
-			this.options.view.beginResultClose(id, dailyRecap ? "classic" : "play", !dailyRecap);
+			this.options.view.beginResultClose(id, dailyRecap ? "classic" : "play", dailyRecap ? void 0 : boardResetViewModel(this.active));
 		} else {
 			if (outcome !== "resume" && outcome !== "start-gauntlet") return;
 			overlay.pendingClose = {
@@ -3664,23 +3623,11 @@ var ResultView = class {
 function createResultModule(result) {
 	const module = document.createElement("div");
 	module.className = `result-module result-${result.kind}`;
-	if (result.kind === "recap") {
-		const items = document.createElement("div");
-		items.className = "result-recap-items";
-		items.replaceChildren(...result.items.map((item) => {
-			const recap = document.createElement("div");
-			recap.className = "result-recap-item";
-			recap.replaceChildren(resultLine("result-recap-meta", item.meta), resultLine("result-recap-title", item.title));
-			return recap;
-		}));
-		module.replaceChildren(createResultLabel(result.label), items);
-		return module;
-	}
 	const value = document.createElement("span");
 	value.className = "result-value";
 	value.setAttribute("aria-label", resultModuleValue(result));
 	value.replaceChildren(...result.kind === "track" ? [resultLine("result-track-title", result.value)] : createMetricLines(result.lines));
-	module.replaceChildren(createResultLabel(result.label, result.newPersonalBest), value);
+	module.replaceChildren(createResultLabel(result.label, result.kind === "run" && result.newPersonalBest), value);
 	return module;
 }
 function createResultLabel(text, personalBest = false) {
@@ -4112,7 +4059,7 @@ var GameView = class {
 		for (const mode of regularModes) {
 			const button = this.modeButtons[mode];
 			const selected = mode === state.mode;
-			button.disabled = state.appStatus === "error" && !state.tracks.length || selected || state.overlay === "discovery";
+			button.disabled = state.appStatus === "error" && !state.tracks.length || selected;
 			button.setAttribute("aria-pressed", String(selected));
 		}
 		this.elements.icon.setAttribute("d", icons[state.playbackIcon]);
@@ -4164,12 +4111,12 @@ var GameView = class {
 	flashTimeChange(seconds) {
 		this.timeline.flashTimeAdjustment(seconds);
 	}
-	beginResultClose(id, focus, resetBoard = false) {
+	beginResultClose(id, focus, resetBoard) {
 		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
 		this.modal.closeResult(target, () => {
 			this.resultView.render(null);
 			this.handlers?.resultClosed(id);
-		}, resetBoard ? () => this.beginBoardReset() : void 0);
+		}, resetBoard ? () => this.beginBoardReset(resetBoard) : void 0);
 	}
 	beginDiscoveryClose(request, id) {
 		return this.modal.closeDiscovery(this.elements.discoveryButton, () => this.handlers?.discoveryClosed(id), () => {
@@ -4188,24 +4135,11 @@ var GameView = class {
 		this.autocomplete.reset();
 		this.renderRules();
 	}
-	beginBoardReset() {
+	beginBoardReset(target) {
 		this.timeline.beginReset();
-		const mode = this.state?.mode ?? null;
-		const initialMs = mode ? modeRules[mode].initialTimeMs ?? snippetDurations[0] * 1e3 : snippetDurations[0] * 1e3;
-		const resetClock = composeClockViewModel({
-			mode,
-			snippetSeconds: snippetDurations[0],
-			clock: {
-				elapsedMs: 0,
-				remainingMs: initialMs,
-				maxRemainingMs: initialMs,
-				running: false
-			}
-		});
-		this.renderClock(resetClock);
-		if (isPositionMode(mode)) this.timeline.beginPositionReset();
-		const snippetSeconds = isPositionMode(this.state?.mode ?? null) ? this.state?.snippetSeconds ?? snippetDurations[0] : snippetDurations[0];
-		this.elements.snippet.style.width = snippetPercentage(snippetSeconds);
+		this.renderClock(target.clock);
+		if (target.position) this.timeline.beginPositionReset();
+		this.elements.snippet.style.width = snippetPercentage(target.snippetSeconds);
 		this.attempts.beginReset();
 	}
 	focusPlay() {
@@ -4294,7 +4228,7 @@ var GameView = class {
 			}
 			if (this.isArrowKey(event.key)) {
 				event.preventDefault();
-				this.moveModalFocus(this.state.overlay, event.key, pointerAnchor);
+				this.moveModalFocus(this.state.overlay, event.key);
 				return;
 			}
 			this.modal.trapFocus(event);
@@ -4321,7 +4255,7 @@ var GameView = class {
 	isArrowKey(key) {
 		return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight";
 	}
-	moveModalFocus(overlay, key, _pointerAnchor) {
+	moveModalFocus(overlay, key) {
 		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : [this.elements.discoveryButton, this.elements.discoveryClose];
 		this.cycleFocus(candidates, key, candidates[0], null);
 	}
@@ -4490,6 +4424,68 @@ function markup() {
 		`<audio class="audio" preload="metadata" playsinline aria-hidden="true" hidden></audio>`
 	].join("");
 }
+var CatalogLoadError = class extends Error {
+	kind;
+	status;
+	get retryable() {
+		return this.kind === "network" || this.kind === "http" && (this.status === 408 || this.status === 429 || this.status !== void 0 && this.status >= 500);
+	}
+	constructor(kind, message, options, status) {
+		super(message, options);
+		this.kind = kind;
+		this.status = status;
+		this.name = "CatalogLoadError";
+	}
+};
+var CatalogSource = class {
+	url;
+	fetchCatalog;
+	assetRevision = null;
+	assetUrl(path) {
+		if (!this.assetRevision) throw new Error("Catalog assets are not loaded.");
+		return `https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@${this.assetRevision}/${path}`;
+	}
+	constructor(url, fetchCatalog = (input, init) => fetch(input, init)) {
+		this.url = url;
+		this.fetchCatalog = fetchCatalog;
+	}
+	async load(signal) {
+		const url = new URL(this.url);
+		const init = {
+			cache: "no-cache",
+			headers: { Accept: "application/json" }
+		};
+		if (signal) init.signal = signal;
+		let response;
+		try {
+			response = await this.fetchCatalog(url, init);
+		} catch (cause) {
+			if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+			throw new CatalogLoadError("network", "Track catalog could not be downloaded.", { cause });
+		}
+		if (!response.ok) throw new CatalogLoadError("http", `Track catalog returned ${response.status}.`, void 0, response.status);
+		let text;
+		try {
+			text = await response.text();
+		} catch (cause) {
+			throw new CatalogLoadError("network", "Track catalog download was interrupted.", { cause });
+		}
+		signal?.throwIfAborted();
+		let value;
+		try {
+			value = JSON.parse(text);
+		} catch (cause) {
+			throw new CatalogLoadError("invalid-json", "Track catalog is not valid JSON.", { cause });
+		}
+		try {
+			const { tracks, assetRevision } = validateCatalogManifest(value);
+			this.assetRevision = assetRevision;
+			return tracks;
+		} catch (cause) {
+			throw new CatalogLoadError("invalid-catalog", cause instanceof Error ? cause.message : "Track catalog is invalid.", { cause });
+		}
+	}
+};
 async function copyToClipboard(text, target = navigator) {
 	try {
 		if (!target.clipboard) return false;
