@@ -106,6 +106,10 @@ function isPositionMode(mode) {
 function prefetchesRounds(mode) {
 	return mode !== null && modeRules[mode].prefetchRounds;
 }
+function preservesFailedRound(mode, heard) {
+	const policy = modeRules[mode].failurePolicy;
+	return policy === "fixed" || policy === "heard-fixed" && heard;
+}
 function clockDisplayForMode(mode) {
 	return modeRules[mode].clockDisplay;
 }
@@ -197,9 +201,6 @@ function updateSeekBest(bests, score) {
 	if (score <= bests.seek.score) return false;
 	bests.seek = { score };
 	return true;
-}
-function seekResultScore(result) {
-	return result.rounds.reduce((total, round) => total + round.points, 0);
 }
 function gauntletCompleted(result) {
 	return result.catalogTrackCount > 0 && result.completedTracks >= result.catalogTrackCount;
@@ -370,8 +371,7 @@ function validateCatalogManifest(value) {
 var saveKey = "corzaguessr:rewrite:save";
 function defaults() {
 	return {
-		version: 1,
-		discoveries: [],
+		discoveries: /* @__PURE__ */ new Set(),
 		daily: null,
 		classic: null,
 		records: emptyPersonalBests(),
@@ -412,7 +412,7 @@ function parseRecords(value) {
 function parseSave(value) {
 	const result = defaults();
 	if (!record(value) || value.version !== 1) return result;
-	if (Array.isArray(value.discoveries) && value.discoveries.every((id) => integer(id, 1))) result.discoveries = [...new Set(value.discoveries)];
+	if (Array.isArray(value.discoveries) && value.discoveries.every((id) => integer(id, 1))) result.discoveries = new Set(value.discoveries);
 	const d = value.daily;
 	if (record(d) && isIsoDate(d.date) && integer(d.dailyNumber, 1) && puzzleAttempts(d.attempts, true)) result.daily = {
 		date: d.date,
@@ -442,6 +442,7 @@ var SaveWriter = class {
 		if (this.readOnly) return "THIS SAVE WAS CREATED BY A DIFFERENT VERSION. EXISTING PROGRESS IS PROTECTED; THIS TAB WILL NOT SAVE.";
 		if (!this.canWrite()) return this.ownershipNotice() || "THIS TAB WILL NOT SAVE. RELOAD TO RETRY.";
 		if (this.failure === "read") return "SAVED PROGRESS COULD NOT BE READ. THIS TAB WILL NOT SAVE. RELOAD TO RETRY.";
+		if (this.failure === "corrupt") return "SAVED PROGRESS WAS CORRUPTED. NEW PROGRESS WILL REPLACE IT.";
 		return this.failure === "write" ? "PROGRESS COULD NOT BE SAVED. KEEP THIS TAB OPEN; SAVING WILL BE RETRIED WHEN PROGRESS CHANGES." : "";
 	}
 	readOnly = false;
@@ -454,21 +455,36 @@ var SaveWriter = class {
 		return this.readOnly;
 	}
 	load() {
+		let raw;
 		try {
 			if (!this.storage) throw new Error("Storage unavailable");
-			const value = JSON.parse(this.storage.getItem("corzaguessr:rewrite:save") ?? "null");
+			raw = this.storage.getItem(saveKey);
+		} catch {
+			this.failure = "read";
+			return defaults();
+		}
+		try {
+			const value = JSON.parse(raw ?? "null");
 			this.readOnly = record(value) && "version" in value && value.version !== 1;
 			this.failure = null;
 			return parseSave(value);
 		} catch {
-			this.failure = "read";
+			this.failure = "corrupt";
 			return defaults();
 		}
 	}
 	write(data) {
 		try {
 			if (this.readOnly || this.failure === "read" || !this.canWrite() || !this.storage) throw new Error("Storage unavailable");
-			this.storage.setItem(saveKey, JSON.stringify(data));
+			const serialized = {
+				version: 1,
+				discoveries: [...data.discoveries],
+				daily: data.daily,
+				classic: data.classic,
+				records: data.records,
+				volume: data.volume
+			};
+			this.storage.setItem(saveKey, JSON.stringify(serialized));
 			this.failure = null;
 			return true;
 		} catch {
@@ -487,7 +503,57 @@ function browserStorage() {
 var otherTab = "ANOTHER TAB IS SAVING YOUR PROGRESS. THIS TAB WILL NOT SAVE. CLOSE THE OTHER TAB AND RELOAD TO SAVE HERE.";
 var unavailable = "SAVING IS UNAVAILABLE IN THIS BROWSER CONTEXT. YOU CAN PLAY, BUT PROGRESS WILL NOT BE SAVED.";
 function claimSaveOwnership(manager) {
-	let writable = false, notice = unavailable, releaseLock = () => {};
+	let writable = false, notice = unavailable, releaseLock = null;
+	let acquiring = null;
+	const acquire = () => {
+		if (writable) return Promise.resolve();
+		if (!manager) {
+			notice = unavailable;
+			return Promise.resolve();
+		}
+		if (acquiring) return acquiring;
+		let resolveAcquisition;
+		const pending = new Promise((resolve) => {
+			resolveAcquisition = resolve;
+		});
+		acquiring = pending;
+		let settled = false;
+		const settle = () => {
+			if (settled) return;
+			settled = true;
+			acquiring = null;
+			resolveAcquisition();
+		};
+		try {
+			manager.request(`${saveKey}:owner`, { ifAvailable: true }, (lock) => {
+				if (!lock) {
+					writable = false;
+					notice = otherTab;
+					settle();
+					return;
+				}
+				writable = true;
+				notice = "";
+				const held = new Promise((release) => {
+					releaseLock = () => {
+						releaseLock = null;
+						release();
+					};
+				});
+				settle();
+				return held;
+			}).catch(() => {
+				if (!writable) {
+					notice = unavailable;
+					settle();
+				}
+			});
+		} catch {
+			notice = unavailable;
+			settle();
+		}
+		return pending;
+	};
 	const ownership = {
 		get writable() {
 			return writable;
@@ -495,37 +561,17 @@ function claimSaveOwnership(manager) {
 		get notice() {
 			return notice;
 		},
+		acquire,
 		release() {
+			if (!writable && !releaseLock) return;
 			writable = false;
-			notice = "RELOAD THIS TAB TO ENABLE SAVING AGAIN.";
-			releaseLock();
+			notice = "RETURN TO THIS TAB TO ENABLE SAVING AGAIN.";
+			const release = releaseLock;
+			releaseLock = null;
+			release?.();
 		}
 	};
-	if (!manager) return Promise.resolve(ownership);
-	return new Promise((resolve) => {
-		try {
-			manager.request(`${saveKey}:owner`, { ifAvailable: true }, (lock) => {
-				if (!lock) {
-					notice = otherTab;
-					resolve(ownership);
-					return;
-				}
-				writable = true;
-				notice = "";
-				const held = new Promise((release) => {
-					releaseLock = release;
-				});
-				resolve(ownership);
-				return held;
-			}).catch(() => {
-				writable = false;
-				notice = unavailable;
-				resolve(ownership);
-			});
-		} catch {
-			resolve(ownership);
-		}
-	});
+	return acquire().then(() => ownership);
 }
 var browserTiming = {
 	setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
@@ -1185,7 +1231,8 @@ function attempts(state) {
 		case "classic": return state.run.finished?.challenge.attempts ?? state.player.classic?.attempts ?? [];
 		case "blitz":
 		case "gauntlet": return state.run.attempts;
-		default: return [];
+		case "seek":
+		case null: return [];
 	}
 }
 function finished(state) {
@@ -1287,7 +1334,10 @@ function complete(state, elapsedMs) {
 			if (!challenge) throw new Error("Classic completion requires its challenge");
 			const result = updateClassicBest(records, challenge.attempts[0]?.outcome === "correct", challenge.attempts.length - 1);
 			run.finished = {
-				challenge,
+				challenge: {
+					dailyNumber: challenge.dailyNumber,
+					attempts: challenge.attempts
+				},
 				newPersonalBest: result.newPersonalBest,
 				streak: result.streak,
 				average: result.average
@@ -1452,7 +1502,7 @@ function gauntletAnswer(previous, answer, catalogCount) {
 	};
 }
 function selectedSecond(second, round) {
-	return Math.max(0, Math.min(Math.floor(round.track.duration), Math.round(second)));
+	return Math.max(0, Math.min(maximumClipStart(round.track, modeRules.seek.snippetSeconds), Math.round(second)));
 }
 function seekAnswer(round, second) {
 	return {
@@ -1496,7 +1546,7 @@ function resultModules(result) {
 		"CORRECT GUESSES",
 		`${formatAccuracy(result.accuracy)} SUCCESS RATE`
 	], result.newPersonalBest)];
-	if (result.mode === "seek") return [runModule("RUN SCORE", [formatSeekScore(seekResultScore(result)), `/ ${seekMaxScore.toLocaleString("en-US")} POINTS`], result.newPersonalBest)];
+	if (result.mode === "seek") return [runModule("RUN SCORE", [formatSeekScore(result.score), `/ ${seekMaxScore.toLocaleString("en-US")} POINTS`], result.newPersonalBest)];
 	if (result.mode === "gauntlet") return [runModule("RUN TIME", [formatClock(result.elapsedMs / 1e3), `${result.completedTracks} / ${result.catalogTrackCount} TRACKS`], result.newPersonalBest)];
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
@@ -1615,13 +1665,9 @@ function resultFor(state) {
 		case "seek": return {
 			mode: "seek",
 			newPersonalBest: run.finished.newPersonalBest,
-			rounds: [...run.answers].reverse().map((a, i) => ({
-				round: i + 1,
-				points: seekAttemptPoints(a),
-				trackTitle: state.catalog.find((t) => t.dailyNumber === a.trackNumber).title
-			}))
+			score: run.answers.reduce((total, answer) => total + seekAttemptPoints(answer), 0)
 		};
-		default: return null;
+		case null: return null;
 	}
 }
 function present(state, facts) {
@@ -1745,7 +1791,7 @@ function present(state, facts) {
 		positionTimeline: run.mode === "seek" && round ? {
 			roundId: round.id,
 			phase: run.phase.kind,
-			maximumSecond: Math.floor(round.track.duration),
+			maximumSecond: maximumClipStart(round.track, modeRules.seek.snippetSeconds),
 			selectedSecond: run.phase.kind === "selecting" ? run.phase.second : run.answers[0]?.guessedSecond ?? null,
 			actualSecond: run.phase.kind === "selecting" ? null : run.answers[0]?.actualSecond ?? null,
 			interactionEnabled: allowed.position
@@ -1784,7 +1830,7 @@ var Application = class {
 		this.options = options;
 		this.random = options.random ?? Math.random;
 		this.active = {
-			player: structuredClone(options.player ?? options.storage.load()),
+			player: structuredClone(options.player),
 			catalog: [],
 			catalogPhase: "quiet",
 			run: { mode: null },
@@ -1958,7 +2004,7 @@ var Application = class {
 		switch (event.type) {
 			case "catalog":
 				if (s.catalog.length) return;
-				s.catalog = Object.freeze(event.tracks.map((track) => Object.freeze({ ...track })));
+				s.catalog = event.tracks;
 				s.catalogPhase = "quiet";
 				this.validateRestore();
 				this.prime();
@@ -1990,12 +2036,17 @@ var Application = class {
 				return;
 			}
 			case "skip":
-				if (run.mode === "classic" && (run.resumeChoice || current?.phase === "retry") && interactions(s, this.loading).action) {
+				if (run.mode === "classic" && run.resumeChoice && interactions(s, this.loading).action) {
 					s.player.classic = null;
 					updateClassicBest(s.player.records, false, 0);
 					this.save();
 					this.reset("classic");
 					this.announce("PREVIOUS CLASSIC ROUND FORFEITED.");
+				} else if (run.mode === "classic" && current?.phase === "retry" && interactions(s, this.loading).action) {
+					s.player.classic = null;
+					this.save();
+					this.reset("classic");
+					this.announce("UNPLAYABLE CLASSIC ROUND REPLACED. YOUR STREAK WAS NOT AFFECTED.");
 				} else if (run.mode === "seek") this.seekAction();
 				else if (interactions(s, this.loading).action) this.answer({
 					outcome: "skip",
@@ -2013,13 +2064,7 @@ var Application = class {
 				}
 				return;
 			case "position-reset":
-				if (run.mode === "seek" && run.phase.kind === "advancing" && current?.round.id === event.roundId) {
-					run.phase = {
-						kind: "selecting",
-						second: null
-					};
-					this.startRound();
-				}
+				if (run.mode === "seek" && run.phase.kind === "advancing" && current?.round.id === event.roundId) this.resumeSeekAdvance();
 				return;
 			case "ready":
 				if (!this.unblocked()) return;
@@ -2043,6 +2088,7 @@ var Application = class {
 					this.save();
 				}
 				s.rounds.currentFailures = 0;
+				s.rounds.nextFailures = 0;
 				s.rounds.exhausted = false;
 				this.clearLoading();
 				this.clock.start();
@@ -2118,7 +2164,7 @@ var Application = class {
 				if (s.overlay.kind === "discovery") this.close("resume");
 				return;
 			case "gauntlet":
-				if (s.overlay.kind === "discovery" && summarizeDiscovery(s.catalog, new Set(s.player.discoveries)).complete) this.close("start-gauntlet");
+				if (s.overlay.kind === "discovery" && summarizeDiscovery(s.catalog, s.player.discoveries).complete) this.close("start-gauntlet");
 				return;
 			case "close-result":
 				if (s.overlay.kind === "result") this.close("close-result");
@@ -2135,7 +2181,7 @@ var Application = class {
 						this.announce(modeRules.gauntlet.description);
 					} else if (s.visible) {
 						this.restore();
-						this.prime();
+						if (!this.resumeSeekAdvance()) this.prime();
 					}
 					this.focusAfterTransition = s.run.mode ? "focusPlay" : "focusProgress";
 				} else {
@@ -2165,7 +2211,7 @@ var Application = class {
 				}
 				if (s.overlay.kind === "none") {
 					this.restore();
-					this.prime();
+					if (!this.resumeSeekAdvance()) this.prime();
 				}
 				return;
 			case "day":
@@ -2206,10 +2252,11 @@ var Application = class {
 				return;
 			case "spotify": {
 				const result = resultFor(s);
-				const spotify = event.trackId !== void 0 ? s.overlay.kind === "discovery" && s.player.discoveries.includes(event.trackId) ? s.catalog.find((t) => t.dailyNumber === event.trackId)?.spotify : null : result?.mode === "classic" ? result.spotify : null;
+				const spotify = event.trackId !== void 0 ? s.overlay.kind === "discovery" && s.player.discoveries.has(event.trackId) ? s.catalog.find((t) => t.dailyNumber === event.trackId)?.spotify : null : result?.mode === "classic" ? result.spotify : null;
 				if (spotify) this.options.openSpotify(spotify);
 				return;
 			}
+			default: return assertNever(event);
 		}
 	}
 	reset(mode) {
@@ -2260,9 +2307,14 @@ var Application = class {
 		const s = this.active;
 		if (!this.unblocked()) return;
 		if (manual) {
+			if (s.rounds.exhausted && s.run.mode) {
+				const mode = s.run.mode;
+				this.reset(mode);
+				this.startRound();
+				return;
+			}
 			s.rounds.currentFailures = 0;
 			s.rounds.nextFailures = 0;
-			s.rounds.exhausted = false;
 			if (s.rounds.current?.phase === "retry") if (s.run.mode !== "daily" && s.run.mode !== "classic") s.rounds.current = null;
 			else {
 				s.rounds.current.phase = "prepared";
@@ -2371,7 +2423,7 @@ var Application = class {
 			return;
 		}
 		this.options.view.resetGuessInput();
-		if (answer.outcome === "correct" && !s.player.discoveries.includes(current.round.track.dailyNumber)) s.player.discoveries.push(current.round.track.dailyNumber);
+		if (answer.outcome === "correct") s.player.discoveries.add(current.round.track.dailyNumber);
 		if (run.mode === "daily" || run.mode === "classic") {
 			const challenge = run.mode === "daily" ? s.player.daily : s.player.classic;
 			if (!challenge) throw new Error("Heard puzzle has no authoritative challenge");
@@ -2465,7 +2517,8 @@ var Application = class {
 		const current = s.rounds.current;
 		if (current?.round.id !== failure.round.id) return;
 		if (s.run.mode === "seek" && s.run.phase.kind !== "selecting") return;
-		const preserve = s.run.mode !== null && (modeRules[s.run.mode].failurePolicy === "fixed" || s.run.mode === "classic" && s.player.classic?.heard);
+		const heard = current.phase === "heard" || s.run.mode === "classic" && s.player.classic?.heard === true;
+		const preserve = s.run.mode !== null && preservesFailedRound(s.run.mode, heard);
 		const play = current.phase !== "prepared" || failure.stage === "primary-play";
 		this.clock.pause();
 		this.clearLoading();
@@ -2529,6 +2582,17 @@ var Application = class {
 			restored: true
 		}));
 	}
+	resumeSeekAdvance() {
+		const run = this.active.run;
+		if (run.mode !== "seek" || run.phase.kind !== "advancing") return false;
+		if (!this.unblocked()) return true;
+		run.phase = {
+			kind: "selecting",
+			second: null
+		};
+		this.startRound();
+		return true;
+	}
 	dailyDone() {
 		return this.active.run.mode === "daily" && this.active.player.daily?.date === this.active.run.date && puzzleCompleted(this.active.player.daily.attempts);
 	}
@@ -2577,6 +2641,9 @@ var Application = class {
 		this.options.view.render(this.viewModel(), String(this.active.epoch));
 	}
 };
+function assertNever(value) {
+	throw new Error(`Unsupported application event: ${JSON.stringify(value)}`);
+}
 function trackAssetNumber(dailyNumber) {
 	return String(dailyNumber).padStart(2, "0");
 }
@@ -2873,15 +2940,17 @@ function matchRank(entry, query, queryTokens) {
 	const phrasePosition = entry.normalized.indexOf(query);
 	if (phrasePosition >= 0) return [2, phrasePosition];
 	const prefixPositions = tokenPositions(entry.tokens, queryTokens, (titleToken, queryToken) => titleToken.startsWith(queryToken));
-	if (prefixPositions) return [3, prefixPositions];
+	if (prefixPositions !== null) return [3, prefixPositions];
 	const partialPositions = tokenPositions(entry.tokens, queryTokens, (titleToken, queryToken) => titleToken.includes(queryToken));
 	return partialPositions === null ? null : [4, partialPositions];
 }
 function tokenPositions(titleTokens, queryTokens, matches) {
 	let positionTotal = 0;
+	const used = /* @__PURE__ */ new Set();
 	for (const queryToken of queryTokens) {
-		const position = titleTokens.findIndex((titleToken) => matches(titleToken, queryToken));
+		const position = titleTokens.findIndex((titleToken, index) => !used.has(index) && matches(titleToken, queryToken));
 		if (position < 0) return null;
+		used.add(position);
 		positionTotal += position;
 	}
 	return positionTotal;
@@ -3270,7 +3339,6 @@ var ModalController = class {
 	openTimer = 0;
 	transitionGeneration = 0;
 	closeListener = null;
-	discoveryRole = [];
 	lockedScroll = null;
 	constructor(root, elements, duration, reducedMotion, announce, scheduler = browserAnimationScheduler) {
 		this.root = root;
@@ -3308,21 +3376,7 @@ var ModalController = class {
 		this.lockScroll();
 		parts.classOwner.classList.add(parts.openClass);
 		parts.modal.setAttribute("aria-hidden", "false");
-		if (kind === "discovery") {
-			this.root.style.setProperty("--progress-height", `${this.elements.discoveryButton.getBoundingClientRect().height}px`);
-			this.elements.discoveryButton.setAttribute("aria-expanded", "true");
-			this.discoveryRole = [
-				"role",
-				"aria-modal",
-				"aria-label"
-			].map((name) => ({
-				name,
-				value: this.root.getAttribute(name)
-			}));
-			this.root.setAttribute("role", "dialog");
-			this.root.setAttribute("aria-modal", "true");
-			this.root.setAttribute("aria-label", "PROGRESS");
-		}
+		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
 		const finishOpen = () => {
 			this.openFrame = 0;
 			if (!this.transitionMatches(kind, generation)) return;
@@ -3370,12 +3424,6 @@ var ModalController = class {
 			this.cancelCloseWait();
 			parts.classOwner.classList.remove(parts.openClass, parts.visibleClass);
 			parts.modal.setAttribute("aria-hidden", "true");
-			if (kind === "discovery") {
-				for (const { name, value } of this.discoveryRole) if (value === null) this.root.removeAttribute(name);
-				else this.root.setAttribute(name, value);
-				this.discoveryRole = [];
-				this.root.style.removeProperty("--progress-height");
-			}
 			parts.shell.style.height = "";
 			parts.shell.style.transition = "";
 			if (kind === "discovery") this.elements.discoveryClose.style.visibility = "";
@@ -3405,7 +3453,6 @@ var ModalController = class {
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
 		const focusable = [...(this.kind === "result" ? this.elements.result : this.elements.discoveryPanel).querySelectorAll("button:not([disabled]), input:not([disabled])")].filter((element) => element.tabIndex >= 0 && !element.hidden && element.offsetParent !== null);
-		if (this.kind === "discovery" && this.canFocus(this.elements.discoveryButton)) focusable.unshift(this.elements.discoveryButton);
 		if (!focusable.length) return;
 		const first = focusable[0];
 		const last = focusable.at(-1);
@@ -4081,7 +4128,7 @@ var GameView = class {
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
-		this.elements.headerAction.inert = state.overlay === "result";
+		this.elements.headerAction.inert = overlay;
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
 		this.elements.slots.inert = overlay || blockedBoard;
@@ -4285,7 +4332,7 @@ var GameView = class {
 		return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight";
 	}
 	moveModalFocus(overlay, key) {
-		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : [this.elements.discoveryButton, this.elements.discoveryClose];
+		const candidates = overlay === "result" ? [this.elements.resultAction, this.elements.resultSecondary] : [this.elements.discoveryClose];
 		this.cycleFocus(candidates, key, candidates[0], null);
 	}
 	movePrimaryFocus(key, pointerAnchor) {
@@ -4443,7 +4490,7 @@ function markup() {
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
-		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true" tabindex="-1"><div class="discovery-shell"><div class="discovery-panel glass"><div class="discovery-title"><span>DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
+		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
 		`<p class="mode-prompt" role="status" aria-hidden="false">${copy.modePrompt}</p>`,
@@ -4469,16 +4516,17 @@ var CatalogLoadError = class extends Error {
 var CatalogSource = class {
 	url;
 	fetchCatalog;
-	assetRevision = null;
+	manifest = null;
 	assetUrl(path) {
-		if (!this.assetRevision) throw new Error("Catalog assets are not loaded.");
-		return `https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@${this.assetRevision}/${path}`;
+		if (!this.manifest) throw new Error("Catalog assets are not loaded.");
+		return `https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@${this.manifest.assetRevision}/${path}`;
 	}
 	constructor(url, fetchCatalog = (input, init) => fetch(input, init)) {
 		this.url = url;
 		this.fetchCatalog = fetchCatalog;
 	}
 	async load(signal) {
+		if (this.manifest) return this.manifest.tracks;
 		const url = new URL(this.url);
 		const init = {
 			cache: "no-cache",
@@ -4508,8 +4556,12 @@ var CatalogSource = class {
 		}
 		try {
 			const { tracks, assetRevision } = validateCatalogManifest(value);
-			this.assetRevision = assetRevision;
-			return tracks;
+			const frozenTracks = Object.freeze(tracks.map((track) => Object.freeze({ ...track })));
+			this.manifest = Object.freeze({
+				assetRevision,
+				tracks: frozenTracks
+			});
+			return frozenTracks;
 		} catch (cause) {
 			throw new CatalogLoadError("invalid-catalog", cause instanceof Error ? cause.message : "Track catalog is invalid.", { cause });
 		}
@@ -4547,11 +4599,14 @@ async function initialize(root) {
 		visible: !document.hidden,
 		copy: copyToClipboard,
 		openSpotify,
-		services: browserServices(view.audioElements, (round) => catalog.assetUrl(`tracks/${trackAssetNumber(round.track.dailyNumber)}.mp3#t=${round.clipStart}`), catalog)
+		services: browserServices(view.audioElements, (round) => catalog.assetUrl(`tracks/${trackAssetNumber(round.track.dailyNumber)}.mp3`), catalog)
 	});
 	app.start();
 	document.addEventListener("visibilitychange", () => app.dispatch({ type: document.hidden ? "hidden" : "visible" }));
-	window.addEventListener("pageshow", () => {
-		if (!document.hidden) app.dispatch({ type: "visible" });
+	window.addEventListener("pageshow", (event) => {
+		(async () => {
+			if (event.persisted && !storage.unsupportedVersion) await ownership.acquire();
+			if (!document.hidden) app.dispatch({ type: "visible" });
+		})();
 	});
 }
