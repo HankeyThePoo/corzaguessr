@@ -1059,11 +1059,8 @@
     justify-items: center;
     gap: calc(var(--space) * 2);
     width: 100%;
-    line-height: var(--line-height);
-  }
-
-  & .result-value {
     font-size: var(--text-body);
+    line-height: var(--line-height);
   }
 
   & .result-track .result-value {
