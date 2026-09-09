@@ -156,7 +156,6 @@ function updateClassicBest(bests, won, attempt) {
 			classic.bestSnippetTotal = classic.snippetTotal;
 		}
 		return {
-			changed: true,
 			newPersonalBest: isBest,
 			streak: classic.current,
 			average
@@ -164,11 +163,9 @@ function updateClassicBest(bests, won, attempt) {
 	}
 	const streak = classic.current;
 	const average = classic.current ? classic.snippetTotal / classic.current : 0;
-	const changed = classic.current !== 0 || classic.snippetTotal !== 0;
 	classic.current = 0;
 	classic.snippetTotal = 0;
 	return {
-		changed,
 		newPersonalBest: false,
 		streak,
 		average
@@ -283,7 +280,9 @@ function validateTrackCatalog(value) {
 		const record = candidate;
 		const title = typeof record.title === "string" ? record.title.trim() : "";
 		const duration = record.duration;
+		if (record.spotify !== void 0 && typeof record.spotify !== "string") fail("has an invalid Spotify track ID.");
 		const spotify = typeof record.spotify === "string" ? record.spotify.trim() : "";
+		if (record.isNew !== void 0 && typeof record.isNew !== "boolean") fail("has an invalid isNew flag.");
 		const dailyNumber = record.dailyNumber;
 		const releaseDate = record.releaseDate === null ? null : typeof record.releaseDate === "string" ? record.releaseDate.trim() : fail("has an invalid releaseDate.");
 		if (!title) fail("has no title.");
@@ -446,16 +445,15 @@ function parseSaveV1(value) {
 	else valid = false;
 	const c = value.classic;
 	if (c === null) result.classic = null;
-	else if (record(c) && (c.heard === void 0 || typeof c.heard === "boolean") && integer(c.dailyNumber, 1) && integer(c.clipStart) && puzzleAttempts(c.attempts, false, c.dailyNumber)) {
-		const heard = c.heard ?? c.attempts.length > 0;
-		if (heard || c.attempts.length === 0) result.classic = {
-			dailyNumber: c.dailyNumber,
-			clipStart: c.clipStart,
-			heard,
-			attempts: c.attempts.map((a) => ({ ...a }))
-		};
-		else valid = false;
-	} else valid = false;
+	else if (record(c) && (c.kind === "standard" || c.kind === "preview") && typeof c.heard === "boolean" && integer(c.dailyNumber, 1) && integer(c.clipStart) && puzzleAttempts(c.attempts, false, c.dailyNumber)) if (c.heard || c.attempts.length === 0) result.classic = {
+		kind: c.kind,
+		dailyNumber: c.dailyNumber,
+		clipStart: c.clipStart,
+		heard: c.heard,
+		attempts: c.attempts.map((a) => ({ ...a }))
+	};
+	else valid = false;
+	else valid = false;
 	const records = parseRecords(value.records);
 	result.records = records.records;
 	if (!records.valid) valid = false;
@@ -486,6 +484,7 @@ function serialize(data) {
 			attempts: attempts(data.daily.attempts)
 		},
 		classic: data.classic && {
+			kind: data.classic.kind,
 			heard: data.classic.heard,
 			dailyNumber: data.classic.dailyNumber,
 			clipStart: data.classic.clipStart,
@@ -504,25 +503,21 @@ var SaveWriter = class {
 	storage;
 	canWrite;
 	ownershipNotice;
-	failure = null;
-	get dirty() {
-		return this.failure !== null || this.readOnly || !this.canWrite();
-	}
+	status = "ok";
 	get notice() {
-		if (this.readOnly) return "THIS SAVE WAS CREATED BY A DIFFERENT VERSION. EXISTING PROGRESS IS PROTECTED; THIS TAB WILL NOT SAVE.";
+		if (this.status === "unsupported-version") return "THIS SAVE WAS CREATED BY A DIFFERENT VERSION. EXISTING PROGRESS IS PROTECTED; THIS TAB WILL NOT SAVE.";
 		if (!this.canWrite()) return this.ownershipNotice() || "THIS TAB WILL NOT SAVE. RELOAD TO RETRY.";
-		if (this.failure === "read") return "SAVED PROGRESS COULD NOT BE READ. THIS TAB WILL NOT SAVE. RELOAD TO RETRY.";
-		if (this.failure === "corrupt") return "SAVED PROGRESS WAS CORRUPTED. NEW PROGRESS WILL REPLACE IT.";
-		return this.failure === "write" ? "PROGRESS COULD NOT BE SAVED. KEEP THIS TAB OPEN; SAVING WILL BE RETRIED WHEN PROGRESS CHANGES." : "";
+		if (this.status === "read-failed") return "SAVED PROGRESS COULD NOT BE READ. THIS TAB WILL NOT SAVE. RELOAD TO RETRY.";
+		if (this.status === "corrupt") return "SAVED PROGRESS WAS CORRUPTED. NEW PROGRESS WILL REPLACE IT.";
+		return this.status === "write-failed" ? "PROGRESS COULD NOT BE SAVED. KEEP THIS TAB OPEN; SAVING WILL BE RETRIED WHEN PROGRESS CHANGES." : "";
 	}
-	readOnly = false;
 	constructor(storage = browserStorage(), canWrite = () => true, ownershipNotice = () => "") {
 		this.storage = storage;
 		this.canWrite = canWrite;
 		this.ownershipNotice = ownershipNotice;
 	}
 	get unsupportedVersion() {
-		return this.readOnly;
+		return this.status === "unsupported-version";
 	}
 	load() {
 		let raw;
@@ -530,41 +525,39 @@ var SaveWriter = class {
 			if (!this.storage) throw new Error("Storage unavailable");
 			raw = this.storage.getItem(saveKey);
 		} catch {
-			this.failure = "read";
+			this.status = "read-failed";
 			return defaults();
 		}
 		if (raw === null) {
-			this.readOnly = false;
-			this.failure = null;
+			this.status = "ok";
 			return defaults();
 		}
 		try {
 			const value = JSON.parse(raw);
-			this.readOnly = record(value) && "version" in value && value.version !== 1;
-			if (this.readOnly) {
-				this.failure = null;
+			if (record(value) && "version" in value && value.version !== 1) {
+				this.status = "unsupported-version";
 				return defaults();
 			}
 			if (!record(value) || value.version !== 1) {
-				this.failure = "corrupt";
+				this.status = "corrupt";
 				return defaults();
 			}
 			const parsed = parseSaveV1(value);
-			this.failure = parsed.valid ? null : "corrupt";
+			this.status = parsed.valid ? "ok" : "corrupt";
 			return parsed.player;
 		} catch {
-			this.failure = "corrupt";
+			this.status = "corrupt";
 			return defaults();
 		}
 	}
 	write(data) {
+		if (this.status === "unsupported-version" || this.status === "read-failed" || !this.canWrite() || !this.storage) return false;
 		try {
-			if (this.readOnly || this.failure === "read" || !this.canWrite() || !this.storage) throw new Error("Storage unavailable");
 			this.storage.setItem(saveKey, JSON.stringify(serialize(data)));
-			this.failure = null;
+			this.status = "ok";
 			return true;
 		} catch {
-			if (this.failure !== "read") this.failure = "write";
+			this.status = "write-failed";
 			return false;
 		}
 	}
@@ -578,19 +571,27 @@ function browserStorage() {
 }
 var otherTab = "ANOTHER TAB IS SAVING YOUR PROGRESS. THIS TAB WILL NOT SAVE. CLOSE THE OTHER TAB AND RELOAD TO SAVE HERE.";
 var unavailable = "SAVING IS UNAVAILABLE IN THIS BROWSER CONTEXT. YOU CAN PLAY, BUT PROGRESS WILL NOT BE SAVED.";
+var released = "THIS TAB STOPPED SAVING. RELOAD TO ENABLE SAVING AGAIN.";
+function ownershipNotice(status) {
+	switch (status) {
+		case "writable": return "";
+		case "other-tab": return otherTab;
+		case "unavailable": return unavailable;
+		case "released": return released;
+	}
+}
 function claimSaveOwnership(manager) {
-	let writable = false, notice = unavailable, releaseLock = null;
+	let status = "unavailable", releaseLock = null;
 	const ownership = {
 		get writable() {
-			return writable;
+			return status === "writable";
 		},
 		get notice() {
-			return notice;
+			return ownershipNotice(status);
 		},
 		release() {
-			if (!writable && !releaseLock) return;
-			writable = false;
-			notice = "THIS TAB STOPPED SAVING. RELOAD TO ENABLE SAVING AGAIN.";
+			if (status === "released") return;
+			status = "released";
 			const release = releaseLock;
 			releaseLock = null;
 			release?.();
@@ -608,23 +609,22 @@ function claimSaveOwnership(manager) {
 		try {
 			manager.request(`${saveKey}:owner`, { ifAvailable: true }, (lock) => {
 				if (!lock) {
-					notice = otherTab;
+					status = "other-tab";
 					finish();
 					return;
 				}
-				writable = true;
-				notice = "";
+				status = "writable";
 				const held = new Promise((release) => {
 					releaseLock = release;
 				});
 				finish();
 				return held;
 			}).catch(() => {
-				if (!writable) notice = unavailable;
+				if (status !== "writable") status = "unavailable";
 				finish();
 			});
 		} catch {
-			notice = unavailable;
+			status = "unavailable";
 			finish();
 		}
 	});
@@ -660,8 +660,7 @@ var AudioPlayer = class {
 			generation: 0,
 			controller: null,
 			failed: false,
-			ready: false,
-			hasRequestedPlayback: false
+			ready: false
 		}));
 	}
 	setVolume(volume) {
@@ -669,16 +668,16 @@ var AudioPlayer = class {
 		for (const slot of this.slots) slot.element.volume = this.volume;
 	}
 	loadPrimary(round) {
-		if (!this.assign(round, "primary")) throw new Error("No audio slot is available for primary playback.");
+		this.assign(round, "primary");
 	}
 	loadPreload(round) {
-		if (!this.assign(round, "preload")) throw new Error("No audio slot is available for preloading.");
+		this.assign(round, "preload");
 	}
 	promotePreload(round) {
 		const slot = this.preloadSlot;
-		if (!slot || slot.round?.id !== round.id) return false;
-		const mediaError = slot.element.error;
-		if (slot.failed || mediaError) {
+		if (!slot || slot.round?.id !== round.id) throw new Error("Promoted round does not own the preload slot.");
+		if (slot.failed) throw new Error("The preload role cannot own a failed slot.");
+		if (slot.element.error) {
 			this.preloadSlot = null;
 			slot.failed = true;
 			this.releaseSlot(slot);
@@ -688,7 +687,6 @@ var AudioPlayer = class {
 		const previous = this.primarySlot;
 		this.primarySlot = slot;
 		this.preloadSlot = null;
-		slot.hasRequestedPlayback = false;
 		this.operation = null;
 		if (previous && previous !== slot) {
 			this.lastPrimarySlotId = previous.id;
@@ -698,12 +696,13 @@ var AudioPlayer = class {
 	}
 	playPrimary(round, restart) {
 		const slot = this.primarySlot;
-		if (!slot || slot.round?.id !== round.id || slot.failed || this.suspension) return false;
+		if (!slot || slot.round?.id !== round.id) throw new Error("Played round does not own the primary slot.");
+		if (this.suspension) throw new Error("Suspended audio cannot start playback.");
+		if (slot.failed) return false;
 		const operation = {
 			id: ++this.nextOperationId,
 			phase: "starting"
 		};
-		slot.hasRequestedPlayback = true;
 		this.operation = operation;
 		if (restart) {
 			slot.element.pause();
@@ -732,12 +731,12 @@ var AudioPlayer = class {
 	}
 	rewindPrimary(round) {
 		const slot = this.primarySlot;
-		if (!slot || slot.round?.id !== round.id || slot.failed || this.suspension) return false;
+		if (!slot || slot.round?.id !== round.id) throw new Error("Rewound round does not own the primary slot.");
+		if (slot.failed || this.suspension || !this.operation || !this.isCurrentPlaybackOperation(slot, this.operation)) throw new Error("Rewind requires active primary playback.");
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
 		slot.element.pause();
 		this.seek(slot, true);
-		return true;
 	}
 	pause() {
 		this.cancelPlaybackWatchdog();
@@ -755,6 +754,9 @@ var AudioPlayer = class {
 		this.primarySlot = null;
 		this.suspension = null;
 		this.releaseSlot(slot);
+	}
+	releasePreload() {
+		this.discardPreload();
 	}
 	stop() {
 		this.cancelPlaybackWatchdog();
@@ -779,7 +781,7 @@ var AudioPlayer = class {
 		if (this.suspension) return;
 		this.suspension = {
 			primaryFailure: null,
-			preloadFailures: []
+			preloadFailure: null
 		};
 		this.cancelPlaybackWatchdog();
 		this.operation = null;
@@ -792,16 +794,9 @@ var AudioPlayer = class {
 		const suspension = this.suspension;
 		this.suspension = null;
 		if (!suspension) return;
-		for (const failure of suspension.preloadFailures) onFailure(failure);
+		if (suspension.preloadFailure) onFailure(suspension.preloadFailure);
 		if (suspension.primaryFailure) onFailure(suspension.primaryFailure);
-		if (this.primarySlot?.ready && !this.primarySlot.failed && this.primarySlot.round) this.callbacks.onReady?.({
-			channel: "primary",
-			round: this.primarySlot.round
-		});
-		if (this.preloadSlot?.ready && !this.preloadSlot.failed && this.preloadSlot.round) this.callbacks.onReady?.({
-			channel: "preload",
-			round: this.preloadSlot.round
-		});
+		if (this.primarySlot?.ready && !this.primarySlot.failed && this.primarySlot.round) this.callbacks.onPrimaryReady?.(this.primarySlot.round);
 	}
 	primaryStatus(round) {
 		if (this.primarySlot?.round?.id !== round.id) return null;
@@ -817,7 +812,7 @@ var AudioPlayer = class {
 		}
 		const protectedSlot = channel === "primary" ? this.preloadSlot : this.primarySlot;
 		const existing = channel === "primary" ? this.primarySlot : this.preloadSlot;
-		if (existing?.round?.id === round.id && !existing.failed) return true;
+		if (existing?.round?.id === round.id && !existing.failed) throw new Error(`A healthy ${channel} round cannot be assigned twice.`);
 		if (existing) {
 			if (channel === "primary") this.primarySlot = null;
 			else this.preloadSlot = null;
@@ -825,13 +820,12 @@ var AudioPlayer = class {
 		}
 		const candidates = this.slots.filter((slot) => slot !== protectedSlot);
 		const slot = candidates.find((candidate) => candidate.id !== this.lastPrimarySlotId) ?? candidates[0] ?? null;
-		if (!slot) return false;
-		if (slot.round) this.releaseSlot(slot);
+		if (!slot) throw new Error(`No audio slot is available for ${channel} playback.`);
+		if (slot.round) throw new Error("An unassigned audio slot cannot own a round.");
 		slot.round = round;
 		slot.generation = ++this.generation;
 		slot.failed = false;
 		slot.ready = false;
-		slot.hasRequestedPlayback = false;
 		if (channel === "primary") this.primarySlot = slot;
 		else this.preloadSlot = slot;
 		this.bind(slot);
@@ -840,17 +834,16 @@ var AudioPlayer = class {
 		slot.element.load();
 		if (slot.element.error) {
 			this.fail(slot, channel === "primary" ? "primary-load" : "preload-load");
-			return false;
+			return;
 		}
 		if (slot.element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.markReady(slot);
-		return true;
 	}
 	bind(slot) {
 		const controller = new AbortController();
 		const generation = slot.generation;
 		const round = slot.round;
 		slot.controller = controller;
-		if (!round) return;
+		if (!round) throw new Error("A bound audio slot requires a round.");
 		const live = () => this.isLive(slot, generation, round.id);
 		slot.element.addEventListener("loadedmetadata", () => {
 			if (live()) this.seek(slot);
@@ -914,7 +907,9 @@ var AudioPlayer = class {
 		}, { signal: controller.signal });
 		slot.element.addEventListener("error", () => {
 			if (!live() || !slot.element.error) return;
-			const stage = (slot === this.preloadSlot ? "preload" : "primary") === "preload" ? "preload-load" : slot.hasRequestedPlayback ? "primary-play" : "primary-load";
+			const currentChannel = slot === this.preloadSlot ? "preload" : "primary";
+			const activelyRequested = this.operation !== null && this.isCurrentPlaybackOperation(slot, this.operation);
+			const stage = currentChannel === "preload" ? "preload-load" : activelyRequested ? "primary-play" : "primary-load";
 			this.fail(slot, stage);
 		}, { signal: controller.signal });
 	}
@@ -939,10 +934,7 @@ var AudioPlayer = class {
 		if (slot.ready || slot.failed || !slot.round) return;
 		slot.ready = true;
 		this.seek(slot);
-		if (!this.suspension) this.callbacks.onReady?.({
-			channel: slot === this.preloadSlot ? "preload" : "primary",
-			round: slot.round
-		});
+		if (!this.suspension && slot === this.primarySlot) this.callbacks.onPrimaryReady?.(slot.round);
 	}
 	fail(slot, stage) {
 		if (slot.failed || !slot.round) return;
@@ -966,7 +958,7 @@ var AudioPlayer = class {
 			this.callbacks.onFailure(failure);
 			return;
 		}
-		if (failure.stage === "preload-load") this.suspension.preloadFailures.push(failure);
+		if (failure.stage === "preload-load") this.suspension.preloadFailure = failure;
 		else this.suspension.primaryFailure = failure;
 	}
 	startPlaybackWatchdog(slot, operation) {
@@ -1023,7 +1015,6 @@ var AudioPlayer = class {
 		slot.round = null;
 		slot.failed = false;
 		slot.ready = false;
-		slot.hasRequestedPlayback = false;
 	}
 };
 function isNamedError(error, name) {
@@ -1185,7 +1176,7 @@ var DailySchedule = class {
 	countdownTimer = 0;
 	nextBoundaryAt = 0;
 	countdownTick = null;
-	currentDate = "";
+	currentDate;
 	get date() {
 		return this.currentDate;
 	}
@@ -1195,18 +1186,15 @@ var DailySchedule = class {
 	constructor(onDateChanged, runtime = browserRuntime) {
 		this.onDateChanged = onDateChanged;
 		this.runtime = runtime;
-	}
-	current() {
-		return this.currentDate || (this.currentDate = dailyDate(new Date(this.runtime.now())));
+		this.currentDate = dailyDate(new Date(this.runtime.now()));
 	}
 	start() {
 		this.currentDate = dailyDate(new Date(this.runtime.now()));
 		this.scheduleNextBoundary();
-		return this.currentDate;
 	}
 	startCountdown(onTick) {
+		if (!this.nextBoundaryAt) throw new Error("Daily countdown requires a scheduled boundary.");
 		this.countdownTick = onTick;
-		if (!this.nextBoundaryAt) return;
 		this.emitCountdown();
 	}
 	stopCountdown() {
@@ -1277,7 +1265,6 @@ function emptyRounds(previous = null) {
 		failed: /* @__PURE__ */ new Set(),
 		previous,
 		currentFailures: 0,
-		nextFailures: 0,
 		exhausted: false
 	};
 }
@@ -1307,7 +1294,7 @@ function newRun(mode, date, state) {
 		};
 		case "classic": return {
 			mode,
-			resumeChoice: state.player.classic !== null,
+			resumeChoice: state.player.classic?.heard === true,
 			finished: null
 		};
 		case "blitz":
@@ -1331,7 +1318,7 @@ function newRun(mode, date, state) {
 }
 function dailyUnavailable(state) {
 	if (state.run.mode !== "daily") return false;
-	const catalog = state.catalog?.tracks ?? [];
+	const catalog = state.catalog;
 	const saved = state.player.daily;
 	if (saved?.date === state.run.date && !puzzleCompleted(saved.attempts)) return !isDailyTrackAvailable(catalog, state.run.date, saved.dailyNumber);
 	return !selectDailyTrack(catalog, state.run.date, null);
@@ -1344,12 +1331,14 @@ function initialClockMs(mode) {
 }
 function validClassic(state) {
 	const saved = state.player.classic;
-	const track = state.catalog?.tracks.find((t) => t.dailyNumber === saved?.dailyNumber);
+	const track = state.catalog.find((t) => t.dailyNumber === saved?.dailyNumber);
 	return !!saved && !!track && saved.clipStart <= maximumClipStart(track, maxPuzzleSnippetSeconds);
 }
+function classicRoundKind(track, date) {
+	return isReleasedBy(track, date) ? "standard" : "preview";
+}
 function chooseRound(state, id, avoid, random) {
-	const { run, player, rounds } = state;
-	const catalog = state.catalog?.tracks ?? [];
+	const { run, catalog, player, rounds } = state;
 	if (run.mode === null) return null;
 	if (run.mode === "daily") {
 		if (dailyUnavailable(state)) return null;
@@ -1383,58 +1372,83 @@ function complete(state, elapsedMs) {
 	const run = state.run;
 	const records = state.player.records;
 	switch (run.mode) {
-		case null: return;
-		case "daily":
+		case null: throw new Error("Completion requires an active game mode");
+		case "daily": {
+			const challenge = state.player.daily;
+			if (!challenge || challenge.date !== run.date || !puzzleCompleted(challenge.attempts)) throw new Error("Daily completion requires a completed current challenge");
 			run.finished = true;
 			return;
+		}
 		case "classic": {
 			const challenge = state.player.classic;
-			if (!challenge) throw new Error("Classic completion requires its challenge");
-			const result = updateClassicBest(records, challenge.attempts[0]?.outcome === "correct", challenge.attempts.length - 1);
-			run.finished = {
-				challenge: {
-					dailyNumber: challenge.dailyNumber,
-					attempts: challenge.attempts
-				},
-				newPersonalBest: result.newPersonalBest,
-				streak: result.streak,
-				average: result.average
+			if (!challenge || !puzzleCompleted(challenge.attempts)) throw new Error("Classic completion requires a completed challenge");
+			const result = challenge.kind === "preview" ? {
+				newPersonalBest: false,
+				streak: records.classic.current,
+				average: records.classic.current ? records.classic.snippetTotal / records.classic.current : 0
+			} : updateClassicBest(records, challenge.attempts[0]?.outcome === "correct", challenge.attempts.length - 1);
+			state.run = {
+				mode: "classic",
+				resumeChoice: false,
+				finished: {
+					challenge: {
+						kind: challenge.kind,
+						dailyNumber: challenge.dailyNumber,
+						attempts: challenge.attempts
+					},
+					newPersonalBest: result.newPersonalBest,
+					streak: result.streak,
+					average: result.average
+				}
 			};
 			state.player.classic = null;
 			return;
 		}
 		case "blitz": {
+			if (!run.engaged) throw new Error("Blitz completion requires an engaged run");
 			const correct = run.attempts.filter((a) => a.outcome === "correct").length;
 			run.finished = { newPersonalBest: updateBlitzBest(records, correct, accuracy(correct, run.attempts.length)) };
 			return;
 		}
 		case "gauntlet": {
+			if (!run.engaged) throw new Error("Gauntlet completion requires an engaged run");
 			const time = Math.floor(elapsedMs / 1e3) * 1e3;
 			run.finished = {
 				elapsedMs: time,
-				newPersonalBest: updateGauntletBest(records, found(run.attempts).size >= (state.catalog?.tracks.length ?? 0), time, state.catalog?.tracks.length ?? 0)
+				newPersonalBest: updateGauntletBest(records, gauntletCompleted({
+					completedTracks: found(run.attempts).size,
+					catalogTrackCount: state.catalog.length
+				}), time, state.catalog.length)
 			};
 			return;
 		}
 		case "seek":
-			run.finished = { newPersonalBest: updateSeekBest(records, seekScore(run.answers)) };
+			if (!run.engaged || run.phase.kind !== "revealed" || run.answers.length !== modeRules.seek.roundCount) throw new Error("Seek completion requires every round to be revealed");
+			state.run = {
+				mode: "seek",
+				engaged: true,
+				answers: run.answers,
+				phase: { kind: "revealed" },
+				finished: { newPersonalBest: updateSeekBest(records, seekScore(run.answers)) }
+			};
 			return;
 	}
 }
 function interactions(state, loading) {
 	const { run, rounds, player } = state;
-	const ready = state.catalog !== null && run.mode !== null && state.overlay.kind === "none" && !loading;
+	const ready = state.catalog.length > 0 && run.mode !== null && state.overlay.kind === "none" && !loading;
 	const complete = finished(state);
-	const retry = rounds.current?.phase === "retry" || rounds.exhausted;
+	const roundRetry = rounds.current?.phase === "retry";
+	const technicallyBlocked = roundRetry || rounds.exhausted;
 	const heard = rounds.current?.phase === "heard";
-	const interact = ready && heard && !retry && !complete;
+	const interact = ready && heard && !technicallyBlocked && !complete;
 	const selecting = run.mode !== "seek" || run.phase.kind === "selecting";
 	const guess = interact && run.mode !== "seek";
 	const dailyLocked = run.mode === "daily" && (dailyCompleted(player.daily, run.date) || dailyUnavailable(state));
 	return {
 		play: ready && !complete && !dailyLocked && selecting,
 		guess,
-		action: run.mode === "classic" && (run.resumeChoice || retry) ? ready : run.mode === "seek" ? ready && !complete && (run.phase.kind === "revealed" || interact && run.phase.kind === "selecting" && run.phase.second !== null) : guess,
+		action: run.mode === "classic" && (run.resumeChoice || roundRetry) ? ready : run.mode === "seek" ? ready && !complete && (run.phase.kind === "revealed" || interact && run.phase.kind === "selecting" && run.phase.second !== null) : guess,
 		position: run.mode === "seek" && interact && selecting
 	};
 }
@@ -1552,8 +1566,10 @@ function blitzAnswer(previous, answer) {
 }
 function gauntletAnswer(previous, answer, catalogCount) {
 	const attempts = [answer, ...previous];
-	const found = new Set(attempts.filter((a) => a.outcome === "correct").map((a) => a.trackNumber));
-	const complete = answer.outcome === "correct" && found.size === catalogCount;
+	const complete = gauntletCompleted({
+		completedTracks: new Set(attempts.filter((a) => a.outcome === "correct").map((a) => a.trackNumber)).size,
+		catalogTrackCount: catalogCount
+	});
 	return {
 		attempts,
 		complete,
@@ -1597,8 +1613,12 @@ function composeResultViewModel(result, persistenceFailed, attempts = []) {
 function resultModules(result) {
 	if (result.mode === "daily") return [trackModule(result.trackTitle), runModule("TODAY'S SCORE", [formatAttempts(result.attempts), "ATTEMPTS"])];
 	if (result.mode === "classic") {
-		const run = [String(result.streak), `AVERAGE SNIPPET ${formatAverage(result.average)}`];
-		return [trackModule(result.trackTitle), runModule(result.won ? "CURRENT STREAK" : "STREAK ENDED", run, result.newPersonalBest)];
+		const run = result.kind === "preview" ? [
+			String(result.streak),
+			"STREAK UNCHANGED",
+			`AVERAGE SNIPPET ${formatAverage(result.average)}`
+		] : [String(result.streak), `AVERAGE SNIPPET ${formatAverage(result.average)}`];
+		return [trackModule(result.trackTitle), runModule(result.kind === "preview" ? "PREVIEW ROUND" : result.won ? "CURRENT STREAK" : "STREAK ENDED", run, result.newPersonalBest)];
 	}
 	if (result.mode === "blitz") return [runModule("RUN SCORE", [
 		String(result.correct),
@@ -1620,7 +1640,6 @@ function resultOutcome(result, attempts) {
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
 function puzzleResultMessage(result, attempts) {
-	if (result.mode !== "daily" && result.mode !== "classic") return "";
 	if (result.won) return "YOU GOT IT";
 	return attempts[0]?.outcome === "skip" ? "YOU GAVE UP" : "YOU GOT IT ALL WRONG";
 }
@@ -1679,34 +1698,38 @@ function boardResetViewModel(state) {
 }
 function resultFor(state) {
 	const { run } = state;
-	const catalog = state.catalog?.tracks ?? [];
+	const catalog = state.catalog;
 	if (!finished(state)) return null;
 	const values = attempts(state);
 	switch (run.mode) {
 		case "daily": {
 			const progress = state.player.daily;
 			const track = progress?.date === run.date ? catalog.find((candidate) => candidate.dailyNumber === progress.dailyNumber) : null;
-			return track ? {
+			if (!track) throw new Error("A completed Daily requires its catalog track");
+			return {
 				mode: "daily",
 				won: values[0]?.outcome === "correct",
 				trackTitle: track.title,
 				attempts: values.length
-			} : null;
+			};
 		}
 		case "classic": {
-			if (!run.finished) return null;
+			if (!run.finished) throw new Error("A completed Classic requires completion facts");
 			const track = catalog.find((candidate) => candidate.dailyNumber === run.finished.challenge.dailyNumber);
-			return track ? {
+			if (!track) throw new Error("A completed Classic requires its catalog track");
+			return {
 				mode: "classic",
+				kind: run.finished.challenge.kind,
 				won: values[0]?.outcome === "correct",
 				trackTitle: track.title,
 				spotify: track.spotify,
 				newPersonalBest: run.finished.newPersonalBest,
 				streak: run.finished.streak,
 				average: run.finished.average
-			} : null;
+			};
 		}
 		case "blitz": {
+			if (!run.finished) throw new Error("A completed Blitz requires completion facts");
 			const correct = values.filter((a) => a.outcome === "correct").length;
 			return {
 				mode: "blitz",
@@ -1715,39 +1738,54 @@ function resultFor(state) {
 				newPersonalBest: run.finished.newPersonalBest
 			};
 		}
-		case "gauntlet": return {
-			mode: "gauntlet",
-			completedTracks: found(values).size,
-			catalogTrackCount: catalog.length,
-			elapsedMs: run.finished.elapsedMs,
-			newPersonalBest: run.finished.newPersonalBest
-		};
-		case "seek": return {
-			mode: "seek",
-			newPersonalBest: run.finished.newPersonalBest,
-			score: run.answers.reduce((total, answer) => total + seekAttemptPoints(answer), 0)
-		};
-		case null: return null;
+		case "gauntlet":
+			if (!run.finished) throw new Error("A completed Gauntlet requires completion facts");
+			return {
+				mode: "gauntlet",
+				completedTracks: found(values).size,
+				catalogTrackCount: catalog.length,
+				elapsedMs: run.finished.elapsedMs,
+				newPersonalBest: run.finished.newPersonalBest
+			};
+		case "seek":
+			if (!run.finished) throw new Error("A completed Seek requires completion facts");
+			return {
+				mode: "seek",
+				newPersonalBest: run.finished.newPersonalBest,
+				score: run.answers.reduce((total, answer) => total + seekAttemptPoints(answer), 0)
+			};
+		case null: throw new Error("A completed result requires an active game mode");
 	}
 }
 function present(state, facts) {
 	const { run, player, rounds } = state;
-	const catalog = state.catalog?.tracks ?? [];
+	const catalog = state.catalog;
 	const mode = run.mode;
-	const round = rounds.current?.phase !== "prepared" ? rounds.current?.round ?? null : null;
-	const retry = rounds.current?.phase === "retry" || rounds.exhausted;
+	const resolvedSeekAnswer = run.mode === "seek" && run.phase.kind !== "selecting" ? run.answers[0] : null;
+	if (run.mode === "seek" && run.phase.kind !== "selecting" && !resolvedSeekAnswer) throw new Error("A resolved Seek phase requires its current answer");
+	const seekPosition = resolvedSeekAnswer ? {
+		selectedSecond: resolvedSeekAnswer.guessedSecond,
+		actualSecond: resolvedSeekAnswer.actualSecond
+	} : {
+		selectedSecond: run.mode === "seek" && run.phase.kind === "selecting" ? run.phase.second : null,
+		actualSecond: null
+	};
+	const round = rounds.current?.phase !== "unheard" || facts.requested ? rounds.current?.round ?? null : null;
+	const roundRetry = rounds.current?.phase === "retry";
+	const technicallyBlocked = roundRetry || rounds.exhausted;
 	const values = attempts(state);
 	const completed = finished(state);
 	const date = run.mode === "daily" ? run.date : facts.date;
 	const doneDaily = mode === "daily" && dailyCompleted(player.daily, date);
 	const attempt = Math.min(puzzleAttemptCount - 1, completed || doneDaily ? Math.max(0, values.length - 1) : values.length);
 	const overlay = state.overlay.kind === "none" ? null : state.overlay.kind;
-	const appStatus = state.catalog ? mode ? "ready" : "awaiting-mode" : state.catalogPhase === "error" ? "error" : "loading";
+	const appStatus = state.catalog.length ? mode ? "ready" : "awaiting-mode" : state.catalogPhase === "error" ? "error" : "loading";
 	const unavailable = mode === "daily" && dailyUnavailable(state);
 	const allowed = interactions(state, facts.loading);
-	const inputVisible = mode !== "seek" && !!round && !completed && !retry;
+	const inputVisible = mode !== "seek" && !!round && !completed && !technicallyBlocked;
 	const resume = run.mode === "classic" && run.resumeChoice;
-	const forfeit = run.mode === "classic" && (resume || retry);
+	const preview = run.mode === "classic" && (run.finished?.challenge.kind ?? player.classic?.kind) === "preview";
+	const forfeit = run.mode === "classic" && (resume || roundRetry);
 	const duration = isTimedMode(mode) ? null : mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(attempt);
 	const result = resultFor(state);
 	let rules = mode ? modeRules[mode].description : copy.modePrompt;
@@ -1761,11 +1799,12 @@ function present(state, facts) {
 		].map((n) => String(n).padStart(2, "0")).join(":");
 		rules = `${dailyWon(player.daily, date) ? "COMPLETED" : "FAILED"} IN ${values.length} ATTEMPT${values.length === 1 ? "" : "S"}, COME BACK IN ${count}`;
 	} else if (appStatus === "loading") rules = state.catalogPhase === "loading" ? copy.loadingCatalog : copy.modePrompt;
-	else if (resume) rules = "PRESS PLAY TO CONTINUE OR GIVE UP THE CURRENT ROUND";
 	else if (rounds.exhausted) rules = copy.trackPoolExhausted;
-	else if (retry) rules = copy.trackError;
+	else if (roundRetry) rules = copy.trackError;
+	else if (resume) rules = preview ? "PREVIEW ROUND · PRESS PLAY TO CONTINUE OR GIVE UP · STREAK SAFE" : "PRESS PLAY TO CONTINUE OR GIVE UP THE CURRENT ROUND";
+	else if (preview) rules = "PREVIEW ROUND · STREAK SAFE";
 	else if (run.mode === "seek") {
-		if (run.phase.kind !== "selecting" && run.answers[0]) rules = seekFeedback(run.answers[0]).join(" · ");
+		if (resolvedSeekAnswer) rules = seekFeedback(resolvedSeekAnswer).join(" · ");
 		else if (round) rules = "PLACE YOUR GUESS ON THE TIMELINE";
 	} else if (mode === "daily") {
 		if (unavailable) rules = copy.trackUnavailable;
@@ -1802,12 +1841,15 @@ function present(state, facts) {
 			text: completed ? mode === "gauntlet" && left === 0 ? "GAUNTLET COMPLETE" : "TIME'S UP" : mode === "gauntlet" ? `${left} ${left === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${values.length + 1}`,
 			tone: completed ? "neutral" : "prompt"
 		};
-	} else if (isPuzzleMode(mode) && !completed && !doneDaily && (round || values.length)) head = {
-		id: attempt + 1,
-		text: attempt === puzzleAttemptCount - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${puzzleAttemptCount}`,
-		tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
-	};
-	if (retry && head) head = {
+	} else if (isPuzzleMode(mode) && !completed && !doneDaily && (round || values.length)) {
+		const prompt = attempt === puzzleAttemptCount - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${puzzleAttemptCount}`;
+		head = {
+			id: attempt + 1,
+			text: preview ? `PREVIEW ROUND · ${prompt}` : prompt,
+			tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
+		};
+	}
+	if (technicallyBlocked && head) head = {
 		...head,
 		text: rounds.exhausted ? copy.trackPoolExhausted : copy.trackError,
 		tone: "technical"
@@ -1854,11 +1896,11 @@ function present(state, facts) {
 			roundId: round.id,
 			phase: run.phase.kind,
 			maximumSecond: maximumClipStart(round.track, modeRules.seek.snippetSeconds),
-			selectedSecond: run.phase.kind === "selecting" ? run.phase.second : run.answers[0]?.guessedSecond ?? null,
-			actualSecond: run.phase.kind === "selecting" ? null : run.answers[0]?.actualSecond ?? null,
+			selectedSecond: seekPosition.selectedSecond,
+			actualSecond: seekPosition.actualSecond,
 			interactionEnabled: allowed.position
 		} : null,
-		result: composeResultViewModel(result, facts.unsaved, values),
+		result: composeResultViewModel(result, !!facts.saveNotice, values),
 		dailyProgress: structuredClone(player.daily),
 		personalBests: structuredClone(player.records),
 		dailyDate: date,
@@ -1878,34 +1920,30 @@ var Application = class {
 	calendar;
 	queue = [];
 	processing = false;
+	session = 0;
 	nextRound = 0;
-	nextClose = 0;
 	loadingTimer = 0;
 	loadingGeneration = 0;
 	loading = false;
-	volumeWarning = false;
 	focusAfterTransition = null;
 	announcements = [];
-	started = false;
 	random;
 	constructor(options) {
 		this.options = options;
 		this.random = options.random ?? Math.random;
 		this.active = {
 			player: structuredClone(options.player),
-			catalog: null,
+			catalog: [],
 			catalogPhase: "quiet",
 			run: { mode: null },
 			rounds: emptyRounds(),
 			overlay: { kind: "none" },
-			visible: options.visible,
-			epoch: 0
+			visible: options.visible
 		};
 		this.calendar = options.services.createCalendar((date) => this.dispatch({
 			type: "day",
 			date
 		}));
-		this.calendar.current();
 		this.clock = options.services.createClock({
 			onTick: (clock) => {
 				if (!this.processing && this.active.run.mode !== "seek") options.view.renderClock(composeClockViewModel({
@@ -1917,9 +1955,9 @@ var Application = class {
 			onExpired: () => this.dispatch({ type: "expired" })
 		});
 		this.audio = options.services.createAudio({
-			onReady: (event) => this.dispatch({
-				type: "ready",
-				event
+			onPrimaryReady: (round) => this.dispatch({
+				type: "primary-ready",
+				round
 			}),
 			onPlaying: (round) => this.dispatch({
 				type: "playing",
@@ -1953,7 +1991,6 @@ var Application = class {
 				mode
 			}),
 			play: () => this.dispatch({ type: "play" }),
-			playbackShortcut: () => this.dispatch({ type: "play" }),
 			skip: () => this.dispatch({ type: "skip" }),
 			guess: (trackId) => this.dispatch({
 				type: "guess",
@@ -1967,29 +2004,16 @@ var Application = class {
 				type: "reveal",
 				roundId
 			}),
-			positionResetComplete: (roundId) => this.dispatch({
-				type: "position-reset",
-				roundId
-			}),
 			openDiscovery: () => this.dispatch({ type: "progress" }),
 			closeDiscovery: () => this.dispatch({ type: "close-progress" }),
 			startGauntlet: () => this.dispatch({ type: "gauntlet" }),
 			resultAction: () => this.dispatch({ type: "close-result" }),
-			discoveryClosed: (id) => this.dispatch({
-				type: "closed",
-				id
-			}),
-			resultClosed: (id) => this.dispatch({
-				type: "closed",
-				id
-			}),
 			setVolume: (value, committed) => this.dispatch({
 				type: "volume",
 				value,
 				committed
 			}),
-			openSpotify: () => this.dispatch({ type: "spotify" }),
-			openDiscoverySpotify: (trackId) => this.dispatch({
+			openSpotify: (trackId) => this.dispatch(trackId === void 0 ? { type: "spotify" } : {
 				type: "spotify",
 				trackId
 			}),
@@ -1997,8 +2021,6 @@ var Application = class {
 		});
 	}
 	start() {
-		if (this.started) return;
-		this.started = true;
 		this.render();
 		const source = this.options.services.catalog;
 		let retryDelay = 5e3;
@@ -2019,11 +2041,11 @@ var Application = class {
 				this.options.services.timers.clearTimeout(notice);
 				this.options.services.timers.clearTimeout(deadline);
 			};
-			Promise.race([source.load(controller.signal), timeout]).then((catalog) => {
+			Promise.race([source.load(controller.signal), timeout]).then((tracks) => {
 				clearAttempt();
 				this.dispatch({
 					type: "catalog",
-					catalog
+					tracks
 				});
 			}, (error) => {
 				clearAttempt();
@@ -2065,21 +2087,20 @@ var Application = class {
 		const current = s.rounds.current;
 		switch (event.type) {
 			case "catalog":
-				if (s.catalog) return;
-				s.catalog = event.catalog;
+				if (s.catalog.length) return;
+				s.catalog = event.tracks;
 				s.catalogPhase = "quiet";
 				this.validateRestore();
 				this.prime();
 				if (s.overlay.kind === "none") this.focusAfterTransition = "focusAfterCatalogReady";
 				return;
 			case "catalog-status":
-				if (s.catalog) return;
+				if (s.catalog.length) return;
 				s.catalogPhase = event.phase;
 				this.announce(event.phase === "error" ? copy.catalogError : copy.loadingCatalog);
 				return;
 			case "mode":
-				if (s.overlay.kind !== "none" || run.mode === event.mode || s.catalogPhase === "error" && !s.catalog) return;
-				if (event.mode === "gauntlet") return;
+				if (s.overlay.kind !== "none" || run.mode === event.mode || s.catalogPhase === "error" && !s.catalog.length) return;
 				this.reset(event.mode);
 				this.announce(modeRules[event.mode].description);
 				this.focusAfterTransition = "focusAfterModeSelected";
@@ -2090,7 +2111,7 @@ var Application = class {
 			case "guess": {
 				if (!interactions(s, this.loading).guess || run.mode === "seek") return;
 				if (isPuzzleMode(run.mode) && attempts(s).some((a) => a.trackNumber === event.trackId)) return;
-				const track = s.catalog?.tracks.find((t) => t.dailyNumber === event.trackId);
+				const track = s.catalog.find((t) => t.dailyNumber === event.trackId);
 				if (track && current) this.answer({
 					outcome: track.dailyNumber === current.round.track.dailyNumber ? "correct" : "wrong",
 					trackNumber: track.dailyNumber
@@ -2098,17 +2119,18 @@ var Application = class {
 				return;
 			}
 			case "skip":
-				if (run.mode === "classic" && run.resumeChoice && interactions(s, this.loading).action) {
-					s.player.classic = null;
-					updateClassicBest(s.player.records, false, 0);
-					this.save();
-					this.reset("classic");
-					this.announce("PREVIOUS CLASSIC ROUND FORFEITED.");
-				} else if (run.mode === "classic" && current?.phase === "retry" && interactions(s, this.loading).action) {
+				if (run.mode === "classic" && current?.phase === "retry" && interactions(s, this.loading).action) {
 					s.player.classic = null;
 					this.save();
 					this.reset("classic");
 					this.announce("UNPLAYABLE CLASSIC ROUND REPLACED. YOUR STREAK WAS NOT AFFECTED.");
+				} else if (run.mode === "classic" && run.resumeChoice && interactions(s, this.loading).action) {
+					const preview = s.player.classic?.kind === "preview";
+					s.player.classic = null;
+					if (!preview) updateClassicBest(s.player.records, false, 0);
+					this.save();
+					this.reset("classic");
+					this.announce(preview ? "PREVIOUS PREVIEW ROUND FORFEITED. YOUR STREAK WAS NOT AFFECTED." : "PREVIOUS CLASSIC ROUND FORFEITED.");
 				} else if (run.mode === "seek") this.seekAction();
 				else if (interactions(s, this.loading).action) this.answer({
 					outcome: "skip",
@@ -2120,26 +2142,27 @@ var Application = class {
 				return;
 			case "reveal":
 				if (run.mode === "seek" && run.phase.kind === "revealing" && current?.round.id === event.roundId) {
-					run.phase = { kind: "revealed" };
-					this.announce(`${seekFeedback(run.answers[0]).join(". ")}.`);
+					const answer = run.answers[0];
+					if (!answer) throw new Error("A revealing Seek round requires its resolved answer");
+					s.run = {
+						...run,
+						phase: { kind: "revealed" }
+					};
+					this.announce(`${seekFeedback(answer).join(". ")}.`);
 					this.focusAfterTransition = "focusAttemptAction";
 				}
 				return;
-			case "position-reset":
-				if (run.mode === "seek" && run.phase.kind === "advancing" && current?.round.id === event.roundId) this.resumeSeekAdvance();
-				return;
-			case "ready":
+			case "primary-ready":
 				if (!this.unblocked()) return;
-				if (event.event.channel === "primary" && current?.round.id === event.event.round.id) this.prefetch();
-				if (event.event.channel === "preload" && s.rounds.next?.id === event.event.round.id) s.rounds.nextFailures = 0;
+				if (current?.round.id === event.round.id) this.prefetch(current);
 				return;
 			case "playing":
 				if (!this.unblocked() || !current || current.round.id !== event.round.id || finished(s)) return;
-				if (current.phase !== "pending" && current.phase !== "heard") return;
-				if (current.phase === "pending") {
+				if (current.phase !== "unheard" && current.phase !== "heard") return;
+				if (current.phase === "unheard") {
 					current.phase = "heard";
 					if (run.mode !== "daily") s.rounds.previous = current.round.track.dailyNumber;
-					if (run.mode !== "daily" && run.mode !== "classic") s.rounds.failed.clear();
+					if (run.mode !== null && !preservesFailedRound(run.mode, false)) s.rounds.failed.clear();
 					if (!isTimedMode(run.mode)) this.clock.restart(snippet(s) * 1e3);
 				}
 				if (run.mode === "classic" && s.player.classic && !s.player.classic.heard) {
@@ -2150,11 +2173,9 @@ var Application = class {
 					this.save();
 				}
 				s.rounds.currentFailures = 0;
-				s.rounds.nextFailures = 0;
-				s.rounds.exhausted = false;
 				this.clearLoading();
 				this.clock.start();
-				this.prefetch();
+				this.prefetch(current);
 				this.focusAfterTransition = "focusGuess";
 				return;
 			case "waiting":
@@ -2187,11 +2208,6 @@ var Application = class {
 			case "failed":
 				this.failure(event.failure, event.restored ?? false);
 				return;
-			case "recover":
-				if (event.epoch !== s.epoch || !this.unblocked() || finished(s)) return;
-				if (event.play) this.startRound();
-				else this.prime();
-				return;
 			case "loading":
 				if (event.generation === this.loadingGeneration && current?.round.id === event.id && this.requested()) {
 					this.loadingTimer = 0;
@@ -2210,56 +2226,48 @@ var Application = class {
 			case "progress":
 				this.calendar.reconcile();
 				if (s.overlay.kind === "discovery") {
-					this.close("resume");
+					this.closeDiscovery("resume");
 					return;
 				}
 				if (s.overlay.kind !== "none") return;
 				this.clock.pause();
 				this.clearLoading();
 				this.audio.suspend();
-				s.overlay = {
-					kind: "discovery",
-					pendingClose: null
-				};
+				s.overlay = { kind: "discovery" };
 				return;
 			case "close-progress":
-				if (s.overlay.kind === "discovery") this.close("resume");
+				if (s.overlay.kind === "discovery") this.closeDiscovery("resume");
 				return;
 			case "gauntlet":
-				if (s.overlay.kind === "discovery" && s.catalog && summarizeDiscovery(s.catalog.tracks, s.player.discoveries).complete) this.close("start-gauntlet");
+				if (s.overlay.kind === "discovery" && summarizeDiscovery(s.catalog, s.player.discoveries).complete) this.closeDiscovery("start-gauntlet");
 				return;
 			case "close-result":
-				if (s.overlay.kind === "result") this.close("close-result");
+				if (s.overlay.kind === "result") this.closeResult();
 				return;
-			case "closed": {
-				const overlay = s.overlay;
-				if (overlay.kind === "none") return;
-				const pendingClose = overlay.pendingClose;
-				if (!pendingClose || pendingClose.id !== event.id) return;
+			case "discovery-closed":
 				s.overlay = { kind: "none" };
-				if (overlay.kind === "discovery") {
-					if (overlay.pendingClose.outcome === "start-gauntlet") {
-						this.reset("gauntlet");
-						this.announce(modeRules.gauntlet.description);
-					} else if (s.visible) {
-						this.restore();
-						if (!this.resumeSeekAdvance()) this.prime();
-					}
-					this.focusAfterTransition = s.run.mode ? "focusPlay" : "focusProgress";
-				} else {
-					const disposition = overlay.pendingClose.disposition;
-					let dailyRecap = false;
-					if (disposition.kind === "daily-recap") {
-						if (s.run.mode !== "daily") throw new Error("Daily recap requires a Daily run");
-						s.run.finished = false;
-						s.rounds = emptyRounds();
-						if (s.run.date === this.calendar.date) {
-							this.startCountdown();
-							dailyRecap = true;
-						} else this.reset("daily");
-					} else this.reset(disposition.mode);
-					this.focusAfterTransition = dailyRecap ? "focusAfterModeSelected" : s.run.mode ? "focusPlay" : "focusProgress";
+				if (event.outcome === "start-gauntlet") {
+					this.reset("gauntlet");
+					this.announce(modeRules.gauntlet.description);
+				} else if (s.visible) {
+					this.restore();
+					this.prime();
 				}
+				this.focusAfterTransition = s.run.mode ? "focusPlay" : "focusProgress";
+				return;
+			case "result-closed": {
+				s.overlay = { kind: "none" };
+				let dailyRecap = false;
+				if (event.disposition.kind === "daily-recap") {
+					if (s.run.mode !== "daily") throw new Error("Daily recap requires a Daily run");
+					s.run.finished = false;
+					s.rounds = emptyRounds();
+					if (s.run.date === this.calendar.date) {
+						this.startCountdown();
+						dailyRecap = true;
+					} else this.reset("daily");
+				} else this.reset(event.disposition.mode);
+				this.focusAfterTransition = dailyRecap ? "focusAfterModeSelected" : s.run.mode ? "focusPlay" : "focusProgress";
 				return;
 			}
 			case "hidden":
@@ -2278,7 +2286,7 @@ var Application = class {
 				}
 				if (s.overlay.kind === "none") {
 					this.restore();
-					if (!this.resumeSeekAdvance()) this.prime();
+					this.prime();
 				}
 				return;
 			case "day":
@@ -2289,38 +2297,35 @@ var Application = class {
 				this.audio.setVolume(event.value / 100);
 				if (event.committed && Number.isInteger(event.value) && event.value >= 0 && event.value <= 100) {
 					s.player.volume = event.value;
-					if (this.options.storage.write(s.player)) this.volumeWarning = false;
-					else if (!this.volumeWarning) {
-						this.volumeWarning = true;
-						this.announce("VOLUME PREFERENCE COULD NOT BE SAVED IN THIS BROWSER.");
-					}
+					const persistenceAlreadyFailed = Boolean(this.options.storage.notice);
+					if (!this.options.storage.write(s.player) && !persistenceAlreadyFailed) this.announce("VOLUME PREFERENCE COULD NOT BE SAVED IN THIS BROWSER.");
 				}
 				return;
 			case "share": {
 				const result = resultFor(s);
 				if (result?.mode !== "daily" || run.mode !== "daily") return;
-				const epoch = s.epoch, date = run.date;
+				const session = this.session, date = run.date;
 				this.options.copy(formatDailyShare(date, result)).then((copied) => this.dispatch({
 					type: "shared",
-					epoch,
+					session,
 					date,
 					copied
 				}), () => this.dispatch({
 					type: "shared",
-					epoch,
+					session,
 					date,
 					copied: false
 				}));
 				return;
 			}
 			case "shared":
-				if (event.epoch !== s.epoch || run.mode !== "daily" || run.date !== event.date || !finished(s)) return;
+				if (event.session !== this.session || run.mode !== "daily" || run.date !== event.date || !finished(s)) return;
 				if (event.copied) this.options.view.showDailyShareCopied();
 				this.announce(event.copied ? "RESULT COPIED TO CLIPBOARD." : "RESULT COULD NOT BE COPIED IN THIS BROWSER.");
 				return;
 			case "spotify": {
 				const result = resultFor(s);
-				const spotify = event.trackId !== void 0 ? s.overlay.kind === "discovery" && s.player.discoveries.has(event.trackId) ? s.catalog?.tracks.find((t) => t.dailyNumber === event.trackId)?.spotify : null : result?.mode === "classic" ? result.spotify : null;
+				const spotify = event.trackId !== void 0 ? s.overlay.kind === "discovery" && s.player.discoveries.has(event.trackId) ? s.catalog.find((t) => t.dailyNumber === event.trackId)?.spotify : null : result?.mode === "classic" ? result.spotify : null;
 				if (spotify) this.options.openSpotify(spotify);
 				return;
 			}
@@ -2333,7 +2338,7 @@ var Application = class {
 		this.clearLoading();
 		this.audio.stop();
 		this.calendar.stop();
-		s.epoch++;
+		this.session++;
 		s.rounds = emptyRounds(previous);
 		if (mode === "daily") this.calendar.start();
 		s.run = newRun(mode, this.calendar.date, s);
@@ -2344,7 +2349,7 @@ var Application = class {
 	}
 	validateRestore() {
 		const s = this.active;
-		if (s.run.mode === "classic" && s.catalog && s.player.classic && !validClassic(s)) {
+		if (s.run.mode === "classic" && s.catalog.length && s.player.classic && !validClassic(s)) {
 			s.player.classic = null;
 			s.run.resumeChoice = false;
 			this.save();
@@ -2352,50 +2357,77 @@ var Application = class {
 	}
 	prime() {
 		const s = this.active;
-		if (!this.unblocked() || !s.catalog || !s.run.mode || finished(s) || this.dailyDone() || s.rounds.current || s.rounds.exhausted) return;
-		const round = chooseRound(s, ++this.nextRound, s.rounds.previous, this.random);
-		if (!round) return;
+		if (!this.unblocked() || !s.catalog.length || !s.run.mode || finished(s) || this.dailyDone() || s.rounds.current || s.rounds.exhausted) return;
+		if (s.rounds.next) throw new Error("Priming a current round requires no preloaded successor");
+		const round = this.chooseNextRound(s.rounds.previous);
+		if (!round) {
+			if (s.run.mode !== "daily") {
+				s.rounds = {
+					...s.rounds,
+					current: null,
+					next: null,
+					exhausted: true
+				};
+				this.announce(copy.trackPoolExhausted);
+			}
+			return;
+		}
 		s.rounds.current = {
 			round,
-			phase: "prepared"
+			phase: "unheard"
 		};
+		this.rememberClassic(round);
 		this.audio.loadPrimary(round);
 	}
-	prefetch() {
+	prefetch(current) {
 		const s = this.active;
-		const current = s.rounds.current;
-		if (!this.unblocked() || !current || current.phase === "retry" || s.rounds.next || s.rounds.nextFailures > 2 || !prefetchesRounds(s.run.mode) || !this.audio.primaryStatus(current.round)?.ready) return;
-		const round = chooseRound(s, ++this.nextRound, current.round.track.dailyNumber, this.random);
+		if (s.rounds.next || !prefetchesRounds(s.run.mode)) return;
+		const round = this.chooseNextRound(current.round.track.dailyNumber);
 		if (!round) return;
 		s.rounds.next = round;
 		this.audio.loadPreload(round);
 	}
-	startRound(manual = false) {
+	restartExhaustedRun() {
 		const s = this.active;
-		if (!this.unblocked()) return;
-		if (manual) {
-			if (s.rounds.exhausted && s.run.mode) {
-				const mode = s.run.mode;
-				this.reset(mode);
-				this.startRound();
-				return;
+		if (!s.rounds.exhausted || s.run.mode === null) throw new Error("Exhausted recovery requires an exhausted active run");
+		const mode = s.run.mode;
+		this.reset(mode);
+		this.startRound();
+	}
+	retryRound(round) {
+		const s = this.active;
+		if (s.run.mode === null) throw new Error("Round retry requires an active game mode");
+		s.rounds.currentFailures = 0;
+		const heard = s.run.mode === "classic" && s.player.classic?.heard === true;
+		if (!preservesFailedRound(s.run.mode, heard)) {
+			s.rounds.failed.add(round.track.dailyNumber);
+			s.rounds.current = null;
+			if (s.run.mode === "classic") {
+				s.player.classic = null;
+				s.run.resumeChoice = false;
+				this.save();
 			}
-			s.rounds.currentFailures = 0;
-			s.rounds.nextFailures = 0;
-			if (s.rounds.current?.phase === "retry") if (s.run.mode !== "daily" && s.run.mode !== "classic") s.rounds.current = null;
-			else {
-				s.rounds.current.phase = "prepared";
-				this.audio.loadPrimary(s.rounds.current.round);
-			}
+		} else {
+			s.rounds.current = {
+				round,
+				phase: "unheard"
+			};
+			this.audio.loadPrimary(round);
 		}
+		this.startRound();
+	}
+	startRound() {
+		const s = this.active;
+		if (!this.unblocked()) throw new Error("Round start requires an unblocked application");
 		let current = s.rounds.current;
 		if (!current || current.phase === "heard") {
+			if (current?.phase === "heard") s.rounds.current = null;
 			if (s.rounds.next) {
 				const round = s.rounds.next;
 				s.rounds.next = null;
 				s.rounds.current = {
 					round,
-					phase: "pending"
+					phase: "unheard"
 				};
 				if (!this.audio.promotePreload(round)) {
 					this.dispatch({
@@ -2408,28 +2440,34 @@ var Application = class {
 					return;
 				}
 			} else {
-				const round = chooseRound(s, ++this.nextRound, s.rounds.previous, this.random);
+				const round = this.chooseNextRound(s.rounds.previous);
 				if (!round) {
-					s.rounds.exhausted = true;
+					this.audio.releasePrimary();
+					s.rounds = {
+						...s.rounds,
+						current: null,
+						next: null,
+						exhausted: true
+					};
 					this.announce(copy.trackPoolExhausted);
 					return;
 				}
 				s.rounds.current = {
 					round,
-					phase: "prepared"
+					phase: "unheard"
 				};
+				this.rememberClassic(round);
 				this.audio.loadPrimary(round);
 			}
 			current = s.rounds.current;
 		}
-		if (!current || current.phase === "retry") return;
-		current.phase = "pending";
+		if (!current || current.phase === "retry") throw new Error("Round start requires a playable current round");
 		if (!this.audio.playPrimary(current.round, false)) return;
 		if (s.run.mode === "blitz" || s.run.mode === "gauntlet" || s.run.mode === "seek") s.run.engaged = true;
-		this.rememberPuzzle(current.round);
+		this.rememberDaily(current.round);
 		this.clearLoading();
 		this.notice(current.round);
-		if (this.audio.primaryStatus(current.round)?.ready) this.prefetch();
+		if (this.primaryStatus(current).ready) this.prefetch(current);
 	}
 	play() {
 		const s = this.active;
@@ -2442,8 +2480,10 @@ var Application = class {
 		if (!interactions(s, this.loading).play || !this.unblocked()) return;
 		if (s.run.mode === "classic") s.run.resumeChoice = false;
 		const current = s.rounds.current;
-		if (!current || current.phase === "prepared" || current.phase === "retry" || s.rounds.exhausted) {
-			this.startRound(current?.phase === "retry" || s.rounds.exhausted);
+		if (!current || current.phase === "retry" || s.rounds.exhausted || current.phase === "unheard" && !this.requested()) {
+			if (s.rounds.exhausted) this.restartExhaustedRun();
+			else if (current?.phase === "retry") this.retryRound(current.round);
+			else this.startRound();
 			return;
 		}
 		const requested = this.requested();
@@ -2455,15 +2495,14 @@ var Application = class {
 			} else if (this.audio.playPrimary(current.round, false)) this.notice(current.round);
 		} else {
 			const elapsed = this.clock.pause().elapsedMs;
-			if (requested) {
-				if (!this.audio.rewindPrimary(current.round)) return;
-			} else if (this.audio.playPrimary(current.round, elapsed > 0)) this.notice(current.round);
+			if (requested) this.audio.rewindPrimary(current.round);
+			else if (this.audio.playPrimary(current.round, elapsed > 0)) this.notice(current.round);
 			this.clock.restart(snippet(s) * 1e3);
 			this.options.view.resetTimeline();
 		}
 		this.focusAfterTransition = "focusGuess";
 	}
-	rememberPuzzle(round) {
+	rememberDaily(round) {
 		const { run, player } = this.active;
 		if (run.mode === "daily" && player.daily?.date !== run.date) {
 			player.daily = {
@@ -2472,25 +2511,31 @@ var Application = class {
 				attempts: []
 			};
 			this.save();
-		} else if (run.mode === "classic" && !player.classic) {
-			player.classic = {
-				dailyNumber: round.track.dailyNumber,
-				clipStart: round.clipStart,
-				attempts: [],
-				heard: false
-			};
-			this.save();
 		}
+	}
+	rememberClassic(round) {
+		const { run, player } = this.active;
+		if (run.mode !== "classic" || player.classic) return;
+		player.classic = {
+			kind: classicRoundKind(round.track, this.calendar.reconcile()),
+			dailyNumber: round.track.dailyNumber,
+			clipStart: round.clipStart,
+			attempts: [],
+			heard: false
+		};
+		this.save();
 	}
 	answer(answer) {
 		const s = this.active, run = s.run, current = s.rounds.current;
-		if (!current || current.phase !== "heard" || finished(s) || !this.unblocked()) return;
+		if (!current || current.phase !== "heard" || finished(s) || !this.unblocked()) throw new Error("Answer resolution requires an active heard round");
+		if (!isPuzzleMode(run.mode) && !isTimedMode(run.mode)) throw new Error("Attempts require puzzle or timed gameplay");
 		if (isTimedMode(run.mode) && this.clock.pause().remainingMs <= 0) {
 			this.finish();
 			return;
 		}
 		this.options.view.resetGuessInput();
-		if (answer.outcome === "correct") s.player.discoveries.add(current.round.track.dailyNumber);
+		const newlyDiscovered = answer.outcome === "correct" && !s.player.discoveries.has(current.round.track.dailyNumber);
+		if (newlyDiscovered) s.player.discoveries.add(current.round.track.dailyNumber);
 		if (run.mode === "daily" || run.mode === "classic") {
 			const challenge = run.mode === "daily" ? s.player.daily : s.player.classic;
 			if (!challenge) throw new Error("Heard puzzle has no authoritative challenge");
@@ -2521,10 +2566,10 @@ var Application = class {
 			this.focusAfterTransition = "focusGuess";
 			return;
 		}
-		if (run.mode !== "blitz" && run.mode !== "gauntlet") return;
+		if (run.mode !== "blitz" && run.mode !== "gauntlet") throw new Error("Timed attempts require Blitz or Gauntlet");
 		this.audio.pause();
 		this.clearLoading();
-		const resolution = run.mode === "gauntlet" ? gauntletAnswer(run.attempts, answer, s.catalog.tracks.length) : null;
+		const resolution = run.mode === "gauntlet" ? gauntletAnswer(run.attempts, answer, s.catalog.length) : null;
 		run.attempts = resolution?.attempts ?? blitzAnswer(run.attempts, answer);
 		const won = resolution?.complete ?? false;
 		this.announce(won ? "CORRECT. GAUNTLET COMPLETE." : answer.outcome === "correct" ? "CORRECT." : answer.outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
@@ -2540,34 +2585,46 @@ var Application = class {
 				return;
 			}
 		}
-		if (answer.outcome === "correct" || this.options.storage.dirty) this.save();
+		if (newlyDiscovered) this.save();
 		this.startRound();
 	}
 	seekAction() {
 		const s = this.active, run = s.run, current = s.rounds.current;
 		if (run.mode !== "seek" || !interactions(s, this.loading).action || !current) return;
 		if (run.phase.kind === "revealed") if (run.answers.length >= modeRules.seek.roundCount) this.finish();
-		else run.phase = { kind: "advancing" };
+		else {
+			s.run = {
+				...run,
+				phase: {
+					kind: "selecting",
+					second: null
+				},
+				finished: null
+			};
+			this.startRound();
+		}
 		else if (run.phase.kind === "selecting" && run.phase.second !== null) {
 			this.clock.pause();
 			this.audio.pause();
 			this.clearLoading();
-			run.answers = [seekAnswer(current.round, run.phase.second), ...run.answers];
-			run.phase = { kind: "revealing" };
+			s.run = {
+				...run,
+				engaged: true,
+				answers: [seekAnswer(current.round, run.phase.second), ...run.answers],
+				phase: { kind: "revealing" },
+				finished: null
+			};
 		}
 	}
 	finish() {
-		if (finished(this.active)) return;
+		if (finished(this.active)) throw new Error("Run completion requires an unfinished run");
 		const time = this.clock.pause();
 		this.clearLoading();
 		this.audio.stop();
 		this.active.rounds.next = null;
 		this.announcements = [];
 		complete(this.active, time.elapsedMs);
-		this.active.overlay = {
-			kind: "result",
-			pendingClose: null
-		};
+		this.active.overlay = { kind: "result" };
 		this.save();
 	}
 	failure(failure, restored) {
@@ -2576,8 +2633,6 @@ var Application = class {
 		if (failure.stage === "preload-load") {
 			if (s.rounds.next?.id !== failure.round.id) return;
 			s.rounds.next = null;
-			s.rounds.nextFailures++;
-			if (s.rounds.nextFailures <= 2) this.prefetch();
 			return;
 		}
 		const current = s.rounds.current;
@@ -2585,13 +2640,17 @@ var Application = class {
 		if (s.run.mode === "seek" && s.run.phase.kind !== "selecting") return;
 		const heard = current.phase === "heard" || s.run.mode === "classic" && s.player.classic?.heard === true;
 		const preserve = s.run.mode !== null && preservesFailedRound(s.run.mode, heard);
-		const play = current.phase !== "prepared" || failure.stage === "primary-play";
+		const play = failure.stage === "primary-play";
 		this.clock.pause();
 		this.clearLoading();
 		this.audio.releasePrimary();
-		if (s.run.mode !== "daily") s.rounds.failed.add(failure.round.track.dailyNumber);
 		s.rounds.currentFailures++;
 		if (!preserve && !restored && s.rounds.currentFailures <= 2) {
+			s.rounds.failed.add(failure.round.track.dailyNumber);
+			if (!play) {
+				s.rounds.next = null;
+				this.audio.releasePreload();
+			}
 			s.rounds.current = null;
 			if (s.run.mode === "classic") {
 				s.player.classic = null;
@@ -2603,43 +2662,33 @@ var Application = class {
 				second: null
 			};
 			if (play) this.announce(copy.selectedTrackReplacing);
-			const epoch = s.epoch;
-			this.dispatch({
-				type: "recover",
-				epoch,
-				play
-			});
+			if (play) this.startRound();
+			else this.prime();
 		} else {
 			current.phase = "retry";
+			if (s.run.mode === "classic") s.run.resumeChoice = false;
 			this.announce(s.run.mode === "daily" || s.run.mode === "classic" ? copy.selectedTrackRetry : copy.trackError);
 			this.focusAfterTransition = "focusPlay";
 		}
 	}
-	close(outcome) {
-		const overlay = this.active.overlay;
-		if (overlay.kind === "none" || overlay.pendingClose) return;
-		const id = ++this.nextClose;
-		if (overlay.kind === "result") {
-			if (outcome !== "close-result") return;
-			const run = this.active.run;
-			if (run.mode === null) throw new Error("A result close requires an active game mode");
-			const dailyRecap = run.mode === "daily" && run.date === this.calendar.reconcile();
-			overlay.pendingClose = {
-				id,
-				disposition: dailyRecap ? { kind: "daily-recap" } : {
-					kind: "reset-mode",
-					mode: run.mode
-				}
-			};
-			if (!this.options.view.beginResultClose(id, dailyRecap ? "classic" : "play", dailyRecap ? void 0 : boardResetViewModel(this.active))) overlay.pendingClose = null;
-		} else {
-			if (outcome !== "resume" && outcome !== "start-gauntlet") return;
-			overlay.pendingClose = {
-				id,
-				outcome
-			};
-			if (!this.options.view.beginDiscoveryClose({ outcome: outcome === "start-gauntlet" ? "start-gauntlet" : "resume" }, id)) overlay.pendingClose = null;
-		}
+	closeResult() {
+		const run = this.active.run;
+		if (run.mode === null) throw new Error("A result close requires an active game mode");
+		const dailyRecap = run.mode === "daily" && run.date === this.calendar.reconcile();
+		const disposition = dailyRecap ? { kind: "daily-recap" } : {
+			kind: "reset-mode",
+			mode: run.mode
+		};
+		this.options.view.beginResultClose(dailyRecap ? void 0 : boardResetViewModel(this.active), () => this.dispatch({
+			type: "result-closed",
+			disposition
+		}));
+	}
+	closeDiscovery(outcome) {
+		this.options.view.beginDiscoveryClose(() => this.dispatch({
+			type: "discovery-closed",
+			outcome
+		}));
 	}
 	restore() {
 		this.audio.restore((failure) => this.dispatch({
@@ -2648,19 +2697,11 @@ var Application = class {
 			restored: true
 		}));
 	}
-	resumeSeekAdvance() {
-		const run = this.active.run;
-		if (run.mode !== "seek" || run.phase.kind !== "advancing") return false;
-		if (!this.unblocked()) return true;
-		run.phase = {
-			kind: "selecting",
-			second: null
-		};
-		this.startRound();
-		return true;
+	chooseNextRound(avoid) {
+		return chooseRound(this.active, ++this.nextRound, avoid, this.random);
 	}
 	dailyDone() {
-		return this.active.run.mode === "daily" && this.active.player.daily?.date === this.active.run.date && puzzleCompleted(this.active.player.daily.attempts);
+		return this.active.run.mode === "daily" && dailyCompleted(this.active.player.daily, this.active.run.date);
 	}
 	startCountdown() {
 		this.calendar.startCountdown(() => this.dispatch({ type: "countdown" }));
@@ -2670,7 +2711,13 @@ var Application = class {
 	}
 	requested() {
 		const current = this.active.rounds.current;
-		return current ? this.audio.primaryStatus(current.round)?.playRequested ?? false : false;
+		return current && current.phase !== "retry" && !finished(this.active) ? this.primaryStatus(current).playRequested : false;
+	}
+	primaryStatus(current) {
+		if (current.phase === "retry") throw new Error("A retry round does not own playable primary audio");
+		const status = this.audio.primaryStatus(current.round);
+		if (!status) throw new Error("A playable current round must own primary audio");
+		return status;
 	}
 	clearLoading() {
 		this.options.services.timers.clearTimeout(this.loadingTimer);
@@ -2694,7 +2741,6 @@ var Application = class {
 			clock: this.clock.snapshot(),
 			requested: this.requested(),
 			loading: this.loading,
-			unsaved: this.options.storage.dirty,
 			saveNotice: this.options.storage.notice ?? "",
 			date: this.calendar.date,
 			countdown: this.calendar.countdownMs
@@ -2704,7 +2750,7 @@ var Application = class {
 		this.announcements.push(message);
 	}
 	render() {
-		this.options.view.render(this.viewModel(), String(this.active.epoch));
+		this.options.view.render(this.viewModel(), String(this.session));
 	}
 };
 function assertNever(value) {
@@ -2713,6 +2759,30 @@ function assertNever(value) {
 function trackAssetNumber(dailyNumber) {
 	return String(dailyNumber).padStart(2, "0");
 }
+function watchCssMotion(element, accepts, duration, scheduler, onFinished, subtree = false) {
+	const animation = typeof element.getAnimations === "function" ? element.getAnimations({ subtree }).find(accepts) : void 0;
+	let active = true;
+	let timer = 0;
+	const finish = () => {
+		if (!active) return;
+		active = false;
+		onFinished();
+	};
+	if (animation) animation.finished.then(finish, () => {});
+	else timer = scheduler.setTimer(finish, duration);
+	return { cancel() {
+		if (!active) return;
+		active = false;
+		if (animation) animation.cancel();
+		if (timer) scheduler.clearTimer(timer);
+	} };
+}
+function isCssAnimation(animation, name) {
+	return "animationName" in animation && animation.animationName === name;
+}
+function isCssTransition(animation, property) {
+	return "transitionProperty" in animation && animation.transitionProperty === property;
+}
 var AttemptHistoryView = class {
 	elements;
 	durations;
@@ -2720,11 +2790,9 @@ var AttemptHistoryView = class {
 	scheduler;
 	renderedSlots = [];
 	sessionKey = "";
-	renderGeneration = 0;
 	nodeMotionGeneration = 0;
 	fadeGenerations = /* @__PURE__ */ new WeakMap();
-	collapseTimer = 0;
-	collapseListener = null;
+	collapseMotion = null;
 	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
@@ -2775,7 +2843,6 @@ var AttemptHistoryView = class {
 		})) return;
 		const previousSlots = this.renderedSlots;
 		this.renderedSlots = rendered;
-		this.renderGeneration += 1;
 		this.cancelCollapse();
 		const existing = new Map([...this.elements.list.children].map((child) => {
 			const element = child;
@@ -2836,14 +2903,12 @@ var AttemptHistoryView = class {
 		container.style.height = "0px";
 		container.offsetHeight;
 		container.style.height = `${targetHeight}px`;
-		const generation = ++this.renderGeneration;
-		this.waitForHeightTransition(container, duration, generation, () => {
+		this.watchHeightTransition(container, duration, () => {
 			container.style.height = "";
 		});
 	}
 	startCollapse(container, fading, duration, onFinished) {
 		this.cancelCollapse();
-		const generation = ++this.renderGeneration;
 		if (this.reducedMotion.matches || duration <= 0) {
 			onFinished();
 			return;
@@ -2872,31 +2937,23 @@ var AttemptHistoryView = class {
 			element.style.removeProperty("translate");
 		}
 		container.style.height = "0px";
-		this.waitForHeightTransition(container, duration, generation, onFinished);
+		this.watchHeightTransition(container, duration, onFinished);
 	}
-	waitForHeightTransition(container, duration, generation, onFinished) {
-		const finish = () => {
-			if (generation !== this.renderGeneration) return;
-			this.cancelCollapse(false);
+	watchHeightTransition(container, duration, onFinished) {
+		const motion = watchCssMotion(container, (animation) => isCssTransition(animation, "height"), duration, this.scheduler, () => {
+			if (this.collapseMotion !== motion) return;
+			this.collapseMotion = null;
 			onFinished();
-		};
-		this.collapseListener = (event) => {
-			const transition = event;
-			if (event.target === container && (!transition.propertyName || transition.propertyName === "height")) finish();
-		};
-		container.addEventListener("transitionend", this.collapseListener);
-		this.collapseTimer = this.scheduler.setTimer(finish, duration);
+		});
+		this.collapseMotion = motion;
 	}
 	cancelCollapse(resetHeight = true) {
-		if (this.collapseTimer) this.scheduler.clearTimer(this.collapseTimer);
-		this.collapseTimer = 0;
-		if (this.collapseListener) this.elements.container.removeEventListener("transitionend", this.collapseListener);
-		if (resetHeight && this.collapseListener) this.elements.container.style.height = "";
-		this.collapseListener = null;
+		if (resetHeight && this.collapseMotion) this.elements.container.style.height = "";
+		this.collapseMotion?.cancel();
+		this.collapseMotion = null;
 	}
 	clearRenderedSlots() {
 		this.renderedSlots = [];
-		this.renderGeneration += 1;
 		for (const child of this.elements.list.children) {
 			const element = child;
 			this.fadeGenerations.delete(element);
@@ -2940,28 +2997,17 @@ var AttemptHistoryView = class {
 		element.classList.remove("wiggle");
 		element.offsetWidth;
 		element.classList.add("wiggle");
-		let timer = 0;
-		const finish = () => {
-			const active = this.wiggles.get(element);
-			if (!active) return;
-			active.cancel();
-		};
-		const listener = (event) => {
-			const animation = event;
-			if (event.target === element && (!animation.animationName || animation.animationName === "corzaguessr-wiggle")) finish();
-		};
-		const cancel = () => {
-			element.removeEventListener("animationend", listener);
-			if (timer) this.scheduler.clearTimer(timer);
-			element.classList.remove("wiggle");
+		const motion = watchCssMotion(element, (animation) => isCssAnimation(animation, "corzaguessr-wiggle"), this.durations.wiggle, this.scheduler, () => {
+			if (this.wiggles.get(element) !== motion) return;
 			this.wiggles.delete(element);
-		};
-		this.wiggles.set(element, { cancel });
-		element.addEventListener("animationend", listener);
-		timer = this.scheduler.setTimer(finish, this.durations.wiggle);
+			element.classList.remove("wiggle");
+		});
+		this.wiggles.set(element, motion);
 	}
 	cancelWiggle(element) {
 		this.wiggles.get(element)?.cancel();
+		this.wiggles.delete(element);
+		element.classList.remove("wiggle");
 	}
 };
 function toneClasses(tone) {
@@ -3399,12 +3445,8 @@ var ModalController = class {
 	scheduler;
 	kind = null;
 	closing = false;
-	returnFocus = null;
-	closeTimer = 0;
 	openFrame = 0;
-	openTimer = 0;
-	transitionGeneration = 0;
-	closeListener = null;
+	shellMotion = null;
 	lockedScroll = null;
 	constructor(root, elements, duration, reducedMotion, announce, scheduler = browserAnimationScheduler) {
 		this.root = root;
@@ -3421,31 +3463,31 @@ var ModalController = class {
 		return this.kind === "result" && this.closing;
 	}
 	openResult(announcement = "RESULT") {
-		if (this.openModal("result")) this.announce(announcement || "RESULT");
+		this.openModal("result");
+		this.announce(announcement || "RESULT");
 	}
 	openDiscovery() {
 		this.openModal("discovery");
 	}
-	closeResult(fallbackFocus, onClosed = () => {}, onClosing = () => {}) {
-		return this.closeModal("result", fallbackFocus, onClosed, null, onClosing);
+	closeResult(onClosed = () => {}, onClosing = () => {}) {
+		this.closeModal("result", onClosed, onClosing);
 	}
-	closeDiscovery(fallbackFocus, onClosed, focusOverride = null) {
-		return this.closeModal("discovery", fallbackFocus, onClosed, focusOverride);
+	closeDiscovery(onClosed) {
+		this.closeModal("discovery", onClosed);
 	}
 	openModal(kind) {
-		if (this.kind) return false;
+		if (this.kind) throw new Error("Opening a modal requires no active modal.");
 		const parts = this.parts(kind);
-		const generation = this.beginOpen();
+		this.beginOpen();
 		this.kind = kind;
 		this.closing = false;
-		this.captureReturnFocus();
 		this.lockScroll();
 		parts.classOwner.classList.add(parts.openClass);
 		parts.modal.setAttribute("aria-hidden", "false");
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
 		const finishOpen = () => {
 			this.openFrame = 0;
-			if (!this.transitionMatches(kind, generation)) return;
+			if (this.kind !== kind || this.closing) return;
 			parts.classOwner.classList.add(parts.visibleClass);
 			parts.shell.style.height = `${parts.panel.offsetHeight}px`;
 			if (this.reducedMotion.matches && kind === "discovery") {
@@ -3454,10 +3496,14 @@ var ModalController = class {
 			}
 			parts.focusTarget.focus({ preventScroll: true });
 			if (this.reducedMotion.matches) parts.shell.style.height = "auto";
-			else this.openTimer = this.scheduler.setTimer(() => {
-				this.openTimer = 0;
-				if (this.transitionMatches(kind, generation)) parts.shell.style.height = "auto";
-			}, this.duration);
+			else {
+				const motion = watchCssMotion(parts.shell, (animation) => isCssTransition(animation, "height"), this.duration, this.scheduler, () => {
+					if (this.shellMotion !== motion || this.kind !== kind || this.closing) return;
+					this.shellMotion = null;
+					parts.shell.style.height = "auto";
+				});
+				this.shellMotion = motion;
+			}
 		};
 		if (this.reducedMotion.matches) {
 			parts.shell.style.transition = "none";
@@ -3467,27 +3513,24 @@ var ModalController = class {
 			parts.shell.offsetHeight;
 			this.openFrame = this.scheduler.requestFrame(finishOpen);
 		}
-		return true;
 	}
-	closeModal(kind, fallbackFocus, onClosed, focusOverride = null, onClosing = () => {}) {
-		if (this.closing || this.kind !== kind) return false;
+	closeModal(kind, onClosed, onClosing = () => {}) {
+		if (this.closing || this.kind !== kind) return;
 		const parts = this.parts(kind);
 		this.closing = true;
-		this.scheduler.clearTimer(this.openTimer);
-		this.openTimer = 0;
 		onClosing();
-		const generation = ++this.transitionGeneration;
 		this.scheduler.cancelFrame(this.openFrame);
 		this.openFrame = 0;
-		this.cancelCloseWait();
+		const currentHeight = parts.shell.offsetHeight;
+		this.cancelShellMotion();
 		parts.classOwner.classList.remove(parts.visibleClass);
-		parts.shell.style.height = `${parts.shell.offsetHeight}px`;
+		parts.shell.style.height = `${currentHeight}px`;
 		parts.shell.offsetHeight;
 		parts.shell.style.height = "0px";
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "false");
 		const finish = () => {
-			if (this.kind !== kind || this.transitionGeneration !== generation) return;
-			this.cancelCloseWait();
+			if (this.kind !== kind || !this.closing) return;
+			this.shellMotion = null;
 			parts.classOwner.classList.remove(parts.openClass, parts.visibleClass);
 			parts.modal.setAttribute("aria-hidden", "true");
 			parts.shell.style.height = "";
@@ -3497,24 +3540,12 @@ var ModalController = class {
 			this.closing = false;
 			this.unlockScroll();
 			onClosed();
-			const preferred = this.returnFocus;
-			this.returnFocus = null;
-			const override = focusOverride?.();
-			const target = override && this.canFocus(override) ? override : preferred && this.canFocus(preferred) ? preferred : fallbackFocus;
-			if (this.canFocus(target)) target.focus({ preventScroll: true });
 		};
 		if (this.reducedMotion.matches) {
 			finish();
-			return true;
+			return;
 		}
-		const transitionTarget = parts.shell;
-		this.closeListener = (event) => {
-			const transition = event;
-			if (event.target === transitionTarget && (!transition.propertyName || transition.propertyName === "height")) finish();
-		};
-		transitionTarget.addEventListener("transitionend", this.closeListener);
-		this.closeTimer = this.scheduler.setTimer(finish, this.duration);
-		return true;
+		this.shellMotion = watchCssMotion(parts.shell, (animation) => isCssTransition(animation, "height"), this.duration, this.scheduler, finish);
 	}
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
@@ -3532,9 +3563,6 @@ var ModalController = class {
 			event.preventDefault();
 			first.focus();
 		}
-	}
-	captureReturnFocus() {
-		this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	}
 	lockScroll() {
 		if (this.lockedScroll) return;
@@ -3569,23 +3597,14 @@ var ModalController = class {
 		this.lockedScroll = null;
 		if (window.scrollX !== snapshot.scrollX || window.scrollY !== snapshot.scrollY) window.scrollTo(snapshot.scrollX, snapshot.scrollY);
 	}
-	canFocus(element) {
-		return element.isConnected && element.tabIndex >= 0 && !element.matches(":disabled") && !element.hidden && !element.closest("[inert]");
-	}
 	beginOpen() {
-		this.cancelCloseWait();
+		this.cancelShellMotion();
 		this.scheduler.cancelFrame(this.openFrame);
 		this.openFrame = 0;
-		return ++this.transitionGeneration;
 	}
-	transitionMatches(kind, generation) {
-		return this.kind === kind && !this.closing && this.transitionGeneration === generation;
-	}
-	cancelCloseWait() {
-		if (this.closeTimer) this.scheduler.clearTimer(this.closeTimer);
-		this.closeTimer = 0;
-		if (this.closeListener && this.kind) this.parts(this.kind).shell.removeEventListener("transitionend", this.closeListener);
-		this.closeListener = null;
+	cancelShellMotion() {
+		this.shellMotion?.cancel();
+		this.shellMotion = null;
 	}
 	parts(kind) {
 		return kind === "result" ? {
@@ -3674,28 +3693,28 @@ var ResultView = class {
 	elements;
 	durations;
 	reducedMotion;
+	scheduler;
 	current = null;
-	signature = "";
 	copyFeedbackTimer = 0;
-	copyFeedbackGeneration = 0;
-	constructor(elements, durations, reducedMotion) {
+	copyFeedbackFade = null;
+	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
 		this.reducedMotion = reducedMotion;
+		this.scheduler = scheduler;
 	}
 	get secondaryAction() {
 		return this.current?.secondary?.action ?? null;
 	}
 	render(result) {
-		const signature = result ? JSON.stringify(result) : "";
-		if (signature === this.signature) return;
-		this.signature = signature;
+		if (JSON.stringify(result) === JSON.stringify(this.current)) return;
 		this.current = result;
 		if (this.copyFeedbackTimer) {
 			window.clearTimeout(this.copyFeedbackTimer);
 			this.copyFeedbackTimer = 0;
 		}
-		this.copyFeedbackGeneration += 1;
+		this.copyFeedbackFade?.cancel();
+		this.copyFeedbackFade = null;
 		this.elements.secondaryLabel.classList.remove("fading");
 		if (!result) {
 			this.elements.title.textContent = "";
@@ -3716,15 +3735,16 @@ var ResultView = class {
 	showShareCopied() {
 		if (this.secondaryAction !== "share") return;
 		if (this.copyFeedbackTimer) window.clearTimeout(this.copyFeedbackTimer);
-		const generation = ++this.copyFeedbackGeneration;
+		this.copyFeedbackFade?.cancel();
+		this.copyFeedbackFade = null;
 		this.elements.secondaryLabel.classList.remove("fading");
 		this.elements.secondaryLabel.textContent = "COPIED";
 		this.copyFeedbackTimer = window.setTimeout(() => {
 			this.copyFeedbackTimer = 0;
-			if (this.secondaryAction === "share") this.swapSecondaryLabel("SHARE", generation);
+			if (this.secondaryAction === "share") this.swapSecondaryLabel("SHARE");
 		}, this.durations.shareVisible);
 	}
-	swapSecondaryLabel(text, generation) {
+	swapSecondaryLabel(text) {
 		const label = this.elements.secondaryLabel;
 		if (label.textContent === text || this.reducedMotion.matches) {
 			label.textContent = text;
@@ -3733,11 +3753,13 @@ var ResultView = class {
 		label.classList.remove("fading");
 		label.offsetWidth;
 		label.classList.add("fading");
-		window.setTimeout(() => {
-			if (generation !== this.copyFeedbackGeneration) return;
+		const motion = watchCssMotion(label, (animation) => isCssTransition(animation, "opacity"), this.durations.shareFade, this.scheduler, () => {
+			if (this.copyFeedbackFade !== motion) return;
+			this.copyFeedbackFade = null;
 			label.textContent = text;
 			label.classList.remove("fading");
-		}, this.durations.shareFade);
+		});
+		this.copyFeedbackFade = motion;
 	}
 };
 function createResultModule(result) {
@@ -3774,12 +3796,12 @@ var TimelineView = class {
 	motionGeneration = 0;
 	progressTimer = 0;
 	progressListener = null;
-	timeAdjustmentTimer = 0;
-	timeAdjustmentListener = null;
-	timeAdjustmentGeneration = 0;
+	timeAdjustmentMotion = null;
 	positionFrame = 0;
 	positionRevealKey = "";
-	positionResetTimer = 0;
+	positionResetMotion = null;
+	renderedPosition = null;
+	pendingPosition = null;
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
 		this.elements = elements;
 		this.durations = durations;
@@ -3792,9 +3814,42 @@ var TimelineView = class {
 		this.elements.fill.style.transform = `scaleX(${scale})`;
 		this.elements.feedback.style.transform = `scaleX(${scale})`;
 	}
-	renderPosition(state, onRevealComplete, onResetComplete) {
+	renderPosition(state, onRevealComplete) {
 		if (!state) {
+			this.pendingPosition = null;
 			this.cancelPositionReset();
+			this.applyPosition(null, onRevealComplete);
+			return;
+		}
+		if (this.elements.timeline.classList.contains("position-resetting") && !this.positionResetMotion) {
+			this.cancelPositionReset();
+			this.renderedPosition = null;
+		}
+		if (this.positionResetMotion) {
+			this.pendingPosition = {
+				state,
+				onRevealComplete
+			};
+			return;
+		}
+		if (state.phase === "selecting" && this.renderedPosition?.phase === "revealed" && this.renderedPosition.roundId !== state.roundId) {
+			this.pendingPosition = {
+				state,
+				onRevealComplete
+			};
+			this.beginPositionReset(() => {
+				const pending = this.pendingPosition;
+				this.pendingPosition = null;
+				if (pending) this.applyPosition(pending.state, pending.onRevealComplete);
+			});
+			return;
+		}
+		this.pendingPosition = null;
+		this.applyPosition(state, onRevealComplete);
+	}
+	applyPosition(state, onRevealComplete) {
+		this.renderedPosition = state;
+		if (!state) {
 			this.cancelPositionReveal();
 			this.elements.positionRange.disabled = true;
 			this.elements.positionRange.value = "0";
@@ -3821,13 +3876,12 @@ var TimelineView = class {
 			this.hidePositionDistance();
 			return;
 		}
-		if (state.phase === "revealed" || state.phase === "advancing") {
+		if (state.phase === "revealed") {
 			this.cancelPositionReveal();
 			this.elements.end.textContent = formatClock(state.actualSecond);
 			this.setPositionMarker(this.elements.positionActual, state.actualSecond, maximum);
 			this.showPositionDistance(selected ?? 0, state.actualSecond, maximum);
-			if (state.phase === "advancing") this.beginPositionReset(() => onResetComplete(state.roundId));
-			else this.cancelPositionReset();
+			this.cancelPositionReset();
 			return;
 		}
 		const key = `${state.roundId}:${selected}:${state.actualSecond}`;
@@ -3873,7 +3927,7 @@ var TimelineView = class {
 		if (!onComplete) return;
 		const finish = () => {
 			if (!this.elements.timeline.classList.contains("position-resetting")) return;
-			this.positionResetTimer = 0;
+			this.positionResetMotion = null;
 			this.elements.timeline.classList.remove("position-resetting");
 			onComplete();
 		};
@@ -3881,7 +3935,7 @@ var TimelineView = class {
 			queueMicrotask(finish);
 			return;
 		}
-		this.positionResetTimer = this.scheduler.setTimer(finish, this.durations.reset);
+		this.positionResetMotion = watchCssMotion(this.elements.positionDistance, (animation) => isCssTransition(animation, "opacity"), this.durations.reset, this.scheduler, finish);
 	}
 	beginReset(rewindPlayback = false) {
 		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
@@ -3923,26 +3977,17 @@ var TimelineView = class {
 			this.elements.feedback.classList.add(seconds > 0 ? "time-adjustment-reward" : "time-adjustment-penalty");
 			this.elements.timeChange.classList.add("time-adjustment-active");
 		}
-		const generation = ++this.timeAdjustmentGeneration;
 		const finish = () => {
-			if (generation !== this.timeAdjustmentGeneration) return;
+			if (this.timeAdjustmentMotion !== motion) return;
+			this.timeAdjustmentMotion = null;
 			this.clearTimeAdjustmentFeedback();
 		};
-		if (!this.reducedMotion.matches) {
-			this.timeAdjustmentListener = (event) => {
-				const animation = event;
-				if (event.target === this.elements.timeChangeText && (!animation.animationName || animation.animationName === "corzaguessr-time-adjustment-hit")) finish();
-			};
-			this.elements.timeChangeText.addEventListener("animationend", this.timeAdjustmentListener);
-		}
-		this.timeAdjustmentTimer = this.scheduler.setTimer(finish, this.durations.timeAdjustmentFeedback);
+		const motion = watchCssMotion(this.elements.timeChangeText, (animation) => isCssAnimation(animation, "corzaguessr-time-adjustment-hit"), this.durations.timeAdjustmentFeedback, this.scheduler, finish);
+		this.timeAdjustmentMotion = motion;
 	}
 	clearTimeAdjustmentFeedback() {
-		this.timeAdjustmentGeneration += 1;
-		if (this.timeAdjustmentTimer) this.scheduler.clearTimer(this.timeAdjustmentTimer);
-		this.timeAdjustmentTimer = 0;
-		if (this.timeAdjustmentListener) this.elements.timeChangeText.removeEventListener("animationend", this.timeAdjustmentListener);
-		this.timeAdjustmentListener = null;
+		this.timeAdjustmentMotion?.cancel();
+		this.timeAdjustmentMotion = null;
 		this.elements.feedback.classList.remove("time-adjustment-reward", "time-adjustment-penalty");
 		this.elements.timeChange.classList.remove("time-adjustment-active", "time-adjustment-static");
 		this.elements.timeChangeText.textContent = "";
@@ -3974,8 +4019,8 @@ var TimelineView = class {
 		if (clearKey) this.positionRevealKey = "";
 	}
 	cancelPositionReset() {
-		if (this.positionResetTimer) this.scheduler.clearTimer(this.positionResetTimer);
-		this.positionResetTimer = 0;
+		this.positionResetMotion?.cancel();
+		this.positionResetMotion = null;
 		this.elements.timeline.classList.remove("position-resetting");
 	}
 	progressScale() {
@@ -4077,7 +4122,6 @@ var GameView = class {
 	constructor(root, initialVolume = 100, coverUrl = (dailyNumber) => `covers/${trackAssetNumber(dailyNumber)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
-		root.dataset.corzaguessrReady = "true";
 		root.innerHTML = markup();
 		this.elements = this.queryElements();
 		this.audioElements = this.elements.audioPlayers;
@@ -4099,7 +4143,7 @@ var GameView = class {
 			shareFade: this.durations.fast
 		}, this.reducedMotion);
 		this.modal = new ModalController(root, this.elements, this.durations.standard, this.reducedMotion, (message) => this.announce(message));
-		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.playbackShortcut());
+		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.play());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
 			list: this.elements.slots
@@ -4130,10 +4174,10 @@ var GameView = class {
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
 	}
 	bind(handlers) {
-		if (this.handlers) return;
+		if (this.handlers) throw new Error("GameView can only be bound once.");
 		this.handlers = handlers;
 		this.volume.bind(handlers.setVolume);
-		this.discovery.bind(handlers.openDiscoverySpotify, handlers.startGauntlet);
+		this.discovery.bind(handlers.openSpotify, handlers.startGauntlet);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.skip.addEventListener("click", handlers.skip);
 		this.elements.positionRange.addEventListener("input", () => {
@@ -4157,7 +4201,9 @@ var GameView = class {
 		}
 		this.bindPreview(this.elements.discoveryButton, "discovery");
 		document.addEventListener("keydown", (event) => {
-			if (this.root.isConnected && (this.state?.overlay || event.target instanceof Node && this.root.contains(event.target))) this.handleRootKeydown(event);
+			if (!this.root.isConnected) return;
+			if (this.state?.overlay || event.target instanceof Node && this.root.contains(event.target)) this.handleRootKeydown(event);
+			else this.setInputModality("keyboard");
 		}, true);
 		this.root.addEventListener("pointermove", (event) => this.handlePointerMove(event));
 		this.root.addEventListener("pointerdown", (event) => this.handlePointerDown(event));
@@ -4217,7 +4263,7 @@ var GameView = class {
 		}
 		if (state.result || !this.modal.resultLayoutActive) this.resultView.render(state.result);
 		this.renderClock(state.clock);
-		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId), (roundId) => this.handlers?.positionResetComplete(roundId));
+		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
 		if (openingOverlay === "result") this.modal.openResult(state.result?.announcement);
 		else if (openingOverlay === "discovery") {
 			this.discovery.collapseAll();
@@ -4253,18 +4299,14 @@ var GameView = class {
 	flashTimeChange(seconds) {
 		this.timeline.flashTimeAdjustment(seconds);
 	}
-	beginResultClose(id, focus, resetBoard) {
-		const target = focus === "classic" ? this.modeButtons.classic : this.elements.play;
-		return this.modal.closeResult(target, () => {
+	beginResultClose(resetBoard, onClosed) {
+		this.modal.closeResult(() => {
 			this.resultView.render(null);
-			this.handlers?.resultClosed(id);
+			onClosed?.();
 		}, resetBoard ? () => this.beginBoardReset(resetBoard) : void 0);
 	}
-	beginDiscoveryClose(request, id) {
-		return this.modal.closeDiscovery(this.elements.discoveryButton, () => this.handlers?.discoveryClosed(id), () => {
-			const target = request.outcome === "start-gauntlet" || this.state?.mode ? this.elements.play : this.elements.discoveryButton;
-			return !target.disabled && !target.closest("[inert]") ? target : null;
-		});
+	beginDiscoveryClose(onClosed) {
+		this.modal.closeDiscovery(() => onClosed?.());
 	}
 	showDailyShareCopied() {
 		this.resultView.showShareCopied();
@@ -4391,7 +4433,7 @@ var GameView = class {
 		}
 		if (event.key === "Enter" && this.state.appStatus !== "awaiting-mode" && (target === this.elements.positionRange || !target?.closest("button, input, a, .suggest"))) {
 			event.preventDefault();
-			this.handlers.playbackShortcut();
+			this.handlers.play();
 		}
 	}
 	isArrowKey(key) {
@@ -4592,7 +4634,7 @@ var CatalogSource = class {
 		this.fetchCatalog = fetchCatalog;
 	}
 	async load(signal) {
-		if (this.manifest) return this.manifest;
+		if (this.manifest) return this.manifest.tracks;
 		const url = new URL(this.url);
 		const init = {
 			cache: "no-cache",
@@ -4627,7 +4669,7 @@ var CatalogSource = class {
 				assetRevision,
 				tracks: frozenTracks
 			});
-			return this.manifest;
+			return frozenTracks;
 		} catch (cause) {
 			throw new CatalogLoadError("invalid-catalog", cause instanceof Error ? cause.message : "Track catalog is invalid.", { cause });
 		}
@@ -4646,9 +4688,27 @@ function openSpotify(trackId) {
 	window.open(`https://open.spotify.com/track/${trackId}`, "_blank", "noopener,noreferrer");
 }
 var root = document.querySelector("#corzaguessr");
-if (root && !root.dataset.corzaguessrReady) initialize(root);
+if (root) initialize(root);
 async function initialize(root) {
-	const ownership = await claimSaveOwnership(navigator.locks);
+	let ownership = null;
+	let application = null;
+	let pageLeft = false;
+	window.addEventListener("pagehide", () => {
+		pageLeft = true;
+		ownership?.release();
+	});
+	window.addEventListener("pageshow", (event) => {
+		if (event.persisted) {
+			window.location.reload();
+			return;
+		}
+		if (!document.hidden) application?.dispatch({ type: "visible" });
+	});
+	ownership = await claimSaveOwnership(navigator.locks);
+	if (pageLeft) {
+		ownership.release();
+		return;
+	}
 	const storage = new SaveWriter(void 0, () => ownership.writable, () => ownership.notice);
 	const player = storage.load();
 	const moduleUrl = new URL(import.meta.url);
@@ -4657,8 +4717,7 @@ async function initialize(root) {
 	const catalog = new CatalogSource(catalogUrl);
 	const view = new GameView(root, player.volume, (id) => catalog.assetUrl(`covers/${trackAssetNumber(id)}.webp`));
 	if (storage.unsupportedVersion) ownership.release();
-	window.addEventListener("pagehide", () => ownership.release());
-	const app = new Application({
+	application = new Application({
 		view,
 		storage,
 		player,
@@ -4667,13 +4726,6 @@ async function initialize(root) {
 		openSpotify,
 		services: browserServices(view.audioElements, (round) => catalog.assetUrl(`tracks/${trackAssetNumber(round.track.dailyNumber)}.mp3`), catalog)
 	});
-	app.start();
-	document.addEventListener("visibilitychange", () => app.dispatch({ type: document.hidden ? "hidden" : "visible" }));
-	window.addEventListener("pageshow", (event) => {
-		if (event.persisted) {
-			window.location.reload();
-			return;
-		}
-		if (!document.hidden) app.dispatch({ type: "visible" });
-	});
+	application.start();
+	document.addEventListener("visibilitychange", () => application?.dispatch({ type: document.hidden ? "hidden" : "visible" }));
 }
