@@ -1503,6 +1503,7 @@ var copy = {
 	trackError: "COULD NOT PLAY TRACK, PRESS PLAY TO CONTINUE!",
 	trackPoolExhausted: "NO PLAYABLE TRACKS REMAIN. PRESS PLAY TO RESTART THE RUN.",
 	selectedTrackRetry: "THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO RETRY.",
+	selectedTrackReplace: "THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO TRY ANOTHER.",
 	selectedTrackReplacing: "THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.",
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
@@ -2244,7 +2245,7 @@ var Application = class {
 			case "close-result":
 				if (s.overlay.kind === "result") this.closeResult();
 				return;
-			case "discovery-closed":
+			case "discovery-closed": {
 				s.overlay = { kind: "none" };
 				if (event.outcome === "start-gauntlet") {
 					this.reset("gauntlet");
@@ -2253,8 +2254,10 @@ var Application = class {
 					this.restore();
 					this.prime();
 				}
-				this.focusAfterTransition = s.run.mode ? "focusPlay" : "focusProgress";
+				const available = interactions(s, this.loading);
+				this.focusAfterTransition = available.play ? "focusPlay" : available.action ? "focusAttemptAction" : "focusProgress";
 				return;
+			}
 			case "result-closed": {
 				s.overlay = { kind: "none" };
 				let dailyRecap = false;
@@ -2667,7 +2670,7 @@ var Application = class {
 		} else {
 			current.phase = "retry";
 			if (s.run.mode === "classic") s.run.resumeChoice = false;
-			this.announce(s.run.mode === "daily" || s.run.mode === "classic" ? copy.selectedTrackRetry : copy.trackError);
+			this.announce(preserve ? copy.selectedTrackRetry : copy.selectedTrackReplace);
 			this.focusAfterTransition = "focusPlay";
 		}
 	}
@@ -3532,7 +3535,6 @@ var ModalController = class {
 			if (this.kind !== kind || !this.closing) return;
 			this.shellMotion = null;
 			parts.classOwner.classList.remove(parts.openClass, parts.visibleClass);
-			parts.modal.setAttribute("aria-hidden", "true");
 			parts.shell.style.height = "";
 			parts.shell.style.transition = "";
 			if (kind === "discovery") this.elements.discoveryClose.style.visibility = "";
@@ -3540,9 +3542,10 @@ var ModalController = class {
 			this.closing = false;
 			this.unlockScroll();
 			onClosed();
+			parts.modal.setAttribute("aria-hidden", "true");
 		};
 		if (this.reducedMotion.matches) {
-			finish();
+			queueMicrotask(finish);
 			return;
 		}
 		this.shellMotion = watchCssMotion(parts.shell, (animation) => isCssTransition(animation, "height"), this.duration, this.scheduler, finish);
