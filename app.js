@@ -1559,7 +1559,7 @@ function formatResultShare(date, result) {
 		case "seek": return shareCard("SEEK", result.roundPoints.map(seekBlock).join(" "), `I scored ${result.score.toLocaleString("en-US")} out of ${seekMaxScore.toLocaleString("en-US")}!`);
 		case "gauntlet": {
 			const survived = gauntletCompleted(result);
-			return shareCard("GAUNTLET", `${survived ? "🛡️" : "☠️"} ✦ ⏱️ ${formatClock(result.elapsedMs / 1e3)}`, survived ? "I survived the Gauntlet!" : "I failed the Gauntlet.");
+			return shareCard("GAUNTLET", `${survived ? "🛡️" : "☠️"} ${formatClock(result.elapsedMs / 1e3)}`, survived ? "I survived the Gauntlet!" : "I failed the Gauntlet.");
 		}
 	}
 }
