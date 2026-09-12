@@ -4278,12 +4278,6 @@ var icons = {
 	pause: "M6 5h4v14H6zM14 5h4v14h-4z",
 	stop: "M7 7h10v10H7z"
 };
-var helpModes = [
-	"daily",
-	"classic",
-	"blitz",
-	"seek"
-];
 var GameView = class {
 	root;
 	audioElements;
@@ -4786,7 +4780,7 @@ function snippetPercentage(seconds) {
 function markup() {
 	const snippetTicks = snippetDurations.slice(0, -1).map((seconds) => `<i class="tick" style="left:${snippetPercentage(seconds)}"></i>`).join("");
 	const modeButtons = regularModes.map((mode) => `<button type="button" class="mode" data-mode="${mode}" aria-pressed="false">${mode.toUpperCase()}</button>`).join("");
-	const helpSections = helpModes.map((mode) => {
+	const helpSections = regularModes.map((mode) => {
 		const instructions = modeRules[mode].howToPlay;
 		if (!instructions) throw new Error(`${mode} requires How to Play instructions`);
 		const paragraphs = instructions.map((text) => `<p>${text}</p>`).join("");
