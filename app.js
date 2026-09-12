@@ -121,14 +121,14 @@ function modeSnippetSeconds(mode, puzzleAttempt) {
 	if (isPositionMode(mode)) return modeRules[mode].snippetSeconds;
 	throw new Error(`Unsupported snippet-duration mode: ${String(mode)}`);
 }
-function skipLabel(mode, attempt) {
+function actionLabel(mode, attempt) {
 	if (mode === null) return "ADD 1S";
 	if (isTimedMode(mode)) return "SKIP";
 	if (isPuzzleMode(mode)) {
 		if (attempt >= puzzleAttemptCount - 1) return "GIVE UP";
 		return `ADD ${snippetDurations[attempt + 1] - snippetDurations[attempt]}S`;
 	}
-	throw new Error(`Unsupported skip-label mode: ${String(mode)}`);
+	throw new Error(`Unsupported action-label mode: ${String(mode)}`);
 }
 function seekPoints(guessedSecond, actualSecond, duration) {
 	if (!Number.isFinite(duration) || duration <= 0) return 0;
@@ -1258,13 +1258,13 @@ function browserServices(elements, audioUrl, catalog) {
 		}
 	};
 }
-function emptyRounds(previous = null) {
+function emptyRounds(previousTrackId = null) {
 	return {
 		current: null,
 		next: null,
-		failed: /* @__PURE__ */ new Set(),
-		previous,
-		currentFailures: 0,
+		failedTrackIds: /* @__PURE__ */ new Set(),
+		previousTrackId,
+		consecutiveFailures: 0,
 		exhausted: false
 	};
 }
@@ -1294,7 +1294,7 @@ function createRun(mode, date, state) {
 		};
 		case "classic": return {
 			mode,
-			resumeChoice: state.player.classic?.heard === true,
+			resumePending: state.player.classic?.heard === true,
 			finished: null
 		};
 		case "blitz":
@@ -1358,7 +1358,7 @@ function chooseRound(state, roundId, avoid, random) {
 			clipStart: player.classic.clipStart
 		} : null;
 	}
-	const excluded = new Set(rounds.failed);
+	const excluded = new Set(rounds.failedTrackIds);
 	if (run.mode === "seek") for (const answer of run.answers) excluded.add(answer.trackId);
 	const track = selectRandomTrack(catalog, excluded, avoid, random);
 	const seconds = run.mode === "seek" ? modeRules.seek.snippetSeconds : run.mode === "classic" ? maxPuzzleSnippetSeconds : 60;
@@ -1389,7 +1389,7 @@ function completeRun(state, elapsedMs) {
 			} : recordClassicResult(records, challenge.attempts[0]?.outcome === "correct", challenge.attempts.length - 1);
 			state.run = {
 				mode: "classic",
-				resumeChoice: false,
+				resumePending: false,
 				finished: {
 					challenge: {
 						kind: challenge.kind,
@@ -1448,11 +1448,11 @@ function availableActions(state, trackLoading) {
 	return {
 		play: ready && !complete && !dailyLocked && selecting,
 		guess,
-		action: run.mode === "classic" && (run.resumeChoice || roundRetry) ? ready : run.mode === "seek" ? ready && !complete && (run.phase.kind === "revealed" || interact && run.phase.kind === "selecting" && run.phase.second !== null) : guess,
+		action: run.mode === "classic" && (run.resumePending || roundRetry) ? ready : run.mode === "seek" ? ready && !complete && (run.phase.kind === "revealed" || interact && run.phase.kind === "selecting" && run.phase.second !== null) : guess,
 		position: run.mode === "seek" && interact && selecting
 	};
 }
-function composeClockViewModel(input) {
+function buildClockViewModel(input) {
 	const { mode, clock } = input;
 	if (!mode) return {
 		currentText: "0:00",
@@ -1548,11 +1548,39 @@ function dateParts(value) {
 	} : null;
 }
 var shareUrl = "https://itsstolenvalor.com/corzaguessr";
+function formatResultShare(date, result) {
+	switch (result.mode) {
+		case "daily": return formatDailyShare(date, result);
+		case "classic": {
+			const message = result.kind === "preview" ? "I encountered an upcoming song!" : result.won ? `I'm on a ${result.streak}-song streak!` : `My ${result.streak}-song streak ended.`;
+			return shareCard("CORZAGUESSR✦ CLASSIC", puzzleBlocks(result.won, result.attempts), message);
+		}
+		case "blitz": return shareCard("CORZAGUESSR ✦ BLITZ", `I guessed ${result.correct} ${result.correct === 1 ? "song" : "songs"} in a minute!`);
+		case "seek": return shareCard("CORZAGUESSR✦ SEEK", result.roundPoints.map(seekBlock).join(" "), `I scored ${result.score.toLocaleString("en-US")} out of ${seekMaxScore.toLocaleString("en-US")}!`);
+		case "gauntlet": {
+			const survived = gauntletCompleted(result);
+			return shareCard("CORZAGUESSR✦ GAUNTLET", `${survived ? "🛡️" : "☠️"} ✦ ⏱️ ${formatClock(result.elapsedMs / 1e3)}`, survived ? "I survived the Gauntlet!" : "I failed the Gauntlet.");
+		}
+	}
+}
 function formatDailyShare(date, result) {
 	const attempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(result.attempts)));
-	const squares = Array.from({ length: puzzleAttemptCount }, (_, index) => result.won && index === attempts - 1 ? "🟪" : "⬛").join(" ");
+	const squares = puzzleBlocks(result.won, attempts);
 	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : `I didn't get it in ${puzzleAttemptCount} tries!`;
 	return `CORZAGUESSR✦ DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${shareUrl}`;
+}
+function puzzleBlocks(won, attempts) {
+	const resolvedAttempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(attempts)));
+	return Array.from({ length: puzzleAttemptCount }, (_, index) => won && index === resolvedAttempts - 1 ? "🟪" : "⬛").join(" ");
+}
+function seekBlock(points) {
+	if (points >= 750) return "🟩";
+	if (points >= 500) return "🟨";
+	if (points >= 250) return "🟧";
+	return "🟥";
+}
+function shareCard(heading, ...lines) {
+	return `${heading}\n${lines.join("\n")}\n${shareUrl}`;
 }
 function puzzleAnswer(previous, answer) {
 	const attempts = [answer, ...previous];
@@ -1587,27 +1615,21 @@ function seekAnswer(round, second) {
 		actualSecond: Math.round(round.clipStart)
 	};
 }
-function composeResultViewModel(result, persistenceFailed, attempts = []) {
+function buildResultViewModel(result, persistenceFailed, attempts = []) {
 	if (!result) return null;
 	const outcome = resultOutcome(result, attempts);
 	const modules = resultModules(result);
 	const announcement = announceResult(outcome, modules);
-	const daily = result.mode === "daily";
 	return {
 		mode: result.mode,
 		outcome,
-		primaryLabel: daily ? "CLOSE" : "NEW GAME",
+		primaryLabel: "CLOSE",
 		modules,
 		announcement: persistenceFailed ? `${announcement} PROGRESS COULD NOT BE SAVED IN THIS BROWSER.` : announcement,
-		secondary: daily ? {
-			action: "share",
+		secondary: {
 			label: "SHARE",
-			ariaLabel: "SHARE DAILY RESULT"
-		} : result.mode === "classic" && result.spotify ? {
-			action: "spotify",
-			label: "SPOTIFY",
-			ariaLabel: "OPEN RESULT TRACK ON SPOTIFY"
-		} : null
+			ariaLabel: `SHARE ${result.mode.toUpperCase()} RESULT`
+		}
 	};
 }
 function resultModules(result) {
@@ -1682,7 +1704,7 @@ function boardResetViewModel(state) {
 	const snippetSeconds = positionMode ? modeRules[mode].snippetSeconds : snippetDurations[0];
 	const initialMs = initialClockMs(mode);
 	return {
-		clock: composeClockViewModel({
+		clock: buildClockViewModel({
 			mode,
 			snippetSeconds: isTimedMode(mode) ? null : snippetSeconds,
 			clock: {
@@ -1722,7 +1744,7 @@ function buildResult(state) {
 				kind: run.finished.challenge.kind,
 				won: attempts[0]?.outcome === "correct",
 				trackTitle: track.title,
-				spotify: track.spotify,
+				attempts: attempts.length,
 				newPersonalBest: run.finished.newPersonalBest,
 				streak: run.finished.streak,
 				average: run.finished.average
@@ -1747,13 +1769,16 @@ function buildResult(state) {
 				elapsedMs: run.finished.elapsedMs,
 				newPersonalBest: run.finished.newPersonalBest
 			};
-		case "seek":
+		case "seek": {
 			if (!run.finished) throw new Error("A completed Seek requires completion context");
+			const roundPoints = [...run.answers].reverse().map(seekAttemptPoints);
 			return {
 				mode: "seek",
 				newPersonalBest: run.finished.newPersonalBest,
-				score: run.answers.reduce((total, answer) => total + seekAttemptPoints(answer), 0)
+				score: roundPoints.reduce((total, points) => total + points, 0),
+				roundPoints
 			};
+		}
 		case null: throw new Error("A completed result requires an active game mode");
 	}
 }
@@ -1783,7 +1808,7 @@ function buildViewModel(state, context) {
 	const unavailable = mode === "daily" && dailyUnavailable(state);
 	const actions = availableActions(state, context.trackLoading);
 	const inputVisible = mode !== "seek" && !!round && !completed && !technicallyBlocked;
-	const resume = run.mode === "classic" && run.resumeChoice;
+	const resume = run.mode === "classic" && run.resumePending;
 	const preview = run.mode === "classic" && (run.finished?.challenge.kind ?? player.classic?.kind) === "preview";
 	const forfeit = run.mode === "classic" && (resume || roundRetry);
 	const duration = isTimedMode(mode) ? null : mode === "seek" ? modeRules.seek.snippetSeconds : snippetSeconds(attempt);
@@ -1891,10 +1916,10 @@ function buildViewModel(state, context) {
 		actionEnabled: actions.action,
 		playbackIcon: context.playbackRequested ? isTimedMode(mode) ? "pause" : "stop" : "play",
 		snippetSeconds: duration,
-		skipText: forfeit ? "GIVE UP" : run.mode === "seek" ? seekAction ? run.answers.length >= modeRules.seek.roundCount ? "RESULTS" : "NEXT" : "GUESS" : skipLabel(mode, attempt),
+		actionText: forfeit ? "GIVE UP" : run.mode === "seek" ? seekAction ? run.answers.length >= modeRules.seek.roundCount ? "RESULTS" : "NEXT" : "GUESS" : actionLabel(mode, attempt),
 		slots,
 		unavailableGuessIds,
-		clock: composeClockViewModel({
+		clock: buildClockViewModel({
 			mode,
 			snippetSeconds: duration,
 			clock: context.clock
@@ -1907,7 +1932,7 @@ function buildViewModel(state, context) {
 			actualSecond: seekPosition.actualSecond,
 			interactionEnabled: actions.position
 		} : null,
-		result: composeResultViewModel(result, !!context.saveNotice, attempts),
+		result: buildResultViewModel(result, !!context.saveNotice, attempts),
 		dailyProgress: structuredClone(player.daily),
 		playerRecords: structuredClone(player.records),
 		dailyDate: date,
@@ -1948,12 +1973,12 @@ var Application = class {
 			visible: options.visible
 		};
 		this.calendar = options.services.createCalendar((date) => this.dispatch({
-			type: "day",
+			type: "date-changed",
 			date
 		}));
 		this.clock = options.services.createClock({
 			onTick: (clock) => {
-				if (!this.processing && this.currentState.run.mode !== "seek") options.view.renderClock(composeClockViewModel({
+				if (!this.processing && this.currentState.run.mode !== "seek") options.view.renderClock(buildClockViewModel({
 					mode: this.currentState.run.mode,
 					snippetSeconds: isTimedMode(this.currentState.run.mode) ? null : currentSnippetSeconds(this.currentState),
 					clock
@@ -1994,37 +2019,37 @@ var Application = class {
 		this.audio.setVolume(this.currentState.player.volume / 100);
 		options.view.bind({
 			selectMode: (mode) => this.dispatch({
-				type: "mode",
+				type: "select-mode",
 				mode
 			}),
 			play: () => this.dispatch({ type: "play" }),
-			skip: () => this.dispatch({ type: "skip" }),
+			action: () => this.dispatch({ type: "action" }),
 			guess: (trackId) => this.dispatch({
 				type: "guess",
 				trackId
 			}),
 			selectPositionSecond: (second) => this.dispatch({
-				type: "position",
+				type: "select-position",
 				second
 			}),
 			positionRevealComplete: (roundId) => this.dispatch({
-				type: "reveal",
+				type: "seek-reveal-complete",
 				roundId
 			}),
 			openDiscovery: () => this.dispatch({ type: "open-discovery" }),
 			closeDiscovery: () => this.dispatch({ type: "close-discovery" }),
-			startGauntlet: () => this.dispatch({ type: "gauntlet" }),
+			startGauntlet: () => this.dispatch({ type: "start-gauntlet" }),
 			resultAction: () => this.dispatch({ type: "close-result" }),
 			setVolume: (value, committed) => this.dispatch({
 				type: "volume",
 				value,
 				committed
 			}),
-			openSpotify: (trackId) => this.dispatch(trackId === void 0 ? { type: "spotify" } : {
-				type: "spotify",
+			openSpotify: (trackId) => this.dispatch({
+				type: "open-spotify",
 				trackId
 			}),
-			shareDaily: () => this.dispatch({ type: "share" })
+			shareResult: () => this.dispatch({ type: "share-result" })
 		});
 	}
 	start() {
@@ -2106,7 +2131,7 @@ var Application = class {
 				state.catalogNotice = event.notice;
 				this.announce(event.notice === "error" ? uiText.catalogError : uiText.loadingCatalog);
 				return;
-			case "mode":
+			case "select-mode":
 				if (state.overlay.kind !== "none" || run.mode === event.mode || state.catalogNotice === "error" && !state.catalog.length) return;
 				this.reset(event.mode);
 				this.announce(modeRules[event.mode].description);
@@ -2125,13 +2150,13 @@ var Application = class {
 				});
 				return;
 			}
-			case "skip":
+			case "action":
 				if (run.mode === "classic" && current?.phase === "retry" && availableActions(state, this.trackLoading).action) {
 					state.player.classic = null;
 					this.save();
 					this.reset("classic");
 					this.announce("UNPLAYABLE CLASSIC ROUND REPLACED. YOUR STREAK WAS NOT AFFECTED.");
-				} else if (run.mode === "classic" && run.resumeChoice && availableActions(state, this.trackLoading).action) {
+				} else if (run.mode === "classic" && run.resumePending && availableActions(state, this.trackLoading).action) {
 					const preview = state.player.classic?.kind === "preview";
 					state.player.classic = null;
 					if (!preview) recordClassicResult(state.player.records, false, 0);
@@ -2144,10 +2169,10 @@ var Application = class {
 					trackId: null
 				});
 				return;
-			case "position":
+			case "select-position":
 				if (run.mode === "seek" && run.phase.kind === "selecting" && current && availableActions(state, this.trackLoading).position && Number.isFinite(event.second)) run.phase.second = selectedSecond(event.second, current.round);
 				return;
-			case "reveal":
+			case "seek-reveal-complete":
 				if (run.mode === "seek" && run.phase.kind === "revealing" && current?.round.id === event.roundId) {
 					const attempt = run.answers[0];
 					if (!attempt) throw new Error("A revealing Seek round requires its resolved attempt");
@@ -2168,8 +2193,8 @@ var Application = class {
 				if (current.phase !== "unheard" && current.phase !== "heard") return;
 				if (current.phase === "unheard") {
 					current.phase = "heard";
-					if (run.mode !== "daily") state.rounds.previous = current.round.track.id;
-					if (run.mode !== null && !preservesFailedRound(run.mode, false)) state.rounds.failed.clear();
+					if (run.mode !== "daily") state.rounds.previousTrackId = current.round.track.id;
+					if (run.mode !== null && !preservesFailedRound(run.mode, false)) state.rounds.failedTrackIds.clear();
 					if (!isTimedMode(run.mode)) this.clock.restart(currentSnippetSeconds(state) * 1e3);
 				}
 				if (run.mode === "classic" && state.player.classic && !state.player.classic.heard) {
@@ -2179,7 +2204,7 @@ var Application = class {
 					};
 					this.save();
 				}
-				state.rounds.currentFailures = 0;
+				state.rounds.consecutiveFailures = 0;
 				this.clearTrackLoading();
 				this.clock.start();
 				this.prefetchNextRound(current);
@@ -2215,7 +2240,7 @@ var Application = class {
 			case "failed":
 				this.handleAudioFailure(event.failure, event.restored ?? false);
 				return;
-			case "loading":
+			case "loading-notice":
 				if (event.generation === this.loadingNoticeGeneration && current?.round.id === event.roundId && this.isPlaybackRequested()) {
 					this.loadingNoticeTimer = 0;
 					this.trackLoading = true;
@@ -2245,7 +2270,7 @@ var Application = class {
 			case "close-discovery":
 				if (state.overlay.kind === "discovery") this.closeDiscovery("resume");
 				return;
-			case "gauntlet":
+			case "start-gauntlet":
 				if (state.overlay.kind === "discovery" && summarizeDiscovery(state.catalog, state.player.discoveries).complete) this.closeDiscovery("start-gauntlet");
 				return;
 			case "close-result":
@@ -2298,7 +2323,7 @@ var Application = class {
 					this.prepareRound();
 				}
 				return;
-			case "day":
+			case "date-changed":
 				if (run.mode === "daily" && run.date !== event.date && !isRunFinished(state)) this.reset("daily");
 				return;
 			case "countdown": return;
@@ -2310,31 +2335,29 @@ var Application = class {
 					if (!this.options.storage.write(state.player) && !persistenceAlreadyFailed) this.announce("VOLUME PREFERENCE COULD NOT BE SAVED IN THIS BROWSER.");
 				}
 				return;
-			case "share": {
+			case "share-result": {
 				const result = buildResult(state);
-				if (result?.mode !== "daily" || run.mode !== "daily") return;
-				const runId = this.runId, date = run.date;
-				this.options.copy(formatDailyShare(date, result)).then((copied) => this.dispatch({
-					type: "shared",
+				if (!result || state.overlay.kind !== "result") return;
+				const runId = this.runId;
+				const date = run.mode === "daily" ? run.date : this.calendar.date;
+				this.options.copyToClipboard(formatResultShare(date, result)).then((copied) => this.dispatch({
+					type: "share-complete",
 					runId,
-					date,
 					copied
 				}), () => this.dispatch({
-					type: "shared",
+					type: "share-complete",
 					runId,
-					date,
 					copied: false
 				}));
 				return;
 			}
-			case "shared":
-				if (event.runId !== this.runId || run.mode !== "daily" || run.date !== event.date || !isRunFinished(state)) return;
-				if (event.copied) this.options.view.showDailyShareCopied();
+			case "share-complete":
+				if (event.runId !== this.runId || state.overlay.kind !== "result" || !isRunFinished(state)) return;
+				if (event.copied) this.options.view.showResultShareCopied();
 				this.announce(event.copied ? "RESULT COPIED TO CLIPBOARD." : "RESULT COULD NOT BE COPIED IN THIS BROWSER.");
 				return;
-			case "spotify": {
-				const result = buildResult(state);
-				const spotify = event.trackId !== void 0 ? state.overlay.kind === "discovery" && state.player.discoveries.has(event.trackId) ? state.catalog.find((t) => t.id === event.trackId)?.spotify : null : result?.mode === "classic" ? result.spotify : null;
+			case "open-spotify": {
+				const spotify = state.overlay.kind === "discovery" && state.player.discoveries.has(event.trackId) ? state.catalog.find((t) => t.id === event.trackId)?.spotify : null;
 				if (spotify) this.options.openSpotify(spotify);
 				return;
 			}
@@ -2343,7 +2366,7 @@ var Application = class {
 	}
 	reset(mode) {
 		const state = this.currentState;
-		const previous = state.run.mode === mode ? state.rounds.previous : null;
+		const previous = state.run.mode === mode ? state.rounds.previousTrackId : null;
 		this.clearTrackLoading();
 		this.audio.stop();
 		this.calendar.stop();
@@ -2360,7 +2383,7 @@ var Application = class {
 		const state = this.currentState;
 		if (state.run.mode === "classic" && state.catalog.length && state.player.classic && !isClassicRoundValid(state)) {
 			state.player.classic = null;
-			state.run.resumeChoice = false;
+			state.run.resumePending = false;
 			this.save();
 		}
 	}
@@ -2368,7 +2391,7 @@ var Application = class {
 		const state = this.currentState;
 		if (!this.isInteractive() || !state.catalog.length || !state.run.mode || isRunFinished(state) || this.isDailyComplete() || state.rounds.current || state.rounds.exhausted) return;
 		if (state.rounds.next) throw new Error("Priming a current round requires no preloaded successor");
-		const round = this.chooseNextRound(state.rounds.previous);
+		const round = this.chooseNextRound(state.rounds.previousTrackId);
 		if (!round) {
 			if (state.run.mode !== "daily") {
 				state.rounds = {
@@ -2406,14 +2429,14 @@ var Application = class {
 	recoverRound(round) {
 		const state = this.currentState;
 		if (state.run.mode === null) throw new Error("Round retry requires an active game mode");
-		state.rounds.currentFailures = 0;
+		state.rounds.consecutiveFailures = 0;
 		const heard = state.run.mode === "classic" && state.player.classic?.heard === true;
 		if (!preservesFailedRound(state.run.mode, heard)) {
-			state.rounds.failed.add(round.track.id);
+			state.rounds.failedTrackIds.add(round.track.id);
 			state.rounds.current = null;
 			if (state.run.mode === "classic") {
 				state.player.classic = null;
-				state.run.resumeChoice = false;
+				state.run.resumePending = false;
 				this.save();
 			}
 		} else {
@@ -2449,7 +2472,7 @@ var Application = class {
 					return;
 				}
 			} else {
-				const round = this.chooseNextRound(state.rounds.previous);
+				const round = this.chooseNextRound(state.rounds.previousTrackId);
 				if (!round) {
 					this.audio.releasePrimary();
 					state.rounds = {
@@ -2487,7 +2510,7 @@ var Application = class {
 			}
 		}
 		if (!availableActions(state, this.trackLoading).play || !this.isInteractive()) return;
-		if (state.run.mode === "classic") state.run.resumeChoice = false;
+		if (state.run.mode === "classic") state.run.resumePending = false;
 		const current = state.rounds.current;
 		if (!current || current.phase === "retry" || state.rounds.exhausted || current.phase === "unheard" && !this.isPlaybackRequested()) {
 			if (state.rounds.exhausted) this.restartExhaustedRun();
@@ -2667,9 +2690,9 @@ var Application = class {
 		this.clock.pause();
 		this.clearTrackLoading();
 		this.audio.releasePrimary();
-		state.rounds.currentFailures++;
-		if (!preserve && !restored && state.rounds.currentFailures <= 2) {
-			state.rounds.failed.add(failure.round.track.id);
+		state.rounds.consecutiveFailures++;
+		if (!preserve && !restored && state.rounds.consecutiveFailures <= 2) {
+			state.rounds.failedTrackIds.add(failure.round.track.id);
 			if (!play) {
 				state.rounds.next = null;
 				this.audio.releasePreload();
@@ -2677,7 +2700,7 @@ var Application = class {
 			state.rounds.current = null;
 			if (state.run.mode === "classic") {
 				state.player.classic = null;
-				state.run.resumeChoice = false;
+				state.run.resumePending = false;
 				this.save();
 			}
 			if (state.run.mode === "seek") state.run.phase = {
@@ -2689,7 +2712,7 @@ var Application = class {
 			else this.prepareRound();
 		} else {
 			current.phase = "retry";
-			if (state.run.mode === "classic") state.run.resumeChoice = false;
+			if (state.run.mode === "classic") state.run.resumePending = false;
 			this.announce(preserve ? uiText.selectedTrackRetry : uiText.selectedTrackReplace);
 			this.pendingFocus = "focusPlay";
 		}
@@ -2720,8 +2743,8 @@ var Application = class {
 			restored: true
 		}));
 	}
-	chooseNextRound(avoid) {
-		return chooseRound(this.currentState, ++this.nextRoundId, avoid, this.random);
+	chooseNextRound(avoidTrackId) {
+		return chooseRound(this.currentState, ++this.nextRoundId, avoidTrackId, this.random);
 	}
 	isDailyComplete() {
 		return this.currentState.run.mode === "daily" && dailyCompleted(this.currentState.player.daily, this.currentState.run.date);
@@ -2751,7 +2774,7 @@ var Application = class {
 	scheduleLoadingNotice(round) {
 		const generation = this.loadingNoticeGeneration;
 		this.loadingNoticeTimer = this.options.services.timers.setTimeout(() => this.dispatch({
-			type: "loading",
+			type: "loading-notice",
 			roundId: round.id,
 			generation
 		}), 1e3);
@@ -2779,7 +2802,7 @@ var Application = class {
 function assertNever(value) {
 	throw new Error(`Unsupported application event: ${JSON.stringify(value)}`);
 }
-function trackAssetNumber(trackId) {
+function formatTrackId(trackId) {
 	return String(trackId).padStart(2, "0");
 }
 function watchCssMotion(element, accepts, duration, scheduler, onFinished, subtree = false) {
@@ -3726,9 +3749,6 @@ var ResultView = class {
 		this.reducedMotion = reducedMotion;
 		this.scheduler = scheduler;
 	}
-	get secondaryAction() {
-		return this.current?.secondary?.action ?? null;
-	}
 	render(result) {
 		if (JSON.stringify(result) === JSON.stringify(this.current)) return;
 		this.current = result;
@@ -3750,13 +3770,12 @@ var ResultView = class {
 		this.elements.title.textContent = result.outcome;
 		this.elements.meta.dataset.mode = result.mode;
 		this.elements.meta.replaceChildren(...result.modules.map((module) => createResultModule(module)));
-		this.elements.secondaryLabel.textContent = result.secondary?.label ?? "";
-		if (result.secondary) this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
-		else this.elements.secondary.removeAttribute("aria-label");
-		this.elements.secondary.hidden = result.secondary === null;
+		this.elements.secondaryLabel.textContent = result.secondary.label;
+		this.elements.secondary.setAttribute("aria-label", result.secondary.ariaLabel);
+		this.elements.secondary.hidden = false;
 	}
 	showShareCopied() {
-		if (this.secondaryAction !== "share") return;
+		if (!this.current) return;
 		if (this.copyFeedbackTimer) window.clearTimeout(this.copyFeedbackTimer);
 		this.copyFeedbackFade?.cancel();
 		this.copyFeedbackFade = null;
@@ -3764,7 +3783,7 @@ var ResultView = class {
 		this.elements.secondaryLabel.textContent = "COPIED";
 		this.copyFeedbackTimer = window.setTimeout(() => {
 			this.copyFeedbackTimer = 0;
-			if (this.secondaryAction === "share") this.swapSecondaryLabel("SHARE");
+			if (this.current) this.swapSecondaryLabel("SHARE");
 		}, this.durations.shareVisible);
 	}
 	swapSecondaryLabel(text) {
@@ -4142,7 +4161,7 @@ var GameView = class {
 	preview = null;
 	rulesSignature = "";
 	announcementFrame = 0;
-	constructor(root, initialVolume = 100, coverUrl = (id) => `covers/${trackAssetNumber(id)}.webp`) {
+	constructor(root, initialVolume = 100, coverUrl = (id) => `covers/${formatTrackId(id)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
 		root.innerHTML = markup();
@@ -4202,16 +4221,12 @@ var GameView = class {
 		this.volume.bind(handlers.setVolume);
 		this.discovery.bind(handlers.openSpotify, handlers.startGauntlet);
 		this.elements.play.addEventListener("click", handlers.play);
-		this.elements.skip.addEventListener("click", handlers.skip);
+		this.elements.action.addEventListener("click", handlers.action);
 		this.elements.positionRange.addEventListener("input", () => {
 			handlers.selectPositionSecond(Number(this.elements.positionRange.value));
 		});
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
-		this.elements.resultSecondary.addEventListener("click", () => {
-			const action = this.resultView.secondaryAction;
-			if (action === "share") handlers.shareDaily();
-			else if (action === "spotify") handlers.openSpotify();
-		});
+		this.elements.resultSecondary.addEventListener("click", handlers.shareResult);
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
 		this.elements.discoveryModal.addEventListener("click", (event) => {
@@ -4259,7 +4274,7 @@ var GameView = class {
 		const awaiting = state.appStatus === "awaiting-mode";
 		this.elements.modePrompt.setAttribute("aria-hidden", String(!awaiting));
 		this.elements.play.disabled = !state.playEnabled;
-		this.elements.skip.disabled = !state.actionEnabled;
+		this.elements.action.disabled = !state.actionEnabled;
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
@@ -4275,7 +4290,7 @@ var GameView = class {
 		}
 		this.elements.icon.setAttribute("d", icons[state.playbackIcon]);
 		this.elements.play.setAttribute("aria-label", state.playbackIcon === "play" ? "PLAY" : state.playbackIcon === "pause" ? "PAUSE" : "STOP");
-		this.elements.skip.textContent = state.skipText;
+		this.elements.action.textContent = state.actionText;
 		if (state.snippetSeconds !== null) this.elements.snippet.style.width = snippetPercentage(state.snippetSeconds);
 		this.renderRules();
 		this.attempts.render(state.slots, runId);
@@ -4331,7 +4346,7 @@ var GameView = class {
 	beginDiscoveryClose(onClosed) {
 		this.modal.closeDiscovery(() => onClosed?.());
 	}
-	showDailyShareCopied() {
+	showResultShareCopied() {
 		this.resultView.showShareCopied();
 	}
 	resetTransientUi() {
@@ -4356,7 +4371,7 @@ var GameView = class {
 		this.elements.discoveryButton.focus({ preventScroll: true });
 	}
 	focusAttemptAction() {
-		if (!this.elements.skip.disabled && !this.elements.skip.closest("[inert]")) this.elements.skip.focus({ preventScroll: true });
+		if (!this.elements.action.disabled && !this.elements.action.closest("[inert]")) this.elements.action.focus({ preventScroll: true });
 	}
 	focusMode(mode) {
 		const button = this.modeButtons[mode];
@@ -4553,7 +4568,7 @@ var GameView = class {
 			slots: this.required(".slots"),
 			card: this.required(".card"),
 			play: this.required(".play"),
-			skip: this.required(".skip"),
+			action: this.required(".action"),
 			guess: this.required(".guess"),
 			suggest: this.required(".suggest"),
 			icon: this.required(".icon path"),
@@ -4616,11 +4631,11 @@ function markup() {
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
 		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
-		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row skip-row"><button type="button" class="button skip" disabled>ADD 1S</button></div></div>`,
+		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row action-row"><button type="button" class="button action" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
 		`</div>`,
-		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">NEW GAME</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
+		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
@@ -4738,16 +4753,16 @@ async function initialize(root) {
 	const catalogUrl = new URL("tracks.json", moduleUrl);
 	catalogUrl.search = moduleUrl.search;
 	const catalog = new CatalogSource(catalogUrl);
-	const view = new GameView(root, player.volume, (id) => catalog.assetUrl(`covers/${trackAssetNumber(id)}.webp`));
+	const view = new GameView(root, player.volume, (id) => catalog.assetUrl(`covers/${formatTrackId(id)}.webp`));
 	if (storage.unsupportedVersion) ownership.release();
 	application = new Application({
 		view,
 		storage,
 		player,
 		visible: !document.hidden,
-		copy: copyToClipboard,
+		copyToClipboard,
 		openSpotify,
-		services: browserServices(view.audioElements, (round) => catalog.assetUrl(`tracks/${trackAssetNumber(round.track.id)}.mp3`), catalog)
+		services: browserServices(view.audioElements, (round) => catalog.assetUrl(`tracks/${formatTrackId(round.track.id)}.mp3`), catalog)
 	});
 	application.start();
 	document.addEventListener("visibilitychange", () => application?.dispatch({ type: document.hidden ? "hidden" : "visible" }));
