@@ -1845,6 +1845,7 @@ function buildViewModel(state, context) {
 	else if (preview) rulesText = "PREVIEW ROUND · STREAK SAFE";
 	else if (run.mode === "seek") {
 		if (run.phase.kind === "revealed" && resolvedSeekAnswer) rulesText = seekFeedback(resolvedSeekAnswer).join(" · ");
+		else if (run.phase.kind === "revealing") rulesText = "REVEALING POSITION...";
 		else if (round) rulesText = "PLACE YOUR GUESS ON THE TIMELINE";
 	} else if (mode === "daily") {
 		if (unavailable) rulesText = uiText.trackUnavailable;
