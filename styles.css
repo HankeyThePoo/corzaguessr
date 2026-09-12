@@ -258,11 +258,11 @@
     min-width: 0;
   }
 
-  & .guess-lane .skip-row {
+  & .guess-lane .action-row {
     min-width: 0;
   }
 
-  & .guess-lane .skip {
+  & .guess-lane .action {
     width: 100%;
   }
 
@@ -380,7 +380,7 @@
   }
 
   & .mode-navigation .mode[aria-pressed="true"],
-  & button.skip:not(:disabled) {
+  & button.action:not(:disabled) {
     box-shadow: none;
   }
 
@@ -404,7 +404,7 @@
     animation: corzaguessr-mode-commit var(--duration-standard) ease-out;
   }
 
-  & button.skip:not(:disabled) {
+  & button.action:not(:disabled) {
     background: var(--gradient-background), var(--surface-dark);
   }
 
@@ -414,7 +414,7 @@
   }
 
   & .mode-navigation .mode[aria-pressed="true"]::after,
-  & button.skip:not(:disabled)::after {
+  & button.action:not(:disabled)::after {
     opacity: 1;
   }
 
@@ -1487,7 +1487,7 @@
       opacity: 1;
     }
 
-    &:not(.keyboard-input) button.skip:not(:disabled):hover,
+    &:not(.keyboard-input) button.action:not(:disabled):hover,
     &:not(.keyboard-input) .play:not(:disabled):hover {
       filter: brightness(var(--interaction-brightness));
     }
