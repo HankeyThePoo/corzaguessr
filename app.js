@@ -40,7 +40,8 @@ var maxPuzzleSnippetSeconds = snippetDurations.at(-1);
 var modeRules = {
 	classic: {
 		initialTimeMs: null,
-		description: "GUESS THE TRACK IN SIX TRIES AS MORE AUDIO IS REVEALED",
+		description: "PLAY HEARDLE-STYLE ROUNDS AND BUILD YOUR STREAK",
+		howToPlay: ["Keep playing the same 6-attempt guessing format, one song after another, and build your streak. Each wrong guess or skip unlocks a longer audio snippet.", "You may occasionally encounter an upcoming song. These Preview rounds do not affect your streak."],
 		gameplay: "puzzle",
 		clockDisplay: "snippet",
 		failurePolicy: "heard-fixed",
@@ -48,7 +49,8 @@ var modeRules = {
 	},
 	daily: {
 		initialTimeMs: null,
-		description: "ONE SHARED TRACK EACH DAY, GUESS IT IN SIX TRIES",
+		description: "GUESS TODAY'S SHARED SONG IN 6 ATTEMPTS",
+		howToPlay: ["Guess today's song in 6 attempts. Each wrong guess or skip unlocks a longer audio snippet. Everyone gets the same song, with a new Daily every day."],
 		gameplay: "puzzle",
 		clockDisplay: "snippet",
 		failurePolicy: "fixed",
@@ -56,7 +58,8 @@ var modeRules = {
 	},
 	blitz: {
 		initialTimeMs: 6e4,
-		description: "GUESS AS MANY TRACKS AS POSSIBLE BEFORE THE TIMER RUNS OUT",
+		description: "IDENTIFY AS MANY SONGS AS POSSIBLE IN 60 SECONDS",
+		howToPlay: ["Identify as many songs as you can before the 60-second timer runs out. You get one guess per song. Guess right, get it wrong, or skip, and the next song starts immediately."],
 		gameplay: "timed",
 		clockDisplay: "countdown",
 		failurePolicy: "replace",
@@ -64,7 +67,8 @@ var modeRules = {
 	},
 	seek: {
 		initialTimeMs: null,
-		description: "PLACE THE EIGHT-SECOND SNIPPET ON THE SONG TIMELINE",
+		description: "FIND WHERE EACH CLIP BELONGS IN THE SONG",
+		howToPlay: ["Listen to an 8-second clip and place it where you think it appears in the full song. After each guess, the clip's actual position is revealed.", "Play 5 rounds and earn up to 1,000 points per round. The closer your placement, the higher your score."],
 		gameplay: "position",
 		clockDisplay: "position",
 		failurePolicy: "replace",
@@ -76,6 +80,7 @@ var modeRules = {
 	gauntlet: {
 		initialTimeMs: 3e4,
 		description: "SURVIVE UNTIL YOU DISCOVER EVERY SONG",
+		howToPlay: null,
 		gameplay: "timed",
 		clockDisplay: "elapsed",
 		failurePolicy: "replace",
@@ -137,6 +142,13 @@ function seekPoints(guessedSecond, actualSecond, duration) {
 }
 function seekAttemptPoints(attempt) {
 	return seekPoints(attempt.guessedSecond, attempt.actualSecond, attempt.trackDuration);
+}
+function seekGrade(points) {
+	if (points === modeRules.seek.maxPointsPerRound) return "perfect";
+	if (points >= 750) return "great";
+	if (points >= 500) return "good";
+	if (points >= 250) return "close";
+	return "way-off";
 }
 function seekScore(attempts) {
 	return attempts.reduce((total, attempt) => total + seekAttemptPoints(attempt), 0);
@@ -1574,10 +1586,13 @@ function puzzleBlocks(won, attempts) {
 	return Array.from({ length: puzzleAttemptCount }, (_, index) => won && index === resolvedAttempts - 1 ? "🟪" : "⬛").join(" ");
 }
 function seekBlock(points) {
-	if (points >= 750) return "🟩";
-	if (points >= 500) return "🟨";
-	if (points >= 250) return "🟧";
-	return "🟥";
+	switch (seekGrade(points)) {
+		case "perfect":
+		case "great": return "🟩";
+		case "good": return "🟨";
+		case "close": return "🟧";
+		case "way-off": return "🟥";
+	}
 }
 function shareCard(heading, ...lines) {
 	return `CORZAGUESSR✦ ${heading}\n\n${lines.join("\n")}\n\n${shareUrl}`;
@@ -1829,7 +1844,7 @@ function buildViewModel(state, context) {
 	else if (resume) rulesText = preview ? "PREVIEW ROUND · PRESS PLAY TO CONTINUE OR GIVE UP · STREAK SAFE" : "PRESS PLAY TO CONTINUE OR GIVE UP THE CURRENT ROUND";
 	else if (preview) rulesText = "PREVIEW ROUND · STREAK SAFE";
 	else if (run.mode === "seek") {
-		if (resolvedSeekAnswer) rulesText = seekFeedback(resolvedSeekAnswer).join(" · ");
+		if (run.phase.kind === "revealed" && resolvedSeekAnswer) rulesText = seekFeedback(resolvedSeekAnswer).join(" · ");
 		else if (round) rulesText = "PLACE YOUR GUESS ON THE TIMELINE";
 	} else if (mode === "daily") {
 		if (unavailable) rulesText = uiText.trackUnavailable;
@@ -1844,58 +1859,29 @@ function buildViewModel(state, context) {
 			milestones.add(attempts.length - i);
 		}
 	}
-	let slots = (isTimedMode(mode) ? attempts.slice(0, 19) : attempts).map((a, i) => {
-		const ordinal = attempts.length - i;
-		let text = catalog.find((t) => t.id === a.trackId)?.title ?? `TRACK #${a.trackId}`;
-		if (a.outcome === "skip") {
-			const added = ordinal < puzzleAttemptCount ? snippetDurations[ordinal] - snippetDurations[ordinal - 1] : 0;
-			text = isTimedMode(mode) ? "SKIPPED" : ordinal === puzzleAttemptCount ? "FINAL GUESS SKIPPED" : `GUESS ${ordinal} SKIPPED, ${added} SECOND${added === 1 ? "" : "S"} ADDED`;
-		}
-		return {
-			id: ordinal,
-			text,
-			tone: a.outcome,
-			...milestones.has(ordinal) ? { gauntletMilestone: true } : {}
-		};
+	let slots = run.mode === "seek" ? seekHistorySlots(run.answers, run.phase.kind, run.engaged) : mode === null ? [] : (isTimedMode(mode) ? attempts.slice(0, 19) : attempts).map((historyAttempt, index) => {
+		const ordinal = attempts.length - index;
+		return resolvedHistorySlot(mode, historyAttempt, ordinal, catalog, milestones.has(ordinal));
 	});
 	let promptSlot = null;
 	if ((run.mode === "blitz" || run.mode === "gauntlet") && run.engaged) {
 		const left = Math.max(0, catalog.length - seen.size);
 		promptSlot = {
 			id: attempts.length + 1,
-			text: completed ? mode === "gauntlet" && left === 0 ? "GAUNTLET COMPLETE" : "TIME'S UP" : mode === "gauntlet" ? `${left} ${left === 1 ? "TRACK" : "TRACKS"} LEFT` : `GUESS #${attempts.length + 1}`,
+			primary: completed ? mode === "gauntlet" && left === 0 ? "GAUNTLET COMPLETE" : "TIME'S UP" : mode === "gauntlet" ? `${left} ${left === 1 ? "TRACK" : "TRACKS"} LEFT` : `SONG ${attempts.length + 1}`,
 			tone: completed ? "neutral" : "prompt"
 		};
-	} else if (isPuzzleMode(mode) && !completed && !dailyComplete && (round || attempts.length)) {
-		const prompt = attempt === puzzleAttemptCount - 1 ? "LAST CHANCE TO GUESS" : `GUESS ${attempt + 1} OUT OF ${puzzleAttemptCount}`;
-		promptSlot = {
-			id: attempt + 1,
-			text: preview ? `PREVIEW ROUND · ${prompt}` : prompt,
-			tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
-		};
-	}
+	} else if (isPuzzleMode(mode) && !completed && !dailyComplete && (round || attempts.length)) promptSlot = {
+		id: attempt + 1,
+		primary: `ATTEMPT ${attempt + 1}`,
+		tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
+	};
 	if (technicallyBlocked && promptSlot) promptSlot = {
-		...promptSlot,
-		text: rounds.exhausted ? uiText.trackPoolExhausted : uiText.trackError,
+		id: promptSlot.id,
+		primary: rounds.exhausted ? uiText.trackPoolExhausted : uiText.trackError,
 		tone: "technical"
 	};
 	if (promptSlot) slots.unshift(promptSlot);
-	if (run.mode === "seek") {
-		const prior = run.phase.kind === "selecting" ? run.answers : run.answers.slice(1);
-		slots = prior.map((a, i) => ({
-			id: prior.length - i,
-			text: `ROUND ${prior.length - i} · ${seekAttemptPoints(a)} POINTS`,
-			tone: "neutral"
-		}));
-		if (run.engaged) {
-			const number = run.answers.length + (run.phase.kind === "selecting" ? 1 : 0);
-			slots.unshift({
-				id: number,
-				text: `ROUND ${number} OUT OF ${modeRules.seek.roundCount}`,
-				tone: "prompt"
-			});
-		}
-	}
 	const unavailableGuessIds = /* @__PURE__ */ new Set();
 	if (isPuzzleMode(mode)) {
 		for (const attempt of attempts) if (attempt.trackId !== null) unavailableGuessIds.add(attempt.trackId);
@@ -1940,6 +1926,92 @@ function buildViewModel(state, context) {
 		tracks: catalog,
 		overlay
 	};
+}
+function resolvedHistorySlot(mode, attempt, ordinal, catalog, gauntletMilestone) {
+	if (attempt.outcome !== "skip") return {
+		id: ordinal,
+		primary: catalog.find((track) => track.id === attempt.trackId)?.title ?? `TRACK #${attempt.trackId}`,
+		tone: attempt.outcome,
+		...gauntletMilestone ? { gauntletMilestone: true } : {}
+	};
+	if (mode === "daily" || mode === "classic") {
+		const added = ordinal < puzzleAttemptCount ? snippetDurations[ordinal] - snippetDurations[ordinal - 1] : 0;
+		return {
+			id: ordinal,
+			primary: `ATTEMPT ${ordinal} SKIPPED`,
+			...added > 0 ? { detail: `${added} SECOND${added === 1 ? "" : "S"} ADDED` } : {},
+			tone: "skip"
+		};
+	}
+	if (mode === "blitz") return {
+		id: ordinal,
+		primary: `SONG ${ordinal} SKIPPED`,
+		tone: "skip"
+	};
+	if (mode === "gauntlet") {
+		const seconds = Math.abs(modeRules.gauntlet.timeAdjustmentsMs.skip) / 1e3;
+		return {
+			id: ordinal,
+			primary: "SKIPPED",
+			detail: `${seconds} SECOND${seconds === 1 ? "" : "S"} LOST`,
+			tone: "skip"
+		};
+	}
+	throw new Error("Seek answers do not use puzzle/timed attempt history");
+}
+function seekHistorySlots(answers, phase, engaged) {
+	const resolvedAnswers = phase === "revealing" ? answers.slice(1) : answers;
+	const latestResolvedRound = phase === "revealing" ? answers.length - 1 : answers.length;
+	const slots = resolvedAnswers.map((answer, index) => {
+		const round = latestResolvedRound - index;
+		const points = seekAttemptPoints(answer);
+		const grade = seekGradePresentation(seekGrade(points));
+		return {
+			id: round,
+			primary: grade.label,
+			detail: `${points.toLocaleString("en-US")} POINTS`,
+			tone: grade.tone,
+			ariaLabel: `Round ${round}, ${grade.accessibleLabel}, ${points.toLocaleString("en-US")} points`
+		};
+	});
+	if (engaged && phase !== "revealed") {
+		const round = answers.length + (phase === "selecting" ? 1 : 0);
+		slots.unshift({
+			id: round,
+			primary: `ROUND ${round}`,
+			tone: "prompt"
+		});
+	}
+	return slots;
+}
+function seekGradePresentation(grade) {
+	switch (grade) {
+		case "perfect": return {
+			label: "PERFECT",
+			accessibleLabel: "Perfect",
+			tone: "seek-perfect"
+		};
+		case "great": return {
+			label: "GREAT",
+			accessibleLabel: "Great",
+			tone: "seek-great"
+		};
+		case "good": return {
+			label: "GOOD",
+			accessibleLabel: "Good",
+			tone: "seek-good"
+		};
+		case "close": return {
+			label: "CLOSE",
+			accessibleLabel: "Close",
+			tone: "seek-close"
+		};
+		case "way-off": return {
+			label: "WAY OFF",
+			accessibleLabel: "Way off",
+			tone: "seek-way-off"
+		};
+	}
 }
 var Application = class {
 	options;
@@ -2902,13 +2974,15 @@ var AttemptHistoryView = class {
 	renderSlots(entries, runId) {
 		const rendered = entries.map((entry) => ({
 			key: `${runId}:${entry.id}`,
-			text: entry.text,
+			primary: entry.primary,
+			detail: entry.detail,
 			tone: entry.tone,
+			ariaLabel: entry.ariaLabel,
 			gauntletMilestone: entry.gauntletMilestone === true
 		}));
 		if (rendered.length === this.renderedSlots.length && rendered.every((entry, index) => {
 			const previous = this.renderedSlots[index];
-			return previous?.key === entry.key && previous.text === entry.text && previous.tone === entry.tone && previous.gauntletMilestone === entry.gauntletMilestone;
+			return previous?.key === entry.key && previous.primary === entry.primary && previous.detail === entry.detail && previous.tone === entry.tone && previous.ariaLabel === entry.ariaLabel && previous.gauntletMilestone === entry.gauntletMilestone;
 		})) return;
 		const previousSlots = this.renderedSlots;
 		this.renderedSlots = rendered;
@@ -2931,12 +3005,14 @@ var AttemptHistoryView = class {
 			existing.delete(entry.key);
 			const previous = previousEntries.get(entry.key);
 			const previousTone = previous?.tone ?? "";
-			const previousText = previous?.text ?? "";
+			const previousPrimary = previous?.primary ?? "";
+			const previousDetail = previous?.detail;
+			const previousAriaLabel = previous?.ariaLabel;
 			const wasMilestone = previous?.gauntletMilestone ?? false;
-			const changedHead = (isNew || previousText !== entry.text || previousTone !== entry.tone || wasMilestone !== entry.gauntletMilestone) && previousSlots[0]?.key === entry.key;
+			const changedHead = (isNew || previousPrimary !== entry.primary || previousDetail !== entry.detail || previousTone !== entry.tone || previousAriaLabel !== entry.ariaLabel || wasMilestone !== entry.gauntletMilestone) && previousSlots[0]?.key === entry.key;
 			this.applyTone(element, previousTone, entry.tone);
-			element.textContent = entry.text;
-			this.applyGauntletMilestone(element, entry.gauntletMilestone, entry.text);
+			this.renderContent(element, entry);
+			this.applyAccessibility(element, entry.gauntletMilestone, entry.ariaLabel, visibleText(entry));
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
 			if (isNew || changedHead) fadeNodes.push(element);
 			return element;
@@ -3036,9 +3112,26 @@ var AttemptHistoryView = class {
 		element.classList.remove(...toneClasses(previous));
 		element.classList.add(...toneClasses(next));
 	}
-	applyGauntletMilestone(element, gauntletMilestone, text) {
+	renderContent(element, entry) {
+		const primary = document.createElement("span");
+		primary.className = "slot-primary";
+		primary.textContent = entry.primary;
+		if (!entry.detail) {
+			element.replaceChildren(primary);
+			return;
+		}
+		const separator = document.createElement("span");
+		separator.className = "slot-separator";
+		separator.textContent = " · ";
+		const detail = document.createElement("span");
+		detail.className = "slot-detail";
+		detail.textContent = entry.detail;
+		element.replaceChildren(primary, separator, detail);
+	}
+	applyAccessibility(element, gauntletMilestone, ariaLabel, text) {
 		element.classList.toggle("gauntlet-milestone", gauntletMilestone);
-		if (gauntletMilestone) element.setAttribute("aria-label", `${text}. Counts toward Gauntlet completion.`);
+		const label = gauntletMilestone ? `${ariaLabel ?? text}. Counts toward Gauntlet completion.` : ariaLabel;
+		if (label) element.setAttribute("aria-label", label);
 		else element.removeAttribute("aria-label");
 	}
 	fadeIn(element) {
@@ -3082,7 +3175,11 @@ var AttemptHistoryView = class {
 function toneClasses(tone) {
 	if (tone === "correct" || tone === "wrong" || tone === "skip") return [tone];
 	if (tone === "final-prompt" || tone === "technical") return ["blink"];
+	if (tone.startsWith("seek-")) return [tone];
 	return [];
+}
+function visibleText(slot) {
+	return slot.detail ? `${slot.primary} · ${slot.detail}` : slot.primary;
 }
 var tokenAliases = {
 	featuring: "feat",
@@ -4681,11 +4778,18 @@ function snippetPercentage(seconds) {
 }
 function markup() {
 	const snippetTicks = snippetDurations.slice(0, -1).map((seconds) => `<i class="tick" style="left:${snippetPercentage(seconds)}"></i>`).join("");
+	const modeButtons = regularModes.map((mode) => `<button type="button" class="mode" data-mode="${mode}" aria-pressed="false">${mode.toUpperCase()}</button>`).join("");
+	const helpSections = regularModes.map((mode) => {
+		const instructions = modeRules[mode].howToPlay;
+		if (!instructions) throw new Error(`${mode} requires How to Play instructions`);
+		const paragraphs = instructions.map((text) => `<p>${text}</p>`).join("");
+		return `<section class="help-mode"><h4>${mode.toUpperCase()}</h4>${paragraphs}</section>`;
+	}).join("");
 	return [
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
 		`<div class="row header-action"><button type="button" id="corzaguessr-progress" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
-    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE">${regularModes.map((mode) => `<button type="button" class="mode" data-mode="${mode}" aria-pressed="false">${mode.toUpperCase()}</button>`).join("")}</div>`,
+    <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE">${modeButtons}</div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
 		`<div class="board">`,
@@ -4698,7 +4802,7 @@ function markup() {
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
-		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
+		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="help-content">${helpSections}</div><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
 		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
