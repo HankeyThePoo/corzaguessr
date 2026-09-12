@@ -1552,14 +1552,14 @@ function formatResultShare(date, result) {
 	switch (result.mode) {
 		case "daily": return formatDailyShare(date, result);
 		case "classic": {
-			const message = result.kind === "preview" ? "I encountered an upcoming song!" : result.won ? `I'm on a ${result.streak}-song streak!` : `My ${result.streak}-song streak ended.`;
-			return shareCard("CORZAGUESSR✦ CLASSIC", puzzleBlocks(result.won, result.attempts), message);
+			const message = result.kind === "preview" ? "I encountered an upcoming song!" : result.won ? `I'm on a ${result.streak}-song streak!` : result.streak > 0 ? `My ${result.streak}-song streak ended.` : "No streak this time!";
+			return shareCard("CLASSIC", puzzleBlocks(result.won, result.attempts), message);
 		}
-		case "blitz": return shareCard("CORZAGUESSR ✦ BLITZ", `I guessed ${result.correct} ${result.correct === 1 ? "song" : "songs"} in a minute!`);
-		case "seek": return shareCard("CORZAGUESSR✦ SEEK", result.roundPoints.map(seekBlock).join(" "), `I scored ${result.score.toLocaleString("en-US")} out of ${seekMaxScore.toLocaleString("en-US")}!`);
+		case "blitz": return shareCard("BLITZ", `I correctly guessed ${result.correct} ${result.correct === 1 ? "song" : "songs"} in a minute!`);
+		case "seek": return shareCard("SEEK", result.roundPoints.map(seekBlock).join(" "), `I scored ${result.score.toLocaleString("en-US")} out of ${seekMaxScore.toLocaleString("en-US")}!`);
 		case "gauntlet": {
 			const survived = gauntletCompleted(result);
-			return shareCard("CORZAGUESSR✦ GAUNTLET", `${survived ? "🛡️" : "☠️"} ✦ ⏱️ ${formatClock(result.elapsedMs / 1e3)}`, survived ? "I survived the Gauntlet!" : "I failed the Gauntlet.");
+			return shareCard("GAUNTLET", `${survived ? "🛡️" : "☠️"} ✦ ⏱️ ${formatClock(result.elapsedMs / 1e3)}`, survived ? "I survived the Gauntlet!" : "I failed the Gauntlet.");
 		}
 	}
 }
@@ -1567,7 +1567,7 @@ function formatDailyShare(date, result) {
 	const attempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(result.attempts)));
 	const squares = puzzleBlocks(result.won, attempts);
 	const outcome = result.won ? `I got it in ${attempts} ${attempts === 1 ? "try" : "tries"}!` : `I didn't get it in ${puzzleAttemptCount} tries!`;
-	return `CORZAGUESSR✦ DAILY // ${formatShareDate(date)}\n\n${squares}\n${outcome}\n\n${shareUrl}`;
+	return shareCard(`DAILY // ${formatShareDate(date)}`, squares, outcome);
 }
 function puzzleBlocks(won, attempts) {
 	const resolvedAttempts = Math.max(1, Math.min(puzzleAttemptCount, Math.trunc(attempts)));
@@ -1580,7 +1580,7 @@ function seekBlock(points) {
 	return "🟥";
 }
 function shareCard(heading, ...lines) {
-	return `${heading}\n${lines.join("\n")}\n${shareUrl}`;
+	return `CORZAGUESSR✦ ${heading}\n\n${lines.join("\n")}\n\n${shareUrl}`;
 }
 function puzzleAnswer(previous, answer) {
 	const attempts = [answer, ...previous];
