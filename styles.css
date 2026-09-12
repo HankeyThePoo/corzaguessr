@@ -7,6 +7,7 @@
   --correct: #10b981;
   --wrong: #ef4444;
   --reward: #ffda5e;
+  --warning: #f97316;
   --mute: #ef4444;
   --gradient: linear-gradient(
     135deg,
@@ -453,6 +454,7 @@
 
   & .help-button {
     --help-icon-size: 24px;
+    display: grid;
     position: absolute;
     top: calc((var(--play-size) - var(--volume-height)) / 2);
     left: 0;
@@ -464,17 +466,8 @@
     background: transparent;
     color: var(--off-white);
     cursor: pointer;
+    place-items: center;
     transition: filter var(--duration-fast) ease;
-  }
-
-  & .help-button::after {
-    inset: auto;
-    top: 50%;
-    left: 50%;
-    width: calc(var(--help-icon-size) + var(--gradient-border-width) * 2);
-    height: calc(var(--help-icon-size) + var(--gradient-border-width) * 2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
   }
 
   & .help-button svg {
@@ -931,12 +924,49 @@
     line-height: var(--line-height);
     text-align: center;
     text-transform: uppercase;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    white-space: nowrap;
     transition:
       opacity var(--duration-standard) ease,
       translate var(--duration-standard) ease;
     translate: 0 0;
+  }
+
+  & .slot-primary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .slot-separator,
+  & .slot-detail {
+    flex: none;
+    color: var(--off-white);
+  }
+
+  & .slot.seek-perfect .slot-primary {
+    width: fit-content;
+    flex: none;
+    background: var(--gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  & .slot.seek-great .slot-primary {
+    color: var(--correct);
+  }
+
+  & .slot.seek-good .slot-primary {
+    color: var(--reward);
+  }
+
+  & .slot.seek-close .slot-primary {
+    color: var(--warning);
+  }
+
+  & .slot.seek-way-off .slot-primary {
+    color: var(--wrong);
   }
 
   & .slot.fade {
@@ -1052,6 +1082,39 @@
     font-weight: 800;
     line-height: 1.2;
     letter-spacing: var(--tracking-heading);
+  }
+
+  & .help-content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: calc(var(--space) * 5) calc(var(--space) * 6);
+    width: 100%;
+    text-align: left;
+    text-transform: none;
+  }
+
+  & .help-mode {
+    display: grid;
+    align-content: start;
+    gap: calc(var(--space) * 2);
+    padding-top: calc(var(--space) * 3);
+    border-top: var(--line-width) solid var(--line);
+  }
+
+  & .help-mode h4,
+  & .help-mode p {
+    margin: 0;
+  }
+
+  & .help-mode h4 {
+    color: var(--off-white);
+    font-size: var(--text-label);
+    letter-spacing: var(--tracking-label);
+  }
+
+  & .help-mode p {
+    font-size: var(--text-body);
+    line-height: 1.5;
   }
 
   & .modal-title {
@@ -1558,6 +1621,10 @@
       white-space: normal;
     }
 
+    & .help-content {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     & .ruleset.scroll .ruleset-track {
       --ruleset-scroll-gap: calc(var(--space) * 10);
       justify-content: flex-start;
@@ -1792,10 +1859,9 @@
       box-shadow: none;
     }
 
-    & .help-button:focus svg {
+    & .help-button:focus {
       outline: var(--gradient-border-width) solid Highlight;
       outline-offset: var(--gradient-border-width);
-      border-radius: 50%;
     }
 
     & .timeline:has(.position-range:focus-visible) {
