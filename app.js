@@ -4280,8 +4280,8 @@ var icons = {
 };
 var helpModes = [
 	"daily",
-	"blitz",
 	"classic",
+	"blitz",
 	"seek"
 ];
 var GameView = class {
