@@ -120,6 +120,7 @@
   & .button,
   & .play,
   & .mode,
+  & .help-button,
   & .auto,
   & .discovery-item-toggle,
   & .discovery-gauntlet {
@@ -129,6 +130,7 @@
   & .button::after,
   & .play::after,
   & .mode::after,
+  & .help-button::after,
   & .auto::after,
   & .discovery-item-toggle::after,
   & .discovery-gauntlet::after {
@@ -149,6 +151,7 @@
   &.keyboard-input .button:focus::after,
   &.keyboard-input .play:focus::after,
   &.keyboard-input .mode:not(:disabled):focus::after,
+  &.keyboard-input .help-button:focus::after,
   &.keyboard-input .discovery-item-toggle:focus::after,
   &.keyboard-input .discovery-gauntlet:focus::after {
     opacity: 1;
@@ -446,6 +449,24 @@
 
   & .play:not(:disabled) svg {
     fill: var(--near-black);
+  }
+
+  & .help-button {
+    position: absolute;
+    top: calc((var(--play-size) - var(--volume-height)) / 2);
+    left: 0;
+    z-index: 1;
+    width: var(--volume-width);
+    height: var(--volume-height);
+    padding: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--off-white);
+    cursor: pointer;
+    font-size: var(--text-clock);
+    font-weight: 800;
+    line-height: 1;
+    transition: filter var(--duration-fast) ease;
   }
 
   & .volume-control {
@@ -948,6 +969,7 @@
   }
 
   & .result-modal,
+  & .help-modal,
   & .discovery-modal {
     display: flex;
     position: absolute;
@@ -962,7 +984,8 @@
     transition: background var(--duration-standard) ease;
   }
 
-  & .result-modal {
+  & .result-modal,
+  & .help-modal {
     z-index: 1;
   }
 
@@ -971,11 +994,21 @@
     visibility: visible;
   }
 
+  & .help-open .help-modal {
+    pointer-events: auto;
+    visibility: visible;
+  }
+
   & .result-visible .result-modal {
     background: var(--scrim);
   }
 
+  & .help-visible .help-modal {
+    background: var(--scrim);
+  }
+
   & .result-shell,
+  & .help-shell,
   & .discovery-shell {
     width: min(96vw, 840px);
     height: 0;
@@ -998,6 +1031,14 @@
 
   & .corzaguessr-modal h3 {
     margin: 0;
+  }
+
+  & .help-title {
+    color: var(--off-white);
+    font-size: var(--text-clock);
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: var(--tracking-heading);
   }
 
   & .modal-title {
@@ -1492,7 +1533,8 @@
       filter: brightness(var(--interaction-brightness));
     }
 
-    & .volume-control:hover {
+    & .volume-control:hover,
+    & .help-button:hover {
       filter: brightness(var(--interaction-brightness));
     }
 
@@ -1615,16 +1657,16 @@
   }
 
   @media (max-width: 480px) {
+    & {
+      --volume-width: 50px;
+    }
+
     & .mode-navigation {
       width: min(100%, 280px);
     }
 
     & .discovery-button {
       width: min(calc(var(--button-width) + var(--space) * 2), 100%);
-    }
-
-    & .volume-control {
-      --volume-width: 50px;
     }
 
     & .volume-bar {
@@ -1733,6 +1775,11 @@
       outline: var(--gradient-border-width) solid Highlight;
       outline-offset: var(--gradient-border-width);
       box-shadow: none;
+    }
+
+    & .help-button:focus {
+      outline: var(--gradient-border-width) solid Highlight;
+      outline-offset: var(--gradient-border-width);
     }
 
     & .timeline:has(.position-range:focus-visible) {
