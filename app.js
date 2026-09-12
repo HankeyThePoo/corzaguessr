@@ -1371,6 +1371,11 @@ function chooseRound(state, roundId, avoid, random) {
 		} : null;
 	}
 	const excluded = new Set(rounds.failedTrackIds);
+	if (run.mode === "blitz" && catalog.length) {
+		const correctIds = run.attempts.flatMap((attempt) => attempt.outcome === "correct" ? [attempt.trackId] : []);
+		const completedThisCycle = correctIds.length % catalog.length;
+		for (const trackId of correctIds.slice(0, completedThisCycle)) excluded.add(trackId);
+	}
 	if (run.mode === "seek") for (const answer of run.answers) excluded.add(answer.trackId);
 	const track = selectRandomTrack(catalog, excluded, avoid, random);
 	const seconds = run.mode === "seek" ? modeRules.seek.snippetSeconds : run.mode === "classic" ? maxPuzzleSnippetSeconds : 60;
@@ -2508,7 +2513,7 @@ var Application = class {
 		const state = this.currentState;
 		if (state.rounds.next || !prefetchesRounds(state.run.mode)) return;
 		const round = this.chooseNextRound(current.round.track.id);
-		if (!round) return;
+		if (!round || state.run.mode === "blitz" && round.track.id === current.round.track.id) return;
 		state.rounds.next = round;
 		this.audio.loadPreload(round);
 	}
