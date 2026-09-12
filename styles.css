@@ -943,6 +943,10 @@
     color: var(--off-white);
   }
 
+  & .slot-separator {
+    margin-inline: var(--space);
+  }
+
   & .slot.seek-perfect .slot-primary {
     width: fit-content;
     flex: none;
