@@ -2038,6 +2038,8 @@ var Application = class {
 			}),
 			openDiscovery: () => this.dispatch({ type: "open-discovery" }),
 			closeDiscovery: () => this.dispatch({ type: "close-discovery" }),
+			openHelp: () => this.dispatch({ type: "open-help" }),
+			closeHelp: () => this.dispatch({ type: "close-help" }),
 			startGauntlet: () => this.dispatch({ type: "start-gauntlet" }),
 			resultAction: () => this.dispatch({ type: "close-result" }),
 			setVolume: (value, committed) => this.dispatch({
@@ -2270,6 +2272,16 @@ var Application = class {
 			case "close-discovery":
 				if (state.overlay.kind === "discovery") this.closeDiscovery("resume");
 				return;
+			case "open-help":
+				if (state.overlay.kind !== "none") return;
+				this.clock.pause();
+				this.clearTrackLoading();
+				this.audio.suspend();
+				state.overlay = { kind: "help" };
+				return;
+			case "close-help":
+				if (state.overlay.kind === "help") this.closeHelp();
+				return;
 			case "start-gauntlet":
 				if (state.overlay.kind === "discovery" && summarizeDiscovery(state.catalog, state.player.discoveries).complete) this.closeDiscovery("start-gauntlet");
 				return;
@@ -2289,6 +2301,14 @@ var Application = class {
 				this.pendingFocus = actions.play ? "focusPlay" : actions.action ? "focusAttemptAction" : "focusProgress";
 				return;
 			}
+			case "help-closed":
+				state.overlay = { kind: "none" };
+				if (state.visible) {
+					this.restoreAudio();
+					this.prepareRound();
+				}
+				this.pendingFocus = "focusHelp";
+				return;
 			case "result-closed": {
 				state.overlay = { kind: "none" };
 				let dailyRecap = false;
@@ -2735,6 +2755,9 @@ var Application = class {
 			type: "discovery-closed",
 			outcome
 		}));
+	}
+	closeHelp() {
+		this.options.view.beginHelpClose(() => this.dispatch({ type: "help-closed" }));
 	}
 	restoreAudio() {
 		this.audio.restore((failure) => this.dispatch({
@@ -3515,11 +3538,17 @@ var ModalController = class {
 	openDiscovery() {
 		this.openModal("discovery");
 	}
+	openHelp() {
+		this.openModal("help");
+	}
 	closeResult(onClosed = () => {}, onClosing = () => {}) {
 		this.closeModal("result", onClosed, onClosing);
 	}
 	closeDiscovery(onClosed) {
 		this.closeModal("discovery", onClosed);
+	}
+	closeHelp(onClosed) {
+		this.closeModal("help", onClosed);
 	}
 	openModal(kind) {
 		if (this.kind) throw new Error("Opening a modal requires no active modal.");
@@ -3531,6 +3560,7 @@ var ModalController = class {
 		parts.classTarget.classList.add(parts.openClass);
 		parts.modal.setAttribute("aria-hidden", "false");
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
+		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "true");
 		const finishOpen = () => {
 			this.openFrame = 0;
 			if (this.kind !== kind || this.closing) return;
@@ -3574,6 +3604,7 @@ var ModalController = class {
 		parts.shell.offsetHeight;
 		parts.shell.style.height = "0px";
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "false");
+		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "false");
 		const finish = () => {
 			if (this.kind !== kind || !this.closing) return;
 			this.shellMotion = null;
@@ -3595,7 +3626,7 @@ var ModalController = class {
 	}
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
-		const focusable = [...(this.kind === "result" ? this.elements.result : this.elements.discoveryPanel).querySelectorAll("button:not([disabled]), input:not([disabled])")].filter((element) => element.tabIndex >= 0 && !element.hidden && element.offsetParent !== null);
+		const focusable = [...this.getModalParts(this.kind).panel.querySelectorAll("button:not([disabled]), input:not([disabled])")].filter((element) => element.tabIndex >= 0 && !element.hidden && element.offsetParent !== null);
 		if (!focusable.length) return;
 		const first = focusable[0];
 		const last = focusable.at(-1);
@@ -3653,23 +3684,35 @@ var ModalController = class {
 		this.shellMotion = null;
 	}
 	getModalParts(kind) {
-		return kind === "result" ? {
-			classTarget: this.elements.card,
-			openClass: "result-open",
-			visibleClass: "result-visible",
-			modal: this.elements.result,
-			shell: this.elements.resultShell,
-			panel: this.elements.resultPanel,
-			focusTarget: this.elements.resultAction
-		} : {
-			classTarget: this.root,
-			openClass: "discovery-open",
-			visibleClass: "discovery-visible",
-			modal: this.elements.discoveryModal,
-			shell: this.elements.discoveryShell,
-			panel: this.elements.discoveryPanel,
-			focusTarget: this.elements.discoveryClose
-		};
+		switch (kind) {
+			case "result": return {
+				classTarget: this.elements.card,
+				openClass: "result-open",
+				visibleClass: "result-visible",
+				modal: this.elements.result,
+				shell: this.elements.resultShell,
+				panel: this.elements.resultPanel,
+				focusTarget: this.elements.resultAction
+			};
+			case "discovery": return {
+				classTarget: this.root,
+				openClass: "discovery-open",
+				visibleClass: "discovery-visible",
+				modal: this.elements.discoveryModal,
+				shell: this.elements.discoveryShell,
+				panel: this.elements.discoveryPanel,
+				focusTarget: this.elements.discoveryClose
+			};
+			case "help": return {
+				classTarget: this.elements.card,
+				openClass: "help-open",
+				visibleClass: "help-visible",
+				modal: this.elements.helpModal,
+				shell: this.elements.helpShell,
+				panel: this.elements.helpPanel,
+				focusTarget: this.elements.helpClose
+			};
+		}
 	}
 };
 var emptyRecordValue = "---";
@@ -4227,6 +4270,11 @@ var GameView = class {
 		});
 		this.elements.resultAction.addEventListener("click", handlers.resultAction);
 		this.elements.resultSecondary.addEventListener("click", handlers.shareResult);
+		this.elements.helpButton.addEventListener("click", handlers.openHelp);
+		this.elements.helpClose.addEventListener("click", handlers.closeHelp);
+		this.elements.helpModal.addEventListener("click", (event) => {
+			if (!(event.target instanceof Element && event.target.closest(".help-panel"))) handlers.closeHelp();
+		});
 		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
 		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
 		this.elements.discoveryModal.addEventListener("click", (event) => {
@@ -4306,7 +4354,7 @@ var GameView = class {
 		else if (openingOverlay === "discovery") {
 			this.discovery.collapseAll();
 			this.modal.openDiscovery();
-		}
+		} else if (openingOverlay === "help") this.modal.openHelp();
 	}
 	renderClock(clock) {
 		this.elements.endtime.textContent = clock.endText;
@@ -4346,6 +4394,9 @@ var GameView = class {
 	beginDiscoveryClose(onClosed) {
 		this.modal.closeDiscovery(() => onClosed?.());
 	}
+	beginHelpClose(onClosed) {
+		this.modal.closeHelp(() => onClosed?.());
+	}
 	showResultShareCopied() {
 		this.resultView.showShareCopied();
 	}
@@ -4369,6 +4420,9 @@ var GameView = class {
 	}
 	focusProgress() {
 		this.elements.discoveryButton.focus({ preventScroll: true });
+	}
+	focusHelp() {
+		this.elements.helpButton.focus({ preventScroll: true });
 	}
 	focusAttemptAction() {
 		if (!this.elements.action.disabled && !this.elements.action.closest("[inert]")) this.elements.action.focus({ preventScroll: true });
@@ -4445,7 +4499,9 @@ var GameView = class {
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				this.state.overlay === "discovery" ? this.handlers.closeDiscovery() : this.handlers.resultAction();
+				if (this.state.overlay === "discovery") this.handlers.closeDiscovery();
+				else if (this.state.overlay === "help") this.handlers.closeHelp();
+				else this.handlers.resultAction();
 				return;
 			}
 			if (this.state.overlay === "result" && this.isArrowKey(event.key)) {
@@ -4605,6 +4661,11 @@ var GameView = class {
 			discoveryCount: this.required(".discovery-title small"),
 			discoveryItems: this.required(".discovery-items"),
 			progressBests: this.required(".progress-bests"),
+			helpButton: this.required(".help-button"),
+			helpModal: this.required(".help-modal"),
+			helpShell: this.required(".help-shell"),
+			helpPanel: this.required(".help-panel"),
+			helpClose: this.required(".help-close"),
 			volumeControl: this.required(".volume-control"),
 			volumeRange: this.required(".volume-range"),
 			audioPlayers
@@ -4629,6 +4690,7 @@ function markup() {
 		`<div class="stack">`,
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
+		`<button type="button" class="help-button" aria-label="HOW TO PLAY" aria-haspopup="dialog" aria-controls="corzaguessr-help" aria-expanded="false">?</button>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
 		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row action-row"><button type="button" class="button action" disabled>ADD 1S</button></div></div>`,
@@ -4636,6 +4698,7 @@ function markup() {
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
+		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
 		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
