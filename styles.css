@@ -1613,6 +1613,11 @@
   }
 
   & .discovery-listen-links img[data-platform="youtube"] {
+    width: calc(100% + var(--space) * 2.5);
+    height: calc(100% + var(--space) * 2.5);
+  }
+
+  & .discovery-listen-links img[data-platform="tidal"] {
     width: calc(100% + var(--space) * 3);
     height: calc(100% + var(--space) * 3);
   }
