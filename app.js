@@ -2978,7 +2978,7 @@ var AttemptHistoryView = class {
 	renderedSlots = [];
 	runId = "";
 	collapseMotion = null;
-	dealMotions = /* @__PURE__ */ new Set();
+	entryMotions = /* @__PURE__ */ new Set();
 	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
@@ -3034,7 +3034,7 @@ var AttemptHistoryView = class {
 			return [element.dataset.slotKey ?? "", element.getBoundingClientRect().top];
 		}));
 		const previousHeight = this.elements.container.getBoundingClientRect().height;
-		this.cancelDealMotions();
+		this.cancelEntryMotions();
 		this.renderCurrent(current);
 		this.renderHistory(history, deal, currentTop, previousTops, previousHeight);
 	}
@@ -3093,30 +3093,30 @@ var AttemptHistoryView = class {
 			if (startTop === void 0) continue;
 			const delta = startTop - finalTop;
 			if (Math.abs(delta) < .5) continue;
-			this.trackDealMotion(element.animate({ translate: [`0 ${delta}px`, "0 0"] }, {
+			this.trackEntryMotion(element.animate({ translate: [`0 ${delta}px`, "0 0"] }, {
 				duration: this.durations.deal,
 				easing: "cubic-bezier(.2,.8,.2,1)"
 			}));
 		}
 		const finalHeight = this.elements.container.getBoundingClientRect().height;
-		if (Math.abs(previousHeight - finalHeight) >= .5) this.trackDealMotion(this.elements.container.animate({ height: [`${previousHeight}px`, `${finalHeight}px`] }, {
+		if (Math.abs(previousHeight - finalHeight) >= .5) this.trackEntryMotion(this.elements.container.animate({ height: [`${previousHeight}px`, `${finalHeight}px`] }, {
 			duration: this.durations.deal,
 			easing: "cubic-bezier(.2,.8,.2,1)"
 		}));
 	}
-	trackDealMotion(motion) {
-		this.dealMotions.add(motion);
-		motion.finished.then(() => this.dealMotions.delete(motion), () => this.dealMotions.delete(motion));
+	trackEntryMotion(motion) {
+		this.entryMotions.add(motion);
+		motion.finished.then(() => this.entryMotions.delete(motion), () => this.entryMotions.delete(motion));
 	}
-	cancelDealMotions() {
-		for (const motion of this.dealMotions) motion.cancel();
-		this.dealMotions.clear();
+	cancelEntryMotions() {
+		for (const motion of this.entryMotions) motion.cancel();
+		this.entryMotions.clear();
 	}
 	hasRenderedSlots() {
 		return !this.elements.current.hidden || this.elements.list.children.length > 0;
 	}
 	collapseSlots() {
-		this.cancelDealMotions();
+		this.cancelEntryMotions();
 		this.startCollapse(this.elements.container, [...this.elements.current.hidden ? [] : [this.elements.current], ...this.elements.list.children], this.durations.collapse, () => {
 			const pending = this.pendingSnapshot;
 			this.pendingSnapshot = null;
@@ -3139,6 +3139,14 @@ var AttemptHistoryView = class {
 			easing: "ease"
 		});
 		this.collapseMotion = motion;
+		const entries = [...this.elements.current.hidden ? [] : [this.elements.current], ...this.elements.list.children];
+		for (const entry of entries) this.trackEntryMotion(entry.animate({
+			opacity: [0, 1],
+			translate: ["0 -8px", "0 0"]
+		}, {
+			duration,
+			easing: "ease"
+		}));
 		motion.finished.then(() => {
 			if (this.collapseMotion !== motion) return;
 			this.collapseMotion = null;
@@ -3192,7 +3200,7 @@ var AttemptHistoryView = class {
 	clearRenderedSlots() {
 		this.renderedCurrent = null;
 		this.renderedSlots = [];
-		this.cancelDealMotions();
+		this.cancelEntryMotions();
 		this.elements.current.hidden = true;
 		this.elements.current.className = "slot current-slot";
 		this.elements.current.replaceChildren();
