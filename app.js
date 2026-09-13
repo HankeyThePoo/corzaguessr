@@ -1914,29 +1914,36 @@ function buildViewModel(state, context) {
 			milestones.add(attempts.length - i);
 		}
 	}
-	let slots = run.mode === "seek" ? seekHistorySlots(run.answers, run.phase.kind, run.engaged) : mode === null ? [] : (isTimedMode(mode) ? attempts.slice(0, 19) : attempts).map((historyAttempt, index) => {
+	const historySlots = run.mode === "seek" ? seekHistorySlots(run.answers, run.phase.kind) : mode === null ? [] : (isTimedMode(mode) ? attempts.slice(0, 19) : attempts).map((historyAttempt, index) => {
 		const ordinal = attempts.length - index;
 		return resolvedHistorySlot(mode, historyAttempt, ordinal, catalog, milestones.has(ordinal));
 	});
-	let promptSlot = null;
+	let currentSlot = null;
 	if ((run.mode === "blitz" || run.mode === "gauntlet") && run.engaged) {
 		const left = Math.max(0, catalog.length - seen.size);
-		promptSlot = {
+		currentSlot = {
 			id: attempts.length + 1,
 			primary: completed ? mode === "gauntlet" && left === 0 ? "GAUNTLET COMPLETE" : "TIME'S UP" : mode === "gauntlet" ? `${left} ${left === 1 ? "TRACK" : "TRACKS"} LEFT` : `SONG ${attempts.length + 1}`,
 			tone: completed ? "neutral" : "prompt"
 		};
-	} else if (isPuzzleMode(mode) && !completed && !dailyComplete && (round || attempts.length)) promptSlot = {
+	} else if (isPuzzleMode(mode) && !completed && !dailyComplete && (round || attempts.length)) currentSlot = {
 		id: attempt + 1,
 		primary: `ATTEMPT ${attempt + 1}`,
 		tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
 	};
-	if (technicallyBlocked && promptSlot) promptSlot = {
-		id: promptSlot.id,
+	else if (run.mode === "seek" && run.engaged) {
+		const roundNumber = run.answers.length + (run.phase.kind === "selecting" ? 1 : 0);
+		currentSlot = {
+			id: roundNumber,
+			primary: `ROUND ${roundNumber}`,
+			tone: "prompt"
+		};
+	}
+	if (technicallyBlocked && currentSlot) currentSlot = {
+		id: currentSlot.id,
 		primary: rounds.exhausted ? uiText.trackPoolExhausted : uiText.trackError,
 		tone: "technical"
 	};
-	if (promptSlot) slots.unshift(promptSlot);
 	const unavailableGuessIds = /* @__PURE__ */ new Set();
 	if (isPuzzleMode(mode)) {
 		for (const attempt of attempts) if (attempt.trackId !== null) unavailableGuessIds.add(attempt.trackId);
@@ -1958,7 +1965,8 @@ function buildViewModel(state, context) {
 		playbackIcon: context.playbackRequested ? isTimedMode(mode) ? "pause" : "stop" : "play",
 		snippetSeconds: duration,
 		actionText: forfeit ? "GIVE UP" : run.mode === "seek" ? seekAction ? run.answers.length >= modeRules.seek.roundCount ? "RESULTS" : "NEXT" : "GUESS" : actionLabel(mode, attempt),
-		slots,
+		currentSlot,
+		historySlots,
 		unavailableGuessIds,
 		clock: buildClockViewModel({
 			mode,
@@ -2014,10 +2022,10 @@ function resolvedHistorySlot(mode, attempt, ordinal, catalog, gauntletMilestone)
 	}
 	throw new Error("Seek answers do not use puzzle/timed attempt history");
 }
-function seekHistorySlots(answers, phase, engaged) {
+function seekHistorySlots(answers, phase) {
 	const resolvedAnswers = phase === "revealing" ? answers.slice(1) : answers;
 	const latestResolvedRound = phase === "revealing" ? answers.length - 1 : answers.length;
-	const slots = resolvedAnswers.map((answer, index) => {
+	return resolvedAnswers.map((answer, index) => {
 		const round = latestResolvedRound - index;
 		const points = seekAttemptPoints(answer);
 		const grade = seekGradePresentation(seekGrade(points));
@@ -2029,15 +2037,6 @@ function seekHistorySlots(answers, phase, engaged) {
 			ariaLabel: `Round ${round}, ${grade.accessibleLabel}, ${points.toLocaleString("en-US")} points`
 		};
 	});
-	if (engaged && phase !== "revealed") {
-		const round = answers.length + (phase === "selecting" ? 1 : 0);
-		slots.unshift({
-			id: round,
-			primary: `ROUND ${round}`,
-			tone: "prompt"
-		});
-	}
-	return slots;
 }
 function seekGradePresentation(grade) {
 	switch (grade) {
@@ -2975,11 +2974,11 @@ var AttemptHistoryView = class {
 	durations;
 	reducedMotion;
 	scheduler;
+	renderedCurrent = null;
 	renderedSlots = [];
 	runId = "";
-	nodeMotionGeneration = 0;
-	fadeGenerations = /* @__PURE__ */ new WeakMap();
 	collapseMotion = null;
+	dealMotions = /* @__PURE__ */ new Set();
 	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
@@ -2988,9 +2987,10 @@ var AttemptHistoryView = class {
 		this.reducedMotion = reducedMotion;
 		this.scheduler = scheduler;
 	}
-	render(slots, runId) {
+	render(currentSlot, historySlots, runId) {
 		const snapshot = {
-			slots: [...slots],
+			currentSlot,
+			historySlots: [...historySlots],
 			runId
 		};
 		if (this.pendingSnapshot) {
@@ -3002,34 +3002,59 @@ var AttemptHistoryView = class {
 			this.collapseSlots();
 			return;
 		}
-		this.applySnapshot(snapshot, !this.hasRenderedSlots() && snapshot.slots.length > 0);
+		this.applySnapshot(snapshot, !this.hasRenderedSlots() && (currentSlot !== null || historySlots.length > 0));
 	}
 	beginReset() {
 		if (this.pendingSnapshot || !this.hasRenderedSlots()) return;
 		this.pendingSnapshot = {
-			slots: [],
+			currentSlot: null,
+			historySlots: [],
 			runId: this.runId
 		};
 		this.collapseSlots();
 	}
 	applySnapshot(snapshot, reveal = false) {
 		this.runId = snapshot.runId;
-		this.renderSlots(snapshot.slots, snapshot.runId);
+		this.renderSlots(snapshot, !reveal);
 		if (reveal) this.revealAttempts();
 	}
-	renderSlots(entries, runId) {
-		const rendered = entries.map((entry) => ({
-			key: `${runId}:${entry.id}`,
-			primary: entry.primary,
-			detail: entry.detail,
-			tone: entry.tone,
-			ariaLabel: entry.ariaLabel,
-			gauntletMilestone: entry.gauntletMilestone === true
+	renderSlots(snapshot, deal) {
+		const current = snapshot.currentSlot ? toRenderedSlot(snapshot.currentSlot, `${snapshot.runId}:current`) : null;
+		const history = snapshot.historySlots.map((entry) => toRenderedSlot(entry, snapshot.runId));
+		const currentChanged = !sameSlot(current, this.renderedCurrent);
+		const historyChanged = history.length !== this.renderedSlots.length || history.some((entry, index) => !sameSlot(entry, this.renderedSlots[index] ?? null));
+		if (!currentChanged && !historyChanged) return;
+		if (!historyChanged) {
+			this.renderCurrent(current);
+			return;
+		}
+		const currentTop = this.elements.current.hidden ? null : this.elements.current.getBoundingClientRect().top;
+		const previousTops = new Map([...this.elements.list.children].map((child) => {
+			const element = child;
+			return [element.dataset.slotKey ?? "", element.getBoundingClientRect().top];
 		}));
-		if (rendered.length === this.renderedSlots.length && rendered.every((entry, index) => {
-			const previous = this.renderedSlots[index];
-			return previous?.key === entry.key && previous.primary === entry.primary && previous.detail === entry.detail && previous.tone === entry.tone && previous.ariaLabel === entry.ariaLabel && previous.gauntletMilestone === entry.gauntletMilestone;
-		})) return;
+		const previousHeight = this.elements.container.getBoundingClientRect().height;
+		this.cancelDealMotions();
+		this.renderCurrent(current);
+		this.renderHistory(history, deal, currentTop, previousTops, previousHeight);
+	}
+	renderCurrent(current) {
+		const previous = this.renderedCurrent;
+		this.renderedCurrent = current;
+		const element = this.elements.current;
+		if (!current) {
+			element.hidden = true;
+			element.className = "slot current-slot";
+			element.replaceChildren();
+			element.removeAttribute("aria-label");
+			return;
+		}
+		element.hidden = false;
+		this.applyTone(element, previous?.tone ?? "", current.tone);
+		this.renderContent(element, current);
+		this.applyAccessibility(element, current.gauntletMilestone, current.ariaLabel, visibleText(current));
+	}
+	renderHistory(rendered, deal, currentTop, previousTops, previousHeight) {
 		const previousSlots = this.renderedSlots;
 		this.renderedSlots = rendered;
 		this.cancelCollapse();
@@ -3038,48 +3063,65 @@ var AttemptHistoryView = class {
 			return [element.dataset.slotKey ?? "", element];
 		}));
 		const previousEntries = new Map(previousSlots.map((entry) => [entry.key, entry]));
-		const fadeNodes = [];
 		const wiggleNodes = [];
 		const nodes = rendered.map((entry) => {
 			let element = existing.get(entry.key);
 			const isNew = !element;
 			if (!element) {
 				element = document.createElement("div");
-				element.className = "slot fade";
+				element.className = "slot";
 				element.dataset.slotKey = entry.key;
 			}
 			existing.delete(entry.key);
-			const previous = previousEntries.get(entry.key);
-			const previousTone = previous?.tone ?? "";
-			const previousPrimary = previous?.primary ?? "";
-			const previousDetail = previous?.detail;
-			const previousAriaLabel = previous?.ariaLabel;
-			const wasMilestone = previous?.gauntletMilestone ?? false;
-			const changedHead = (isNew || previousPrimary !== entry.primary || previousDetail !== entry.detail || previousTone !== entry.tone || previousAriaLabel !== entry.ariaLabel || wasMilestone !== entry.gauntletMilestone) && previousSlots[0]?.key === entry.key;
+			const previousTone = previousEntries.get(entry.key)?.tone ?? "";
 			this.applyTone(element, previousTone, entry.tone);
 			this.renderContent(element, entry);
 			this.applyAccessibility(element, entry.gauntletMilestone, entry.ariaLabel, visibleText(entry));
 			if (/^(wrong|skip)$/.test(entry.tone) && (isNew || previousTone !== entry.tone)) wiggleNodes.push(element);
-			if (isNew || changedHead) fadeNodes.push(element);
 			return element;
 		});
-		for (const removed of existing.values()) {
-			this.fadeGenerations.delete(removed);
-			this.cancelWiggle(removed);
-		}
+		for (const removed of existing.values()) this.cancelWiggle(removed);
 		this.elements.list.replaceChildren(...nodes);
-		for (const element of fadeNodes) this.fadeIn(element);
 		for (const element of wiggleNodes) this.startWiggle(element);
+		const incoming = rendered[0] && !previousEntries.has(rendered[0].key) ? nodes[0] ?? null : null;
+		if (deal && incoming && currentTop !== null && !this.reducedMotion.matches && this.durations.deal > 0) this.dealHistory(nodes, incoming, currentTop, previousTops, previousHeight);
+	}
+	dealHistory(nodes, incoming, currentTop, previousTops, previousHeight) {
+		for (const element of nodes) {
+			const finalTop = element.getBoundingClientRect().top;
+			const startTop = element === incoming ? currentTop : previousTops.get(element.dataset.slotKey ?? "");
+			if (startTop === void 0) continue;
+			const delta = startTop - finalTop;
+			if (Math.abs(delta) < .5) continue;
+			this.trackDealMotion(element.animate({ translate: [`0 ${delta}px`, "0 0"] }, {
+				duration: this.durations.deal,
+				easing: "cubic-bezier(.2,.8,.2,1)"
+			}));
+		}
+		const finalHeight = this.elements.container.getBoundingClientRect().height;
+		if (Math.abs(previousHeight - finalHeight) >= .5) this.trackDealMotion(this.elements.container.animate({ height: [`${previousHeight}px`, `${finalHeight}px`] }, {
+			duration: this.durations.deal,
+			easing: "cubic-bezier(.2,.8,.2,1)"
+		}));
+	}
+	trackDealMotion(motion) {
+		this.dealMotions.add(motion);
+		motion.finished.then(() => this.dealMotions.delete(motion), () => this.dealMotions.delete(motion));
+	}
+	cancelDealMotions() {
+		for (const motion of this.dealMotions) motion.cancel();
+		this.dealMotions.clear();
 	}
 	hasRenderedSlots() {
-		return this.elements.list.children.length > 0;
+		return !this.elements.current.hidden || this.elements.list.children.length > 0;
 	}
 	collapseSlots() {
-		this.startCollapse(this.elements.container, [...this.elements.list.children], this.durations.collapse, () => {
+		this.cancelDealMotions();
+		this.startCollapse(this.elements.container, [...this.elements.current.hidden ? [] : [this.elements.current], ...this.elements.list.children], this.durations.collapse, () => {
 			const pending = this.pendingSnapshot;
 			this.pendingSnapshot = null;
 			this.clearRenderedSlots();
-			if (pending) this.applySnapshot(pending, pending.slots.length > 0);
+			if (pending) this.applySnapshot(pending, pending.currentSlot !== null || pending.historySlots.length > 0);
 		});
 	}
 	revealAttempts() {
@@ -3106,7 +3148,6 @@ var AttemptHistoryView = class {
 		}
 		const fadeStarts = fading.map((element) => {
 			const styles = getComputedStyle(element);
-			this.fadeGenerations.delete(element);
 			return {
 				element,
 				opacity: styles.opacity,
@@ -3144,12 +3185,14 @@ var AttemptHistoryView = class {
 		this.collapseMotion = null;
 	}
 	clearRenderedSlots() {
+		this.renderedCurrent = null;
 		this.renderedSlots = [];
-		for (const child of this.elements.list.children) {
-			const element = child;
-			this.fadeGenerations.delete(element);
-			this.cancelWiggle(element);
-		}
+		this.cancelDealMotions();
+		this.elements.current.hidden = true;
+		this.elements.current.className = "slot current-slot";
+		this.elements.current.replaceChildren();
+		this.elements.current.removeAttribute("aria-label");
+		for (const child of this.elements.list.children) this.cancelWiggle(child);
 		this.elements.container.style.height = "";
 		this.elements.list.replaceChildren();
 	}
@@ -3180,25 +3223,6 @@ var AttemptHistoryView = class {
 		if (label) element.setAttribute("aria-label", label);
 		else element.removeAttribute("aria-label");
 	}
-	fadeIn(element) {
-		if (this.reducedMotion.matches) {
-			element.style.transition = "";
-			element.classList.remove("fade");
-			return;
-		}
-		element.style.transition = "none";
-		element.classList.add("fade");
-		element.offsetWidth;
-		element.style.transition = "";
-		element.offsetWidth;
-		const generation = ++this.nodeMotionGeneration;
-		this.fadeGenerations.set(element, generation);
-		this.scheduler.requestFrame(() => {
-			if (this.fadeGenerations.get(element) !== generation || !element.isConnected) return;
-			this.fadeGenerations.delete(element);
-			element.classList.remove("fade");
-		});
-	}
 	startWiggle(element) {
 		this.cancelWiggle(element);
 		if (this.reducedMotion.matches || this.durations.wiggle <= 0) return;
@@ -3218,6 +3242,19 @@ var AttemptHistoryView = class {
 		element.classList.remove("wiggle");
 	}
 };
+function toRenderedSlot(entry, keyPrefix) {
+	return {
+		key: `${keyPrefix}:${entry.id}`,
+		primary: entry.primary,
+		detail: entry.detail,
+		tone: entry.tone,
+		ariaLabel: entry.ariaLabel,
+		gauntletMilestone: entry.gauntletMilestone === true
+	};
+}
+function sameSlot(left, right) {
+	return left === right || !!left && !!right && left.key === right.key && left.primary === right.primary && left.detail === right.detail && left.tone === right.tone && left.ariaLabel === right.ariaLabel && left.gauntletMilestone === right.gauntletMilestone;
+}
 function toneClasses(tone) {
 	if (tone === "correct" || tone === "wrong" || tone === "skip") return [tone];
 	if (tone === "final-prompt" || tone === "technical") return ["blink"];
@@ -4408,10 +4445,12 @@ var GameView = class {
 		this.autocomplete = new Autocomplete(this.elements.guess, this.elements.suggest, (id) => this.handlers?.guess(id), () => this.handlers?.play());
 		this.attempts = new AttemptHistoryView({
 			container: this.required(".attempt-area"),
+			current: this.elements.currentSlot,
 			list: this.elements.slots
 		}, {
 			wiggle: this.durations.long,
-			collapse: this.durations.standard
+			collapse: this.durations.standard,
+			deal: 200
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
@@ -4518,7 +4557,7 @@ var GameView = class {
 		this.elements.action.textContent = state.actionText;
 		if (state.snippetSeconds !== null) this.elements.snippet.style.width = snippetPercentage(state.snippetSeconds);
 		this.renderRules();
-		this.attempts.render(state.slots, runId);
+		this.attempts.render(state.currentSlot, state.historySlots, runId);
 		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds, state.mode === "daily" ? state.dailyDate : null);
 		if (state.overlay === "discovery") {
 			this.renderDiscovery(state);
@@ -4798,6 +4837,7 @@ var GameView = class {
 			headerAction: this.required(".header-action"),
 			modes: this.required(".modes"),
 			board: this.required(".board"),
+			currentSlot: this.required(".current-slot"),
 			slots: this.required(".slots"),
 			card: this.required(".card"),
 			play: this.required(".play"),
@@ -4879,7 +4919,7 @@ function markup() {
 		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row action-row"><button type="button" class="button action" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
-		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slots"></div></div>`,
+		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="help-content">${helpSections}</div><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
