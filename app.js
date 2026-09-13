@@ -3433,11 +3433,11 @@ var platformPresentation = {
 	},
 	youtube: {
 		label: "YouTube",
-		icon: "youtube"
+		icon: "youtubemusic"
 	},
 	amazonMusic: {
 		label: "Amazon Music",
-		icon: "amazon"
+		icon: "amazon-music"
 	},
 	tidal: {
 		label: "Tidal",
