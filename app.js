@@ -246,6 +246,14 @@ function emptyPlayerRecords() {
 		}
 	};
 }
+var listenPlatformKeys = [
+	"spotify",
+	"appleMusic",
+	"youtube",
+	"amazonMusic",
+	"tidal",
+	"deezer"
+];
 function summarizeDiscovery(tracks, discoveries) {
 	const discovered = tracks.reduce((total, track) => total + Number(discoveries.has(track.id)), 0);
 	const total = tracks.length;
@@ -292,8 +300,8 @@ function validateTrackCatalog(value) {
 		const record = candidate;
 		const title = typeof record.title === "string" ? record.title.trim() : "";
 		const duration = record.duration;
-		if (record.spotify !== void 0 && typeof record.spotify !== "string") fail("has an invalid Spotify track ID.");
-		const spotify = typeof record.spotify === "string" ? record.spotify.trim() : "";
+		if (record.spotify !== void 0) fail("uses the obsolete spotify field.");
+		const links = validateTrackLinks(record.links, fail);
 		if (record.isNew !== void 0 && typeof record.isNew !== "boolean") fail("has an invalid isNew flag.");
 		const trackId = record.id;
 		const releaseDate = record.releaseDate === null ? null : typeof record.releaseDate === "string" ? record.releaseDate.trim() : fail("has an invalid releaseDate.");
@@ -302,14 +310,13 @@ function validateTrackCatalog(value) {
 		if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) fail("has an invalid duration.");
 		if (!Number.isSafeInteger(trackId) || Number(trackId) <= 0) fail("has an invalid id.");
 		if (trackIds.has(Number(trackId))) fail(`duplicates id ${String(trackId)}.`);
-		if (spotify && !/^[A-Za-z0-9]{22}$/.test(spotify)) fail("has an invalid Spotify track ID.");
 		if (releaseDate !== null && !isIsoDate(releaseDate)) fail("has an invalid releaseDate.");
 		titles.add(title);
 		trackIds.add(Number(trackId));
 		return {
 			title,
 			duration: Number(duration),
-			spotify,
+			links,
 			id: Number(trackId),
 			releaseDate,
 			isNew: record.isNew === true
@@ -317,6 +324,25 @@ function validateTrackCatalog(value) {
 	});
 	if (tracks.length < modeRules.seek.roundCount) throw new Error(`Track catalog requires at least ${modeRules.seek.roundCount} tracks for Seek.`);
 	return tracks;
+}
+function validateTrackLinks(value, fail) {
+	if (value === void 0) return Object.freeze({});
+	if (!value || typeof value !== "object" || Array.isArray(value)) fail("has invalid platform links.");
+	const record = value;
+	const known = new Set(listenPlatformKeys);
+	const links = {};
+	for (const [key, rawUrl] of Object.entries(record)) {
+		if (!known.has(key)) fail(`has an unknown platform link "${key}".`);
+		if (typeof rawUrl !== "string" || rawUrl.trim() === "") fail(`has an invalid ${key} platform link.`);
+		const url = rawUrl.trim();
+		try {
+			if (new URL(url).protocol !== "https:") throw new Error();
+		} catch {
+			fail(`has an invalid ${key} platform link.`);
+		}
+		links[key] = url;
+	}
+	return Object.freeze(links);
 }
 function stableHash(value) {
 	let hash = 2166136261;
@@ -2147,10 +2173,6 @@ var Application = class {
 				value,
 				committed
 			}),
-			openSpotify: (trackId) => this.dispatch({
-				type: "open-spotify",
-				trackId
-			}),
 			shareResult: () => this.dispatch({ type: "share-result" })
 		});
 	}
@@ -2476,11 +2498,6 @@ var Application = class {
 				if (event.copied) this.options.view.showResultShareCopied();
 				this.announce(event.copied ? "RESULT COPIED TO CLIPBOARD." : "RESULT COULD NOT BE COPIED IN THIS BROWSER.");
 				return;
-			case "open-spotify": {
-				const spotify = state.overlay.kind === "discovery" && state.player.discoveries.has(event.trackId) ? state.catalog.find((t) => t.id === event.trackId)?.spotify : null;
-				if (spotify) this.options.openSpotify(spotify);
-				return;
-			}
 			default: return assertNever(event);
 		}
 	}
@@ -3403,6 +3420,38 @@ var Autocomplete = class {
 		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
+var listenPlatforms = [
+	{
+		key: "spotify",
+		label: "Spotify",
+		icon: "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M6.8 9.4c3.7-1.1 7.4-.8 10.5.9M7.6 12.7c3-0.8 6.2-0.5 8.8.9M8.3 15.7c2.3-0.5 4.7-0.3 6.8.8\" fill=\"none\" stroke=\"var(--near-black)\" stroke-width=\"1.6\" stroke-linecap=\"round\"/>"
+	},
+	{
+		key: "appleMusic",
+		label: "Apple Music",
+		icon: "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"M10 16.2V8.6l7-1.5v7.1M10 12.7l7-1.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/><circle cx=\"8\" cy=\"16.5\" r=\"2\"/><circle cx=\"15\" cy=\"14.5\" r=\"2\"/>"
+	},
+	{
+		key: "youtube",
+		label: "YouTube",
+		icon: "<path d=\"M21.6 7.2a2.8 2.8 0 0 0-2-2C17.8 4.7 12 4.7 12 4.7s-5.8 0-7.6.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.8.5 7.6.5 7.6.5s5.8 0 7.6-.5a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8Z\"/><path d=\"m10 15.2 5-3.2-5-3.2Z\" fill=\"var(--near-black)\"/>"
+	},
+	{
+		key: "amazonMusic",
+		label: "Amazon Music",
+		icon: "<path d=\"M8.5 8.2c.8-1 2-1.5 3.7-1.5 2.4 0 3.8 1.2 3.8 3.4v5.1c0 .8.3 1.3.9 1.9h-2.8c-.3-.4-.5-.8-.6-1.2-1 .9-2 1.4-3.3 1.4-1.9 0-3.1-1.1-3.1-2.8 0-2 1.5-3.1 4.6-3.4l1.8-.2v-.5c0-1.1-.5-1.6-1.6-1.6-.9 0-1.5.3-2 1.1Zm5 4.3-1.5.2c-1.5.2-2.2.7-2.2 1.5 0 .7.5 1.1 1.3 1.1 1 0 1.8-.4 2.4-1.2Z\"/><path d=\"M5.2 19c4.3 2.4 9.2 2.5 13.6.1M17.4 18.2l1.7.2-.5 1.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" stroke-linecap=\"round\"/>"
+	},
+	{
+		key: "tidal",
+		label: "Tidal",
+		icon: "<path d=\"m6 5 3 3-3 3-3-3Zm6 0 3 3-3 3-3-3Zm6 0 3 3-3 3-3-3Zm-6 6 3 3-3 3-3-3Z\"/>"
+	},
+	{
+		key: "deezer",
+		label: "Deezer",
+		icon: "<path d=\"M3 15h4v4H3Zm4.7-3h4v7h-4Zm4.7-4h4v11h-4Zm4.7-3h4v14h-4ZM3 10h4v4H3Zm4.7-3h4v4h-4Z\"/>"
+	}
+];
 function formatReleaseDate(value) {
 	return value === null ? "TBA" : formatOrdinalDate(value);
 }
@@ -3411,7 +3460,6 @@ var DiscoveryListView = class {
 	items;
 	coverUrl;
 	expandedTrackId = null;
-	openSpotify = null;
 	startGauntlet = null;
 	tracks = null;
 	discoveriesSignature = "";
@@ -3420,8 +3468,7 @@ var DiscoveryListView = class {
 		this.items = items;
 		this.coverUrl = coverUrl;
 	}
-	bind(openSpotify, startGauntlet) {
-		this.openSpotify = openSpotify;
+	bind(startGauntlet) {
 		this.startGauntlet = startGauntlet;
 	}
 	collapseAll() {
@@ -3501,17 +3548,33 @@ var DiscoveryListView = class {
 		toggle.append(compact, details);
 		toggle.addEventListener("click", () => this.toggle(track.id));
 		item.append(toggle);
-		if (track.spotify) {
-			const spotify = document.createElement("button");
-			spotify.type = "button";
-			spotify.className = "button discovery-track-spotify";
-			spotify.textContent = "SPOTIFY";
-			spotify.setAttribute("aria-label", `OPEN ${track.title} ON SPOTIFY`);
-			spotify.addEventListener("click", () => this.openSpotify?.(track.id));
-			item.append(spotify);
-		}
+		const listenLinks = this.createListenLinks(track);
+		if (listenLinks) item.append(listenLinks);
 		this.applyExpandedState(item, track.id === this.expandedTrackId);
 		return item;
+	}
+	createListenLinks(track) {
+		const group = document.createElement("div");
+		group.className = "discovery-listen-links";
+		group.setAttribute("role", "group");
+		group.setAttribute("aria-label", `Listen to ${track.title}`);
+		for (const platform of listenPlatforms) {
+			const href = track.links[platform.key];
+			if (!href) continue;
+			const link = document.createElement("a");
+			link.href = href;
+			link.target = "_blank";
+			link.rel = "noopener noreferrer";
+			link.title = platform.label;
+			link.setAttribute("aria-label", `Listen to ${track.title} on ${platform.label}`);
+			const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+			icon.setAttribute("viewBox", "0 0 24 24");
+			icon.setAttribute("aria-hidden", "true");
+			icon.innerHTML = platform.icon;
+			link.append(icon);
+			group.append(link);
+		}
+		return group.childElementCount ? group : null;
 	}
 	createUndiscoveredItem(track) {
 		const item = document.createElement("div");
@@ -3550,14 +3613,17 @@ var DiscoveryListView = class {
 		item.classList.toggle("expanded", expanded);
 		const toggle = item.querySelector(".discovery-item-toggle");
 		const details = item.querySelector(".discovery-track-details");
-		const spotify = item.querySelector(".discovery-track-spotify");
+		const listenLinks = item.querySelector(".discovery-listen-links");
 		toggle?.setAttribute("aria-expanded", String(expanded));
 		if (toggle) {
 			const title = item.dataset.trackId ? this.tracks?.find((track) => String(track.id) === item.dataset.trackId)?.title : null;
 			toggle.setAttribute("aria-label", `${expanded ? "HIDE" : "SHOW"} DETAILS FOR ${title ?? "TRACK"}`);
 		}
 		if (details) details.setAttribute("aria-hidden", String(!expanded));
-		if (spotify) spotify.disabled = !expanded;
+		if (listenLinks) {
+			listenLinks.inert = !expanded;
+			listenLinks.setAttribute("aria-hidden", String(!expanded));
+		}
 	}
 	revealExpandedItem(trackId) {
 		if (this.expandedTrackId !== trackId) return;
@@ -4387,7 +4453,7 @@ var GameView = class {
 		if (this.handlers) throw new Error("GameView can only be bound once.");
 		this.handlers = handlers;
 		this.volume.bind(handlers.setVolume);
-		this.discovery.bind(handlers.openSpotify, handlers.startGauntlet);
+		this.discovery.bind(handlers.startGauntlet);
 		this.elements.play.addEventListener("click", handlers.play);
 		this.elements.action.addEventListener("click", handlers.action);
 		this.elements.positionRange.addEventListener("input", () => {
@@ -4917,9 +4983,6 @@ async function copyToClipboard(text, target = navigator) {
 		return false;
 	}
 }
-function openSpotify(trackId) {
-	window.open(`https://open.spotify.com/track/${trackId}`, "_blank", "noopener,noreferrer");
-}
 var root = document.querySelector("#corzaguessr");
 if (root) initialize(root);
 async function initialize(root) {
@@ -4956,7 +5019,6 @@ async function initialize(root) {
 		player,
 		visible: !document.hidden,
 		copyToClipboard,
-		openSpotify,
 		services: browserServices(view.audioElements, (round) => catalog.assetUrl(`tracks/${formatTrackId(round.track.id)}.mp3`), catalog)
 	});
 	application.start();
