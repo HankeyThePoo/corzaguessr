@@ -3571,7 +3571,6 @@ var DiscoveryListView = class {
 			icon.height = 24;
 			icon.loading = "lazy";
 			icon.decoding = "async";
-			icon.dataset.platform = key;
 			icon.setAttribute("aria-hidden", "true");
 			link.append(icon);
 			group.append(link);
