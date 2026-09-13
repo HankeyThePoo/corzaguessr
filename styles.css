@@ -1604,6 +1604,8 @@
     display: block;
     width: calc(100% + var(--space));
     height: calc(100% + var(--space));
+    max-width: none;
+    max-height: none;
   }
 
   & .discovery-listen-links img[data-platform="amazonMusic"] {
