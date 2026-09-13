@@ -3732,6 +3732,7 @@ var ModalController = class {
 	kind = null;
 	closing = false;
 	shellMotion = null;
+	scrimMotion = null;
 	lockedScroll = null;
 	constructor(root, elements, duration, reducedMotion, announce) {
 		this.root = root;
@@ -3775,7 +3776,7 @@ var ModalController = class {
 		parts.modal.setAttribute("aria-hidden", "false");
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
 		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "true");
-		parts.classTarget.classList.add(parts.visibleClass);
+		this.animateScrim(parts.scrim, 1);
 		const targetHeight = parts.panel.offsetHeight;
 		if (this.reducedMotion.matches && kind === "discovery") this.elements.discoveryClose.style.visibility = "visible";
 		parts.focusTarget.focus({ preventScroll: true });
@@ -3802,14 +3803,14 @@ var ModalController = class {
 		onClosing();
 		const currentHeight = parts.shell.getBoundingClientRect().height;
 		this.cancelShellMotion();
-		parts.classTarget.classList.remove(parts.visibleClass);
+		this.animateScrim(parts.scrim, 0);
 		parts.shell.style.height = "0px";
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "false");
 		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "false");
 		const finish = () => {
 			if (this.kind !== kind || !this.closing) return;
 			this.shellMotion = null;
-			parts.classTarget.classList.remove(parts.openClass, parts.visibleClass);
+			parts.classTarget.classList.remove(parts.openClass);
 			parts.shell.style.height = "";
 			if (kind === "discovery") this.elements.discoveryClose.style.visibility = "";
 			this.kind = null;
@@ -3886,13 +3887,28 @@ var ModalController = class {
 		this.shellMotion?.cancel();
 		this.shellMotion = null;
 	}
+	animateScrim(scrim, targetOpacity) {
+		const currentOpacity = Number.parseFloat(getComputedStyle(scrim).opacity) || 0;
+		this.scrimMotion?.cancel();
+		this.scrimMotion = null;
+		scrim.style.opacity = `${targetOpacity}`;
+		if (this.reducedMotion.matches || currentOpacity === targetOpacity) return;
+		const motion = scrim.animate({ opacity: [`${currentOpacity}`, `${targetOpacity}`] }, {
+			duration: this.duration,
+			easing: "ease"
+		});
+		this.scrimMotion = motion;
+		motion.finished.then(() => {
+			if (this.scrimMotion === motion) this.scrimMotion = null;
+		}, () => {});
+	}
 	getModalParts(kind) {
 		switch (kind) {
 			case "result": return {
 				classTarget: this.elements.card,
 				openClass: "result-open",
-				visibleClass: "result-visible",
 				modal: this.elements.result,
+				scrim: this.elements.resultScrim,
 				shell: this.elements.resultShell,
 				panel: this.elements.resultPanel,
 				focusTarget: this.elements.resultAction
@@ -3900,8 +3916,8 @@ var ModalController = class {
 			case "discovery": return {
 				classTarget: this.root,
 				openClass: "discovery-open",
-				visibleClass: "discovery-visible",
 				modal: this.elements.discoveryModal,
+				scrim: this.elements.discoveryScrim,
 				shell: this.elements.discoveryShell,
 				panel: this.elements.discoveryPanel,
 				focusTarget: this.elements.discoveryClose
@@ -3909,8 +3925,8 @@ var ModalController = class {
 			case "help": return {
 				classTarget: this.elements.card,
 				openClass: "help-open",
-				visibleClass: "help-visible",
 				modal: this.elements.helpModal,
+				scrim: this.elements.helpScrim,
 				shell: this.elements.helpShell,
 				panel: this.elements.helpPanel,
 				focusTarget: this.elements.helpClose
@@ -4895,12 +4911,14 @@ var GameView = class {
 			resultSecondary,
 			resultSecondaryLabel,
 			result: this.required(".result-modal"),
+			resultScrim: this.required(".result-modal > .modal-scrim"),
 			resultShell: this.required(".result-shell"),
 			resultPanel: this.required(".result-modal .corzaguessr-modal"),
 			resultTitle: this.required("#corzaguessr-result-title"),
 			resultMeta: this.required("#corzaguessr-result-meta"),
 			discoveryButton: this.required(".discovery-button"),
 			discoveryModal: this.required(".discovery-modal"),
+			discoveryScrim: this.required(".discovery-modal > .modal-scrim"),
 			discoveryShell: this.required(".discovery-shell"),
 			discoveryPanel: this.required(".discovery-panel"),
 			discoveryClose: this.required(".discovery-close"),
@@ -4909,6 +4927,7 @@ var GameView = class {
 			progressBests: this.required(".progress-bests"),
 			helpButton: this.required(".help-button"),
 			helpModal: this.required(".help-modal"),
+			helpScrim: this.required(".help-modal > .modal-scrim"),
 			helpShell: this.required(".help-shell"),
 			helpPanel: this.required(".help-panel"),
 			helpClose: this.required(".help-close"),
@@ -4950,9 +4969,9 @@ function markup() {
 		`</div>`,
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div>`,
 		`</div>`,
-		`<div class="result-modal" aria-hidden="true"><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
-		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="help-content">${helpSections}</div><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
-		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
+		`<div class="result-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
+		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="help-content">${helpSections}</div><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
+		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
 		`<p class="mode-prompt" role="status" aria-hidden="false">${uiText.modePrompt}</p>`,
