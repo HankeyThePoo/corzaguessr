@@ -3159,7 +3159,7 @@ var AttemptHistoryView = class {
 			onFinished();
 			return;
 		}
-		const fadeStarts = fading.map((element) => {
+		const entryStarts = fading.map((element) => {
 			const styles = getComputedStyle(element);
 			return {
 				element,
@@ -3167,30 +3167,25 @@ var AttemptHistoryView = class {
 				translate: styles.translate
 			};
 		});
-		container.style.height = `${container.offsetHeight}px`;
-		for (const { element, opacity, translate } of fadeStarts) {
-			element.style.transition = "none";
-			element.style.opacity = opacity;
-			element.style.translate = translate;
-			element.classList.remove("fade");
-		}
-		container.offsetHeight;
-		for (const { element } of fadeStarts) {
-			element.style.transition = "";
-			element.classList.add("fade");
-			element.style.removeProperty("opacity");
-			element.style.removeProperty("translate");
-		}
+		const startHeight = container.getBoundingClientRect().height;
 		container.style.height = "0px";
-		this.watchHeightTransition(container, duration, onFinished);
-	}
-	watchHeightTransition(container, duration, onFinished) {
-		const motion = watchCssMotion(container, (animation) => isCssTransition(animation, "height"), duration, this.scheduler, () => {
+		const motion = container.animate({ height: [`${startHeight}px`, "0px"] }, {
+			duration,
+			easing: "ease"
+		});
+		this.collapseMotion = motion;
+		for (const { element, opacity, translate } of entryStarts) this.trackEntryMotion(element.animate({
+			opacity: [opacity, "0"],
+			translate: [translate, "0 -8px"]
+		}, {
+			duration,
+			easing: "ease"
+		}));
+		motion.finished.then(() => {
 			if (this.collapseMotion !== motion) return;
 			this.collapseMotion = null;
 			onFinished();
-		});
-		this.collapseMotion = motion;
+		}, () => {});
 	}
 	cancelCollapse(resetHeight = true) {
 		if (resetHeight && this.collapseMotion) this.elements.container.style.height = "";
