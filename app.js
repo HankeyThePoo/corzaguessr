@@ -3981,43 +3981,17 @@ function rows(records, daily, dailyDate) {
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
-function watchCssMotion(element, accepts, duration, scheduler, onFinished, subtree = false) {
-	const animation = typeof element.getAnimations === "function" ? element.getAnimations({ subtree }).find(accepts) : void 0;
-	let active = true;
-	let timer = 0;
-	const finish = () => {
-		if (!active) return;
-		active = false;
-		onFinished();
-	};
-	if (animation) animation.finished.then(finish, () => {});
-	else timer = scheduler.setTimer(finish, duration);
-	return { cancel() {
-		if (!active) return;
-		active = false;
-		if (animation) animation.cancel();
-		if (timer) scheduler.clearTimer(timer);
-	} };
-}
-function isCssAnimation(animation, name) {
-	return "animationName" in animation && animation.animationName === name;
-}
-function isCssTransition(animation, property) {
-	return "transitionProperty" in animation && animation.transitionProperty === property;
-}
 var ResultView = class {
 	elements;
 	durations;
 	reducedMotion;
-	scheduler;
 	current = null;
 	copyFeedbackTimer = 0;
 	copyFeedbackFade = null;
-	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
+	constructor(elements, durations, reducedMotion) {
 		this.elements = elements;
 		this.durations = durations;
 		this.reducedMotion = reducedMotion;
-		this.scheduler = scheduler;
 	}
 	render(result) {
 		if (JSON.stringify(result) === JSON.stringify(this.current)) return;
@@ -4028,7 +4002,6 @@ var ResultView = class {
 		}
 		this.copyFeedbackFade?.cancel();
 		this.copyFeedbackFade = null;
-		this.elements.secondaryLabel.classList.remove("fading");
 		if (!result) {
 			this.elements.title.textContent = "";
 			this.elements.meta.replaceChildren();
@@ -4049,29 +4022,39 @@ var ResultView = class {
 		if (this.copyFeedbackTimer) window.clearTimeout(this.copyFeedbackTimer);
 		this.copyFeedbackFade?.cancel();
 		this.copyFeedbackFade = null;
-		this.elements.secondaryLabel.classList.remove("fading");
-		this.elements.secondaryLabel.textContent = "COPIED";
-		this.copyFeedbackTimer = window.setTimeout(() => {
-			this.copyFeedbackTimer = 0;
-			if (this.current) this.swapSecondaryLabel("SHARE");
-		}, this.durations.shareVisible);
+		this.swapSecondaryLabel("COPIED", () => {
+			this.copyFeedbackTimer = window.setTimeout(() => {
+				this.copyFeedbackTimer = 0;
+				if (this.current) this.swapSecondaryLabel("SHARE");
+			}, this.durations.shareVisible);
+		});
 	}
-	swapSecondaryLabel(text) {
+	swapSecondaryLabel(text, onVisible) {
 		const label = this.elements.secondaryLabel;
 		if (label.textContent === text || this.reducedMotion.matches) {
 			label.textContent = text;
+			onVisible?.();
 			return;
 		}
-		label.classList.remove("fading");
-		label.offsetWidth;
-		label.classList.add("fading");
-		const motion = watchCssMotion(label, (animation) => isCssTransition(animation, "opacity"), this.durations.shareFade, this.scheduler, () => {
-			if (this.copyFeedbackFade !== motion) return;
-			this.copyFeedbackFade = null;
-			label.textContent = text;
-			label.classList.remove("fading");
+		const fadeOut = label.animate({ opacity: [getComputedStyle(label).opacity, "0"] }, {
+			duration: this.durations.shareFade,
+			easing: "ease"
 		});
-		this.copyFeedbackFade = motion;
+		this.copyFeedbackFade = fadeOut;
+		fadeOut.finished.then(() => {
+			if (this.copyFeedbackFade !== fadeOut) return;
+			label.textContent = text;
+			const fadeIn = label.animate({ opacity: ["0", "1"] }, {
+				duration: this.durations.shareFade,
+				easing: "ease"
+			});
+			this.copyFeedbackFade = fadeIn;
+			fadeIn.finished.then(() => {
+				if (this.copyFeedbackFade !== fadeIn) return;
+				this.copyFeedbackFade = null;
+				onVisible?.();
+			}, () => {});
+		}, () => {});
 	}
 };
 function createResultModule(result) {
@@ -4105,13 +4088,11 @@ var TimelineView = class {
 	durations;
 	reducedMotion;
 	scheduler;
-	motionGeneration = 0;
-	progressTimer = 0;
-	progressListener = null;
-	timeAdjustmentMotion = null;
+	progressMotion = null;
+	timeAdjustmentMotions = [];
 	positionFrame = 0;
 	positionRevealKey = "";
-	positionResetMotion = null;
+	positionResetMotions = [];
 	renderedPosition = null;
 	pendingPosition = null;
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
@@ -4133,11 +4114,11 @@ var TimelineView = class {
 			this.applyPosition(null, onRevealComplete);
 			return;
 		}
-		if (this.elements.timeline.classList.contains("position-resetting") && !this.positionResetMotion) {
+		if (this.positionResetMotions.length && !this.pendingPosition) {
 			this.cancelPositionReset();
 			this.renderedPosition = null;
 		}
-		if (this.positionResetMotion) {
+		if (this.positionResetMotions.length) {
 			this.pendingPosition = {
 				state,
 				onRevealComplete
@@ -4234,46 +4215,59 @@ var TimelineView = class {
 	beginPositionReset(onComplete) {
 		this.cancelPositionReveal();
 		this.elements.positionRange.disabled = true;
-		if (this.elements.timeline.classList.contains("position-resetting")) return;
-		this.elements.timeline.classList.add("position-resetting");
+		if (this.positionResetMotions.length) return;
+		const targets = [
+			this.elements.positionGuess,
+			this.elements.positionActual,
+			this.elements.positionDistance
+		].filter((element) => !element.hidden);
+		if (!targets.length) {
+			if (onComplete) queueMicrotask(onComplete);
+			return;
+		}
+		const duration = this.reducedMotion.matches ? 0 : this.durations.reset;
+		const motions = targets.map((element) => element.animate({ opacity: [getComputedStyle(element).opacity, "0"] }, {
+			duration,
+			easing: "ease-out",
+			fill: "forwards"
+		}));
+		this.positionResetMotions = motions;
 		if (!onComplete) return;
 		const finish = () => {
-			if (!this.elements.timeline.classList.contains("position-resetting")) return;
-			this.positionResetMotion = null;
-			this.elements.timeline.classList.remove("position-resetting");
+			if (this.positionResetMotions !== motions) return;
+			this.cancelPositionReset();
 			onComplete();
 		};
-		if (this.reducedMotion.matches || this.durations.reset <= 0) {
-			queueMicrotask(finish);
-			return;
-		}
-		this.positionResetMotion = watchCssMotion(this.elements.positionDistance, (animation) => isCssTransition(animation, "opacity"), this.durations.reset, this.scheduler, finish);
+		Promise.all(motions.map((motion) => motion.finished)).then(finish, () => {});
 	}
-	beginReset(rewindPlayback = false) {
-		if (rewindPlayback && this.elements.timeline.classList.contains("progress-rewinding")) return;
+	beginReset(text, value, rewindPlayback = false) {
 		const previousScale = this.progressScale();
 		this.cancelProgressMotion();
-		const generation = ++this.motionGeneration;
-		if (rewindPlayback) {
-			this.setProgress("0:00", 0);
-			if (this.reducedMotion.matches || this.durations.rewind <= 0 || previousScale <= 1e-4) return;
-			this.elements.timeline.style.setProperty("--rewind-from", String(previousScale));
-			this.elements.timeline.offsetWidth;
-			this.elements.timeline.classList.add("progress-rewinding");
-			this.waitForProgressMotion("animationend", this.elements.timeline, this.durations.rewind, generation, (event) => {
-				const animation = event;
-				return !animation.animationName || animation.animationName === "corzaguessr-progress-rewind";
-			});
-			return;
-		}
-		if (this.reducedMotion.matches || this.durations.reset <= 0) return;
-		this.elements.fill.style.transform = `scaleX(${previousScale})`;
-		this.elements.fill.style.transition = "transform var(--duration-standard) ease-out";
-		this.elements.fill.offsetWidth;
-		this.waitForProgressMotion("transitionend", this.elements.fill, this.durations.reset, generation, (event) => {
-			const transition = event;
-			return !transition.propertyName || transition.propertyName === "transform";
+		const targetScale = Math.max(0, Math.min(1, Number(value) || 0));
+		this.setProgress(text, targetScale);
+		const duration = rewindPlayback ? this.durations.rewind : this.durations.reset;
+		if (this.reducedMotion.matches || duration <= 0 || previousScale === targetScale) return;
+		const motion = this.elements.fill.animate(rewindPlayback ? [
+			{
+				opacity: "1",
+				transform: `scaleX(${previousScale})`
+			},
+			{
+				opacity: "0.9",
+				offset: .72
+			},
+			{
+				opacity: "0",
+				transform: `scaleX(${targetScale})`
+			}
+		] : { transform: [`scaleX(${previousScale})`, `scaleX(${targetScale})`] }, {
+			duration,
+			easing: rewindPlayback ? "cubic-bezier(0.4, 0, 0.2, 1)" : "ease-out"
 		});
+		this.progressMotion = motion;
+		motion.finished.then(() => {
+			if (this.progressMotion === motion) this.progressMotion = null;
+		}, () => {});
 	}
 	flashTimeAdjustment(seconds) {
 		if (!seconds) return;
@@ -4283,25 +4277,70 @@ var TimelineView = class {
 			this.clearTimeAdjustmentFeedback();
 			return;
 		}
-		if (this.reducedMotion.matches) this.elements.timeChange.classList.add("time-adjustment-static");
-		else {
-			this.elements.feedback.offsetWidth;
-			this.elements.feedback.classList.add(seconds > 0 ? "time-adjustment-reward" : "time-adjustment-penalty");
-			this.elements.timeChange.classList.add("time-adjustment-active");
+		if (seconds > 0) {
+			this.elements.feedback.style.setProperty("--adjustment-flash-start", "rgb(from var(--reward) r g b / 90%)");
+			this.elements.feedback.style.setProperty("--adjustment-flash-end", "rgb(from var(--reward) r g b / 25%)");
 		}
-		const finish = () => {
-			if (this.timeAdjustmentMotion !== motion) return;
-			this.timeAdjustmentMotion = null;
-			this.clearTimeAdjustmentFeedback();
-		};
-		const motion = watchCssMotion(this.elements.timeChangeText, (animation) => isCssAnimation(animation, "corzaguessr-time-adjustment-hit"), this.durations.timeAdjustmentFeedback, this.scheduler, finish);
-		this.timeAdjustmentMotion = motion;
+		const duration = this.durations.timeAdjustmentFeedback;
+		const textMotion = this.elements.timeChangeText.animate(this.reducedMotion.matches ? [{
+			opacity: "1",
+			transform: "none"
+		}, {
+			opacity: "1",
+			transform: "none"
+		}] : [
+			{
+				opacity: "0",
+				transform: "translateY(calc(var(--space) * 3)) scale(0.85)"
+			},
+			{
+				opacity: "1",
+				transform: "translateY(0) scale(1.2)",
+				offset: .18
+			},
+			{
+				opacity: "1",
+				transform: "translateY(0) scale(1)",
+				offset: .42
+			},
+			{
+				opacity: "1",
+				transform: "translateY(0) scale(1)",
+				offset: .72
+			},
+			{
+				opacity: "0",
+				transform: "translateY(0) scale(1)"
+			}
+		], {
+			duration,
+			easing: "cubic-bezier(0.16, 1, 0.3, 1)"
+		});
+		const motions = this.reducedMotion.matches ? [textMotion] : [textMotion, this.elements.feedback.animate([
+			{ opacity: "0" },
+			{
+				opacity: "0.95",
+				offset: .16
+			},
+			{
+				opacity: "0.52",
+				offset: .42
+			},
+			{ opacity: "0" }
+		], {
+			duration,
+			easing: "cubic-bezier(0.16, 1, 0.3, 1)"
+		})];
+		this.timeAdjustmentMotions = motions;
+		Promise.all(motions.map((motion) => motion.finished)).then(() => {
+			if (this.timeAdjustmentMotions === motions) this.clearTimeAdjustmentFeedback();
+		}, () => {});
 	}
 	clearTimeAdjustmentFeedback() {
-		this.timeAdjustmentMotion?.cancel();
-		this.timeAdjustmentMotion = null;
-		this.elements.feedback.classList.remove("time-adjustment-reward", "time-adjustment-penalty");
-		this.elements.timeChange.classList.remove("time-adjustment-active", "time-adjustment-static");
+		for (const motion of this.timeAdjustmentMotions) motion.cancel();
+		this.timeAdjustmentMotions = [];
+		this.elements.feedback.style.removeProperty("--adjustment-flash-start");
+		this.elements.feedback.style.removeProperty("--adjustment-flash-end");
 		this.elements.timeChangeText.textContent = "";
 	}
 	setPositionMarker(marker, second, maximum) {
@@ -4331,9 +4370,8 @@ var TimelineView = class {
 		if (clearKey) this.positionRevealKey = "";
 	}
 	cancelPositionReset() {
-		this.positionResetMotion?.cancel();
-		this.positionResetMotion = null;
-		this.elements.timeline.classList.remove("position-resetting");
+		for (const motion of this.positionResetMotions) motion.cancel();
+		this.positionResetMotions = [];
 	}
 	progressScale() {
 		const computed = getComputedStyle(this.elements.fill).transform;
@@ -4343,29 +4381,9 @@ var TimelineView = class {
 		const value = scaleMatch ? Number.parseFloat(scaleMatch[1] ?? "") : matrixMatch ? Number.parseFloat(matrixMatch[1]?.split(",")[0] ?? "") : 0;
 		return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 	}
-	waitForProgressMotion(eventName, target, duration, generation, accepts) {
-		const finish = () => {
-			if (generation !== this.motionGeneration) return;
-			this.cancelProgressMotion(false);
-		};
-		this.progressListener = (event) => {
-			if (event.target === target && accepts(event)) finish();
-		};
-		target.addEventListener(eventName, this.progressListener);
-		this.progressTimer = this.scheduler.setTimer(finish, duration);
-	}
-	cancelProgressMotion(invalidate = true) {
-		if (invalidate) this.motionGeneration += 1;
-		if (this.progressTimer) this.scheduler.clearTimer(this.progressTimer);
-		this.progressTimer = 0;
-		if (this.progressListener) {
-			this.elements.timeline.removeEventListener("animationend", this.progressListener);
-			this.elements.fill.removeEventListener("transitionend", this.progressListener);
-		}
-		this.progressListener = null;
-		this.elements.timeline.classList.remove("progress-rewinding");
-		this.elements.timeline.style.removeProperty("--rewind-from");
-		this.elements.fill.style.transition = "";
+	cancelProgressMotion() {
+		this.progressMotion?.cancel();
+		this.progressMotion = null;
 	}
 };
 var barCount = 8;
@@ -4470,7 +4488,6 @@ var GameView = class {
 			now: this.elements.now,
 			fill: this.elements.fill,
 			feedback: this.elements.feedback,
-			timeChange: this.elements.timeChange,
 			timeChangeText: this.elements.timeChangeText,
 			end: this.elements.endtime,
 			positionRange: this.elements.positionRange,
@@ -4541,7 +4558,7 @@ var GameView = class {
 		const openingOverlay = state.overlay !== previousOverlay ? state.overlay : null;
 		this.state = state;
 		this.runId = runId;
-		if (sessionChanged) this.timeline.beginReset();
+		if (sessionChanged) this.timeline.beginReset(state.clock.currentText, state.clock.progress);
 		if (sessionChanged || openingOverlay) this.resetTransientUi();
 		const transportVisible = state.transportText !== "";
 		this.root.classList.toggle("rules-visible", !state.inputVisible || transportVisible);
@@ -4606,7 +4623,7 @@ var GameView = class {
 		else this.focusPlay();
 	}
 	resetTimeline() {
-		this.timeline.beginReset(true);
+		this.timeline.beginReset("0:00", 0, true);
 	}
 	resetGuessInput() {
 		this.autocomplete.reset();
@@ -4638,7 +4655,7 @@ var GameView = class {
 		this.renderRules();
 	}
 	beginBoardReset(target) {
-		this.timeline.beginReset();
+		this.timeline.beginReset(target.clock.currentText, target.clock.progress);
 		this.renderClock(target.clock);
 		if (target.resetPosition) this.timeline.beginPositionReset();
 		this.elements.snippet.style.width = snippetPercentage(target.snippetSeconds);
@@ -4864,7 +4881,6 @@ var GameView = class {
 			fill: this.required(".fill"),
 			feedback: this.required(".feedback"),
 			timeline: this.required(".timeline"),
-			timeChange: this.required(".time-change"),
 			timeChangeText: this.required(".time-change span"),
 			positionRange: this.required(".position-range"),
 			positionGuess: this.required(".position-guess"),
