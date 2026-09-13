@@ -240,8 +240,7 @@
     display: grid;
     margin-inline: calc(var(--space) * -1);
     padding-inline: var(--space);
-    overflow: clip;
-    overflow-clip-margin: var(--space);
+    overflow: hidden;
   }
 
   & .attempt-area:has(.current-slot[hidden]):has(.slots:empty) {
@@ -1010,10 +1009,6 @@
   & .slot.wrong {
     border-color: rgb(from var(--wrong) r g b / 50%);
     background: rgb(from var(--wrong) r g b / 10%);
-  }
-
-  & .slot.wiggle {
-    animation: corzaguessr-wiggle var(--duration-long);
   }
 
   & .blink {
@@ -2028,17 +2023,5 @@
 @keyframes corzaguessr-blink {
   50% {
     opacity: 0.5;
-  }
-}
-
-@keyframes corzaguessr-wiggle {
-  20%,
-  60% {
-    transform: translateX(calc(var(--space) * -1));
-  }
-
-  40%,
-  80% {
-    transform: translateX(var(--space));
   }
 }
