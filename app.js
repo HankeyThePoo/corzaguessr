@@ -3567,8 +3567,8 @@ var DiscoveryListView = class {
 			const icon = document.createElement("img");
 			icon.src = `${platformIconRoot}/${platform.icon}`;
 			icon.alt = "";
-			icon.width = 28;
-			icon.height = 28;
+			icon.width = 30;
+			icon.height = 30;
 			icon.loading = "lazy";
 			icon.decoding = "async";
 			icon.setAttribute("aria-hidden", "true");
