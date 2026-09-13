@@ -1349,6 +1349,16 @@ function isClassicRoundValid(state) {
 function classicRoundKind(track, date) {
 	return isReleasedBy(track, date) ? "standard" : "preview";
 }
+function blitzEncounteredTrackIds(attempts, catalog) {
+	const catalogIds = new Set(catalog.map((track) => track.id));
+	const encountered = /* @__PURE__ */ new Set();
+	for (const attempt of [...attempts].reverse()) {
+		if (!catalogIds.has(attempt.roundTrackId)) continue;
+		encountered.add(attempt.roundTrackId);
+		if (encountered.size === catalogIds.size) encountered.clear();
+	}
+	return encountered;
+}
 function chooseRound(state, roundId, avoid, random) {
 	const { run, catalog, player, rounds } = state;
 	if (run.mode === null) return null;
@@ -1371,10 +1381,19 @@ function chooseRound(state, roundId, avoid, random) {
 		} : null;
 	}
 	const excluded = new Set(rounds.failedTrackIds);
-	if (run.mode === "blitz" && catalog.length) {
-		const correctIds = run.attempts.flatMap((attempt) => attempt.outcome === "correct" ? [attempt.trackId] : []);
-		const completedThisCycle = correctIds.length % catalog.length;
-		for (const trackId of correctIds.slice(0, completedThisCycle)) excluded.add(trackId);
+	if (run.mode === "blitz") {
+		const encountered = blitzEncounteredTrackIds(run.attempts, catalog);
+		if (rounds.current) {
+			encountered.add(rounds.current.round.track.id);
+			if (encountered.size === catalog.length) encountered.clear();
+		}
+		for (const trackId of encountered) excluded.add(trackId);
+		const track = selectRandomTrack(catalog, excluded, avoid, random);
+		return track ? {
+			id: roundId,
+			track,
+			clipStart: randomClipStart(track, 60, random)
+		} : null;
 	}
 	if (run.mode === "seek") for (const answer of run.answers) excluded.add(answer.trackId);
 	const track = selectRandomTrack(catalog, excluded, avoid, random);
@@ -1610,8 +1629,11 @@ function puzzleAnswer(previous, answer) {
 		snippetMs: snippetSeconds(attempts.length) * 1e3
 	};
 }
-function blitzAnswer(previous, answer) {
-	return [answer, ...previous];
+function blitzAnswer(previous, answer, roundTrackId) {
+	return [{
+		...answer,
+		roundTrackId
+	}, ...previous];
 }
 function gauntletAnswer(previous, answer, catalogCount) {
 	const attempts = [answer, ...previous];
@@ -2513,7 +2535,7 @@ var Application = class {
 		const state = this.currentState;
 		if (state.rounds.next || !prefetchesRounds(state.run.mode)) return;
 		const round = this.chooseNextRound(current.round.track.id);
-		if (!round || state.run.mode === "blitz" && round.track.id === current.round.track.id) return;
+		if (!round) return;
 		state.rounds.next = round;
 		this.audio.loadPreload(round);
 	}
@@ -2727,7 +2749,7 @@ var Application = class {
 		}
 		this.audio.pause();
 		this.clearTrackLoading();
-		run.attempts = blitzAnswer(run.attempts, attempt);
+		run.attempts = blitzAnswer(run.attempts, attempt, current.round.track.id);
 		this.announce(attempt.outcome === "correct" ? "CORRECT." : attempt.outcome === "wrong" ? "INCORRECT." : "SKIPPED.");
 		if (newlyDiscovered) this.save();
 		this.startRound();
