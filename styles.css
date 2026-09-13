@@ -979,10 +979,17 @@
     justify-content: center;
     padding: calc(var(--space) * 4);
     border-radius: inherit;
-    background: transparent;
     pointer-events: none;
     visibility: hidden;
-    transition: background var(--duration-standard) ease;
+  }
+
+  & .modal-scrim {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--scrim);
+    opacity: 0;
+    pointer-events: none;
   }
 
   & .result-modal,
@@ -1000,17 +1007,11 @@
     visibility: visible;
   }
 
-  & .result-visible .result-modal {
-    background: var(--scrim);
-  }
-
-  & .help-visible .help-modal {
-    background: var(--scrim);
-  }
-
   & .result-shell,
   & .help-shell,
   & .discovery-shell {
+    position: relative;
+    z-index: 1;
     width: min(96vw, 840px);
     height: 0;
     overflow: hidden;
@@ -1197,10 +1198,6 @@
   &.discovery-open .discovery-modal {
     pointer-events: auto;
     visibility: visible;
-  }
-
-  &.discovery-visible .discovery-modal {
-    background: var(--scrim);
   }
 
   & .discovery-panel {
