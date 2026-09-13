@@ -347,11 +347,6 @@
 
   & .result-secondary-label {
     opacity: 1;
-    transition: opacity var(--duration-fast) ease;
-  }
-
-  & .result-secondary-label.fading {
-    opacity: 0;
   }
 
   & .mode {
@@ -627,22 +622,6 @@
     mask-composite: exclude;
   }
 
-  & .timeline::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    background: var(--timeline-progress);
-    opacity: 0;
-    pointer-events: none;
-    transform: scaleX(0);
-    transform-origin: left;
-  }
-
-  & .timeline.progress-rewinding::after {
-    animation: corzaguessr-progress-rewind var(--duration-fast) cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  }
-
   & .snippet,
   & .fill,
   & .feedback {
@@ -685,16 +664,6 @@
     will-change: opacity;
   }
 
-  & .feedback.time-adjustment-penalty,
-  & .feedback.time-adjustment-reward {
-    animation: corzaguessr-time-adjustment-flash var(--duration-long) cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  & .feedback.time-adjustment-reward {
-    --adjustment-flash-start: rgb(from var(--reward) r g b / 90%);
-    --adjustment-flash-end: rgb(from var(--reward) r g b / 25%);
-  }
-
   & .time-change {
     display: grid;
     position: absolute;
@@ -712,15 +681,6 @@
     line-height: 1;
     text-shadow: var(--shadow-text);
     transform: translateY(0) scale(0.85);
-  }
-
-  & .time-change.time-adjustment-active span {
-    animation: corzaguessr-time-adjustment-hit var(--duration-long) cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  & .time-change.time-adjustment-static span {
-    opacity: 1;
-    transform: none;
   }
 
   & .tick {
@@ -793,12 +753,6 @@
     opacity: var(--timeline-accent-opacity);
     pointer-events: none;
     clip-path: inset(0 var(--gradient-border-width));
-  }
-
-  & .timeline.position-resetting .position-marker,
-  & .timeline.position-resetting .position-distance {
-    opacity: 0;
-    transition: opacity var(--duration-standard) ease-out;
   }
 
   &.keyboard-input .timeline:has(.position-range:focus) {
@@ -1930,22 +1884,6 @@
   }
 }
 
-@keyframes corzaguessr-progress-rewind {
-  0% {
-    opacity: 1;
-    transform: scaleX(var(--rewind-from, 0));
-  }
-
-  72% {
-    opacity: 0.9;
-  }
-
-  100% {
-    opacity: 0;
-    transform: scaleX(0);
-  }
-}
-
 @keyframes corzaguessr-mode-commit {
   0%,
   100% {
@@ -1969,50 +1907,6 @@
   }
 }
 
-@keyframes corzaguessr-time-adjustment-flash {
-  0% {
-    opacity: 0;
-  }
-
-  16% {
-    opacity: 0.95;
-  }
-
-  42% {
-    opacity: 0.52;
-  }
-
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes corzaguessr-time-adjustment-hit {
-  0% {
-    opacity: 0;
-    transform: translateY(calc(var(--space) * 3)) scale(0.85);
-  }
-
-  18% {
-    opacity: 1;
-    transform: translateY(0) scale(1.2);
-  }
-
-  42% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-
-  72% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-
-  100% {
-    opacity: 0;
-    transform: translateY(0) scale(1);
-  }
-}
 
 @keyframes corzaguessr-ruleset-scroll {
   to {
