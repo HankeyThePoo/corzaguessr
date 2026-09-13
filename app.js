@@ -2943,6 +2943,9 @@ var Application = class {
 function assertNever(value) {
 	throw new Error(`Unsupported application event: ${JSON.stringify(value)}`);
 }
+function formatTrackId(trackId) {
+	return String(trackId).padStart(2, "0");
+}
 function watchCssMotion(element, accepts, duration, scheduler, onFinished, subtree = false) {
 	const animation = typeof element.getAnimations === "function" ? element.getAnimations({ subtree }).find(accepts) : void 0;
 	let active = true;
@@ -3418,9 +3421,7 @@ var Autocomplete = class {
 		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
-function formatTrackId(trackId) {
-	return String(trackId).padStart(2, "0");
-}
+var platformIconRoot = "https://cdn.jsdelivr.net/gh/HankeyThePoo/corzaguessr@34f525cf7189c5f4af1fa2a9daf10d79bb4f0eac/covers";
 var platformPresentation = {
 	spotify: {
 		label: "Spotify",
@@ -3453,15 +3454,15 @@ function formatReleaseDate(value) {
 var DiscoveryListView = class {
 	count;
 	items;
-	assetUrl;
+	coverUrl;
 	expandedTrackId = null;
 	startGauntlet = null;
 	tracks = null;
 	discoveriesSignature = "";
-	constructor(count, items, assetUrl) {
+	constructor(count, items, coverUrl) {
 		this.count = count;
 		this.items = items;
-		this.assetUrl = assetUrl;
+		this.coverUrl = coverUrl;
 	}
 	bind(startGauntlet) {
 		this.startGauntlet = startGauntlet;
@@ -3499,7 +3500,7 @@ var DiscoveryListView = class {
 		item.className = "discovery-item discovery-item-known";
 		item.dataset.trackId = String(track.id);
 		item.setAttribute("role", "listitem");
-		const coverUrl = this.assetUrl(`covers/${formatTrackId(track.id)}.webp`);
+		const coverUrl = this.coverUrl(track.id);
 		item.style.setProperty("--discovery-artwork", `url(${JSON.stringify(coverUrl)})`);
 		const detailsId = `corzaguessr-discovery-track-${track.id}`;
 		const toggle = document.createElement("button");
@@ -3564,7 +3565,7 @@ var DiscoveryListView = class {
 			link.title = platform.label;
 			link.setAttribute("aria-label", `Listen to ${track.title} on ${platform.label}`);
 			const icon = document.createElement("img");
-			icon.src = this.assetUrl(`covers/${platform.icon}`);
+			icon.src = `${platformIconRoot}/${platform.icon}`;
 			icon.alt = "";
 			icon.width = 28;
 			icon.height = 28;
@@ -4395,7 +4396,7 @@ var GameView = class {
 	preview = null;
 	rulesSignature = "";
 	announcementFrame = 0;
-	constructor(root, initialVolume = 100, assetUrl = (path) => path) {
+	constructor(root, initialVolume = 100, coverUrl = (id) => `covers/${formatTrackId(id)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
 		root.innerHTML = markup();
@@ -4446,7 +4447,7 @@ var GameView = class {
 			positionReveal: this.durations.long
 		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
-		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, assetUrl);
+		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
 	}
 	bind(handlers) {
@@ -5011,7 +5012,7 @@ async function initialize(root) {
 	const catalogUrl = new URL("tracks.json", moduleUrl);
 	catalogUrl.search = moduleUrl.search;
 	const catalog = new CatalogSource(catalogUrl);
-	const view = new GameView(root, player.volume, (path) => catalog.assetUrl(path));
+	const view = new GameView(root, player.volume, (id) => catalog.assetUrl(`covers/${formatTrackId(id)}.webp`));
 	if (storage.unsupportedVersion) ownership.release();
 	application = new Application({
 		view,
