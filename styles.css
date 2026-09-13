@@ -1602,27 +1602,10 @@
 
   & .discovery-listen-links img {
     display: block;
-    width: calc(var(--space) * 7);
-    height: calc(var(--space) * 7);
+    width: 28px;
+    height: 28px;
     max-width: 100%;
     max-height: 100%;
-  }
-
-  & .discovery-listen-links img[data-platform="amazonMusic"] {
-    width: calc(var(--space) * 7.5);
-    height: calc(var(--space) * 7.5);
-    transform: translateY(calc(var(--space) * -0.25));
-  }
-
-  & .discovery-listen-links img[data-platform="youtube"],
-  & .discovery-listen-links img[data-platform="tidal"] {
-    width: calc(var(--space) * 8);
-    height: calc(var(--space) * 8);
-  }
-
-  & .discovery-listen-links img[data-platform="deezer"] {
-    width: calc(var(--space) * 6);
-    height: calc(var(--space) * 6);
   }
 
   &.keyboard-input .discovery-listen-links a:focus-visible {
