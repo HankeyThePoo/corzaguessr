@@ -239,7 +239,7 @@
   & .attempt-area {
     display: grid;
     margin-inline: calc(var(--space) * -1);
-    padding-inline: var(--space);
+    padding: 0 var(--space) var(--space);
     overflow: hidden;
   }
 
