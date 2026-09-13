@@ -229,6 +229,8 @@
   }
 
   & .slots {
+    position: relative;
+    z-index: 1;
     display: grid;
     gap: calc(var(--space) * 4);
     padding-top: calc(var(--space) * 4);
@@ -240,7 +242,16 @@
     transition: height var(--duration-standard) ease;
   }
 
-  & .attempt-area:has(.slots:empty) {
+  & .attempt-area:has(.current-slot[hidden]):has(.slots:empty) {
+    display: none;
+  }
+
+  & .current-slot {
+    z-index: 2;
+    margin-top: calc(var(--space) * 4);
+  }
+
+  & .current-slot[hidden] {
     display: none;
   }
 
@@ -796,7 +807,7 @@
   }
 
   & .auto {
-    z-index: 1;
+    z-index: 3;
     isolation: isolate;
   }
 
