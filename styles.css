@@ -1524,13 +1524,11 @@
   }
 
   & .discovery-track-metadata {
-    display: flex;
+    display: grid;
+    grid-template-rows: 1fr auto 1fr;
     min-width: 0;
-    padding: var(--space)
-      calc(var(--discovery-links-width) + calc(var(--space) * 4)) var(--space) 0;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
+    padding: var(--space) 0;
+    align-items: start;
     line-height: 1.2;
   }
 
@@ -1538,15 +1536,10 @@
     text-shadow: var(--shadow-text);
   }
 
-  & .discovery-artist,
-  & .discovery-song-title {
+  & .discovery-artist {
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-  }
-
-  & .discovery-artist {
-    margin-bottom: var(--space);
     font-size: var(--text-label);
     font-weight: 800;
     letter-spacing: var(--tracking-label);
@@ -1555,13 +1548,19 @@
   }
 
   & .discovery-song-title {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    align-self: center;
     font-size: var(--text-body);
-    -webkit-line-clamp: 2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   & .discovery-release-date {
-    margin-top: calc(var(--space) * 2);
-    font-size: var(--text-meta);
+    max-width: calc(100% - var(--discovery-links-width) - var(--space) * 4);
+    align-self: end;
+    font-size: var(--text-label);
     opacity: var(--opacity-muted);
   }
 
@@ -1763,7 +1762,12 @@
     & .discovery-song-title {
       display: block;
       overflow: visible;
+      white-space: normal;
       -webkit-line-clamp: unset;
+    }
+
+    & .discovery-release-date {
+      max-width: none;
     }
 
     & .discovery-listen-links {
