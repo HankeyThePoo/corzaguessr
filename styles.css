@@ -238,6 +238,8 @@
 
   & .attempt-area {
     display: grid;
+    margin-inline: calc(var(--space) * -1);
+    padding-inline: var(--space);
     overflow: hidden;
     transition: height var(--duration-standard) ease;
   }
