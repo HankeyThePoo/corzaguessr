@@ -1060,7 +1060,6 @@
     width: min(96vw, 840px);
     height: 0;
     overflow: hidden;
-    transition: height var(--duration-standard) ease;
   }
 
   & .corzaguessr-modal {
