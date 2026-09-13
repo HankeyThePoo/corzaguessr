@@ -3133,12 +3133,17 @@ var AttemptHistoryView = class {
 			return;
 		}
 		const targetHeight = container.offsetHeight;
-		container.style.height = "0px";
-		container.offsetHeight;
 		container.style.height = `${targetHeight}px`;
-		this.watchHeightTransition(container, duration, () => {
-			container.style.height = "";
+		const motion = container.animate({ height: ["0px", `${targetHeight}px`] }, {
+			duration,
+			easing: "ease"
 		});
+		this.collapseMotion = motion;
+		motion.finished.then(() => {
+			if (this.collapseMotion !== motion) return;
+			this.collapseMotion = null;
+			container.style.height = "";
+		}, () => {});
 	}
 	startCollapse(container, fading, duration, onFinished) {
 		this.cancelCollapse();
