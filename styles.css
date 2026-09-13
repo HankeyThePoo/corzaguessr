@@ -1606,6 +1606,22 @@
     height: 100%;
   }
 
+  & .discovery-listen-links img[data-platform="amazonMusic"] {
+    width: calc(100% + var(--space));
+    height: calc(100% + var(--space));
+    transform: translateY(calc(var(--space) * -0.25));
+  }
+
+  & .discovery-listen-links img[data-platform="youtube"] {
+    width: calc(100% + var(--space));
+    height: calc(100% + var(--space));
+  }
+
+  & .discovery-listen-links img[data-platform="deezer"] {
+    width: calc(100% - var(--space));
+    height: calc(100% - var(--space));
+  }
+
   &.keyboard-input .discovery-listen-links a:focus-visible {
     outline: var(--gradient-border-width) solid var(--off-white);
     outline-offset: var(--space);
