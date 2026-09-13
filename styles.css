@@ -239,8 +239,9 @@
   & .attempt-area {
     display: grid;
     margin-inline: calc(var(--space) * -1);
-    padding: 0 var(--space) var(--space);
-    overflow: hidden;
+    padding-inline: var(--space);
+    overflow: clip;
+    overflow-clip-margin: var(--space);
   }
 
   & .attempt-area:has(.current-slot[hidden]):has(.slots:empty) {
