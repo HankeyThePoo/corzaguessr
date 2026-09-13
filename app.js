@@ -3571,6 +3571,7 @@ var DiscoveryListView = class {
 			icon.height = 24;
 			icon.loading = "lazy";
 			icon.decoding = "async";
+			icon.dataset.platform = key;
 			icon.setAttribute("aria-hidden", "true");
 			link.append(icon);
 			group.append(link);
@@ -4518,7 +4519,7 @@ var GameView = class {
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
-		this.elements.headerAction.inert = overlay;
+		this.elements.headerAction.inert = state.overlay !== null && state.overlay !== "discovery";
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
 		this.elements.slots.inert = overlay || blockedBoard;
