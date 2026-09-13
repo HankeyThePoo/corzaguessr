@@ -1600,11 +1600,10 @@
     transition: filter var(--duration-fast) ease;
   }
 
-  & .discovery-listen-links svg {
+  & .discovery-listen-links img {
     display: block;
     width: 100%;
     height: 100%;
-    fill: currentColor;
   }
 
   &.keyboard-input .discovery-listen-links a:focus-visible {
