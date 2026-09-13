@@ -333,8 +333,9 @@ function validateTrackLinks(value, fail) {
 	const links = {};
 	for (const [key, rawUrl] of Object.entries(record)) {
 		if (!known.has(key)) fail(`has an unknown platform link "${key}".`);
-		if (typeof rawUrl !== "string" || rawUrl.trim() === "") fail(`has an invalid ${key} platform link.`);
+		if (typeof rawUrl !== "string") fail(`has an invalid ${key} platform link.`);
 		const url = rawUrl.trim();
+		if (!url) continue;
 		try {
 			if (new URL(url).protocol !== "https:") throw new Error();
 		} catch {
