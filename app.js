@@ -3703,19 +3703,16 @@ var ModalController = class {
 	duration;
 	reducedMotion;
 	announce;
-	scheduler;
 	kind = null;
 	closing = false;
-	openFrame = 0;
 	shellMotion = null;
 	lockedScroll = null;
-	constructor(root, elements, duration, reducedMotion, announce, scheduler = browserAnimationScheduler) {
+	constructor(root, elements, duration, reducedMotion, announce) {
 		this.root = root;
 		this.elements = elements;
 		this.duration = duration;
 		this.reducedMotion = reducedMotion;
 		this.announce = announce;
-		this.scheduler = scheduler;
 	}
 	get resultLayoutActive() {
 		return this.kind === "result";
@@ -3745,7 +3742,6 @@ var ModalController = class {
 	openModal(kind) {
 		if (this.kind) throw new Error("Opening a modal requires no active modal.");
 		const parts = this.getModalParts(kind);
-		this.beginOpen();
 		this.kind = kind;
 		this.closing = false;
 		this.lockScroll();
@@ -3753,47 +3749,34 @@ var ModalController = class {
 		parts.modal.setAttribute("aria-hidden", "false");
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
 		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "true");
-		const finishOpen = () => {
-			this.openFrame = 0;
-			if (this.kind !== kind || this.closing) return;
-			parts.classTarget.classList.add(parts.visibleClass);
-			parts.shell.style.height = `${parts.panel.offsetHeight}px`;
-			if (this.reducedMotion.matches && kind === "discovery") {
-				parts.shell.offsetHeight;
-				this.elements.discoveryClose.style.visibility = "visible";
-			}
-			parts.focusTarget.focus({ preventScroll: true });
-			if (this.reducedMotion.matches) parts.shell.style.height = "auto";
-			else {
-				const motion = watchCssMotion(parts.shell, (animation) => isCssTransition(animation, "height"), this.duration, this.scheduler, () => {
-					if (this.shellMotion !== motion || this.kind !== kind || this.closing) return;
-					this.shellMotion = null;
-					parts.shell.style.height = "auto";
-				});
-				this.shellMotion = motion;
-			}
-		};
+		parts.classTarget.classList.add(parts.visibleClass);
+		const targetHeight = parts.panel.offsetHeight;
+		if (this.reducedMotion.matches && kind === "discovery") this.elements.discoveryClose.style.visibility = "visible";
+		parts.focusTarget.focus({ preventScroll: true });
 		if (this.reducedMotion.matches) {
-			parts.shell.style.transition = "none";
-			finishOpen();
-		} else {
-			parts.shell.style.height = "0px";
-			parts.shell.offsetHeight;
-			this.openFrame = this.scheduler.requestFrame(finishOpen);
+			parts.shell.style.height = "auto";
+			return;
 		}
+		parts.shell.style.height = `${targetHeight}px`;
+		const motion = parts.shell.animate({ height: ["0px", `${targetHeight}px`] }, {
+			duration: this.duration,
+			easing: "ease"
+		});
+		this.shellMotion = motion;
+		motion.finished.then(() => {
+			if (this.shellMotion !== motion || this.kind !== kind || this.closing) return;
+			this.shellMotion = null;
+			parts.shell.style.height = "auto";
+		}, () => {});
 	}
 	closeModal(kind, onClosed, onClosing = () => {}) {
 		if (this.closing || this.kind !== kind) return;
 		const parts = this.getModalParts(kind);
 		this.closing = true;
 		onClosing();
-		this.scheduler.cancelFrame(this.openFrame);
-		this.openFrame = 0;
-		const currentHeight = parts.shell.offsetHeight;
+		const currentHeight = parts.shell.getBoundingClientRect().height;
 		this.cancelShellMotion();
 		parts.classTarget.classList.remove(parts.visibleClass);
-		parts.shell.style.height = `${currentHeight}px`;
-		parts.shell.offsetHeight;
 		parts.shell.style.height = "0px";
 		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "false");
 		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "false");
@@ -3802,7 +3785,6 @@ var ModalController = class {
 			this.shellMotion = null;
 			parts.classTarget.classList.remove(parts.openClass, parts.visibleClass);
 			parts.shell.style.height = "";
-			parts.shell.style.transition = "";
 			if (kind === "discovery") this.elements.discoveryClose.style.visibility = "";
 			this.kind = null;
 			this.closing = false;
@@ -3814,7 +3796,15 @@ var ModalController = class {
 			queueMicrotask(finish);
 			return;
 		}
-		this.shellMotion = watchCssMotion(parts.shell, (animation) => isCssTransition(animation, "height"), this.duration, this.scheduler, finish);
+		const motion = parts.shell.animate({ height: [`${currentHeight}px`, "0px"] }, {
+			duration: this.duration,
+			easing: "ease"
+		});
+		this.shellMotion = motion;
+		motion.finished.then(() => {
+			if (this.shellMotion !== motion) return;
+			finish();
+		}, () => {});
 	}
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
@@ -3865,11 +3855,6 @@ var ModalController = class {
 		else element.style.removeProperty(name);
 		this.lockedScroll = null;
 		if (window.scrollX !== snapshot.scrollX || window.scrollY !== snapshot.scrollY) window.scrollTo(snapshot.scrollX, snapshot.scrollY);
-	}
-	beginOpen() {
-		this.cancelShellMotion();
-		this.scheduler.cancelFrame(this.openFrame);
-		this.openFrame = 0;
 	}
 	cancelShellMotion() {
 		this.shellMotion?.cancel();
