@@ -3420,38 +3420,32 @@ var Autocomplete = class {
 		} else this.input.removeAttribute("aria-activedescendant");
 	}
 };
-var listenPlatforms = [
-	{
-		key: "spotify",
+var platformPresentation = {
+	spotify: {
 		label: "Spotify",
 		icon: "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M6.8 9.4c3.7-1.1 7.4-.8 10.5.9M7.6 12.7c3-0.8 6.2-0.5 8.8.9M8.3 15.7c2.3-0.5 4.7-0.3 6.8.8\" fill=\"none\" stroke=\"var(--near-black)\" stroke-width=\"1.6\" stroke-linecap=\"round\"/>"
 	},
-	{
-		key: "appleMusic",
+	appleMusic: {
 		label: "Apple Music",
 		icon: "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"M10 16.2V8.6l7-1.5v7.1M10 12.7l7-1.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/><circle cx=\"8\" cy=\"16.5\" r=\"2\"/><circle cx=\"15\" cy=\"14.5\" r=\"2\"/>"
 	},
-	{
-		key: "youtube",
+	youtube: {
 		label: "YouTube",
 		icon: "<path d=\"M21.6 7.2a2.8 2.8 0 0 0-2-2C17.8 4.7 12 4.7 12 4.7s-5.8 0-7.6.5a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.8.5 7.6.5 7.6.5s5.8 0 7.6-.5a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8Z\"/><path d=\"m10 15.2 5-3.2-5-3.2Z\" fill=\"var(--near-black)\"/>"
 	},
-	{
-		key: "amazonMusic",
+	amazonMusic: {
 		label: "Amazon Music",
 		icon: "<path d=\"M8.5 8.2c.8-1 2-1.5 3.7-1.5 2.4 0 3.8 1.2 3.8 3.4v5.1c0 .8.3 1.3.9 1.9h-2.8c-.3-.4-.5-.8-.6-1.2-1 .9-2 1.4-3.3 1.4-1.9 0-3.1-1.1-3.1-2.8 0-2 1.5-3.1 4.6-3.4l1.8-.2v-.5c0-1.1-.5-1.6-1.6-1.6-.9 0-1.5.3-2 1.1Zm5 4.3-1.5.2c-1.5.2-2.2.7-2.2 1.5 0 .7.5 1.1 1.3 1.1 1 0 1.8-.4 2.4-1.2Z\"/><path d=\"M5.2 19c4.3 2.4 9.2 2.5 13.6.1M17.4 18.2l1.7.2-.5 1.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.3\" stroke-linecap=\"round\"/>"
 	},
-	{
-		key: "tidal",
+	tidal: {
 		label: "Tidal",
 		icon: "<path d=\"m6 5 3 3-3 3-3-3Zm6 0 3 3-3 3-3-3Zm6 0 3 3-3 3-3-3Zm-6 6 3 3-3 3-3-3Z\"/>"
 	},
-	{
-		key: "deezer",
+	deezer: {
 		label: "Deezer",
 		icon: "<path d=\"M3 15h4v4H3Zm4.7-3h4v7h-4Zm4.7-4h4v11h-4Zm4.7-3h4v14h-4ZM3 10h4v4H3Zm4.7-3h4v4h-4Z\"/>"
 	}
-];
+};
 function formatReleaseDate(value) {
 	return value === null ? "TBA" : formatOrdinalDate(value);
 }
@@ -3558,9 +3552,10 @@ var DiscoveryListView = class {
 		group.className = "discovery-listen-links";
 		group.setAttribute("role", "group");
 		group.setAttribute("aria-label", `Listen to ${track.title}`);
-		for (const platform of listenPlatforms) {
-			const href = track.links[platform.key];
+		for (const key of listenPlatformKeys) {
+			const href = track.links[key];
 			if (!href) continue;
+			const platform = platformPresentation[key];
 			const link = document.createElement("a");
 			link.href = href;
 			link.target = "_blank";
@@ -3817,7 +3812,7 @@ var ModalController = class {
 	}
 	trapFocus(event) {
 		if (event.key !== "Tab" || !this.kind) return;
-		const focusable = [...this.getModalParts(this.kind).panel.querySelectorAll("button:not([disabled]), input:not([disabled])")].filter((element) => element.tabIndex >= 0 && !element.hidden && element.offsetParent !== null);
+		const focusable = [...this.getModalParts(this.kind).panel.querySelectorAll("button:not([disabled]), input:not([disabled]), a[href]")].filter((element) => element.tabIndex >= 0 && !element.hidden && element.offsetParent !== null && !element.closest("[inert]"));
 		if (!focusable.length) return;
 		const first = focusable[0];
 		const last = focusable.at(-1);
