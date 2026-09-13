@@ -2945,35 +2945,10 @@ function assertNever(value) {
 function formatTrackId(trackId) {
 	return String(trackId).padStart(2, "0");
 }
-function watchCssMotion(element, accepts, duration, scheduler, onFinished, subtree = false) {
-	const animation = typeof element.getAnimations === "function" ? element.getAnimations({ subtree }).find(accepts) : void 0;
-	let active = true;
-	let timer = 0;
-	const finish = () => {
-		if (!active) return;
-		active = false;
-		onFinished();
-	};
-	if (animation) animation.finished.then(finish, () => {});
-	else timer = scheduler.setTimer(finish, duration);
-	return { cancel() {
-		if (!active) return;
-		active = false;
-		if (animation) animation.cancel();
-		if (timer) scheduler.clearTimer(timer);
-	} };
-}
-function isCssAnimation(animation, name) {
-	return "animationName" in animation && animation.animationName === name;
-}
-function isCssTransition(animation, property) {
-	return "transitionProperty" in animation && animation.transitionProperty === property;
-}
 var AttemptHistoryView = class {
 	elements;
 	durations;
 	reducedMotion;
-	scheduler;
 	renderedCurrent = null;
 	renderedSlots = [];
 	runId = "";
@@ -2981,11 +2956,10 @@ var AttemptHistoryView = class {
 	entryMotions = /* @__PURE__ */ new Set();
 	pendingSnapshot = null;
 	wiggles = /* @__PURE__ */ new Map();
-	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
+	constructor(elements, durations, reducedMotion) {
 		this.elements = elements;
 		this.durations = durations;
 		this.reducedMotion = reducedMotion;
-		this.scheduler = scheduler;
 	}
 	render(currentSlot, historySlots, runId) {
 		const snapshot = {
@@ -3132,21 +3106,13 @@ var AttemptHistoryView = class {
 			container.style.height = "";
 			return;
 		}
-		const targetHeight = container.offsetHeight;
+		const targetHeight = container.getBoundingClientRect().height;
 		container.style.height = `${targetHeight}px`;
 		const motion = container.animate({ height: ["0px", `${targetHeight}px`] }, {
 			duration,
 			easing: "ease"
 		});
 		this.collapseMotion = motion;
-		const entries = [...this.elements.current.hidden ? [] : [this.elements.current], ...this.elements.list.children];
-		for (const entry of entries) this.trackEntryMotion(entry.animate({
-			opacity: [0, 1],
-			translate: ["0 -8px", "0 0"]
-		}, {
-			duration,
-			easing: "ease"
-		}));
 		motion.finished.then(() => {
 			if (this.collapseMotion !== motion) return;
 			this.collapseMotion = null;
@@ -3154,29 +3120,27 @@ var AttemptHistoryView = class {
 		}, () => {});
 	}
 	startCollapse(container, fading, duration, onFinished) {
+		const startHeight = container.getBoundingClientRect().height;
 		this.cancelCollapse();
 		if (this.reducedMotion.matches || duration <= 0) {
 			onFinished();
 			return;
 		}
 		const entryStarts = fading.map((element) => {
-			const styles = getComputedStyle(element);
 			return {
 				element,
-				opacity: styles.opacity,
-				translate: styles.translate
+				opacity: getComputedStyle(element).opacity
 			};
 		});
-		const startHeight = container.getBoundingClientRect().height;
 		container.style.height = "0px";
 		const motion = container.animate({ height: [`${startHeight}px`, "0px"] }, {
 			duration,
 			easing: "ease"
 		});
 		this.collapseMotion = motion;
-		for (const { element, opacity, translate } of entryStarts) this.trackEntryMotion(element.animate({
+		for (const { element, opacity } of entryStarts) this.trackEntryMotion(element.animate({
 			opacity: [opacity, "0"],
-			translate: [translate, "0 -8px"]
+			translate: ["0 0", "0 -8px"]
 		}, {
 			duration,
 			easing: "ease"
@@ -3187,8 +3151,8 @@ var AttemptHistoryView = class {
 			onFinished();
 		}, () => {});
 	}
-	cancelCollapse(resetHeight = true) {
-		if (resetHeight && this.collapseMotion) this.elements.container.style.height = "";
+	cancelCollapse() {
+		if (this.collapseMotion) this.elements.container.style.height = "";
 		this.collapseMotion?.cancel();
 		this.collapseMotion = null;
 	}
@@ -3234,20 +3198,37 @@ var AttemptHistoryView = class {
 	startWiggle(element) {
 		this.cancelWiggle(element);
 		if (this.reducedMotion.matches || this.durations.wiggle <= 0) return;
-		element.classList.remove("wiggle");
-		element.offsetWidth;
-		element.classList.add("wiggle");
-		const motion = watchCssMotion(element, (animation) => isCssAnimation(animation, "corzaguessr-wiggle"), this.durations.wiggle, this.scheduler, () => {
-			if (this.wiggles.get(element) !== motion) return;
-			this.wiggles.delete(element);
-			element.classList.remove("wiggle");
+		const motion = element.animate([
+			{ transform: "translateX(0)" },
+			{
+				transform: "translateX(calc(var(--space) * -1))",
+				offset: .2
+			},
+			{
+				transform: "translateX(var(--space))",
+				offset: .4
+			},
+			{
+				transform: "translateX(calc(var(--space) * -1))",
+				offset: .6
+			},
+			{
+				transform: "translateX(var(--space))",
+				offset: .8
+			},
+			{ transform: "translateX(0)" }
+		], {
+			duration: this.durations.wiggle,
+			easing: "ease"
 		});
 		this.wiggles.set(element, motion);
+		motion.finished.then(() => {
+			if (this.wiggles.get(element) === motion) this.wiggles.delete(element);
+		}, () => {});
 	}
 	cancelWiggle(element) {
 		this.wiggles.get(element)?.cancel();
 		this.wiggles.delete(element);
-		element.classList.remove("wiggle");
 	}
 };
 function toRenderedSlot(entry, keyPrefix) {
@@ -3999,6 +3980,30 @@ function rows(records, daily, dailyDate) {
 }
 function formatDecimal(value) {
 	return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+function watchCssMotion(element, accepts, duration, scheduler, onFinished, subtree = false) {
+	const animation = typeof element.getAnimations === "function" ? element.getAnimations({ subtree }).find(accepts) : void 0;
+	let active = true;
+	let timer = 0;
+	const finish = () => {
+		if (!active) return;
+		active = false;
+		onFinished();
+	};
+	if (animation) animation.finished.then(finish, () => {});
+	else timer = scheduler.setTimer(finish, duration);
+	return { cancel() {
+		if (!active) return;
+		active = false;
+		if (animation) animation.cancel();
+		if (timer) scheduler.clearTimer(timer);
+	} };
+}
+function isCssAnimation(animation, name) {
+	return "animationName" in animation && animation.animationName === name;
+}
+function isCssTransition(animation, property) {
+	return "transitionProperty" in animation && animation.transitionProperty === property;
 }
 var ResultView = class {
 	elements;
