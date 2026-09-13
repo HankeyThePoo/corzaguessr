@@ -3437,7 +3437,7 @@ var platformPresentation = {
 	},
 	amazonMusic: {
 		label: "Amazon Music",
-		icon: "amazon-music"
+		icon: "amazonmusic"
 	},
 	tidal: {
 		label: "Tidal",
