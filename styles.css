@@ -1306,9 +1306,11 @@
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
+    scroll-snap-type: y mandatory;
   }
 
   & .discovery-item {
+    scroll-snap-align: start;
     display: flex;
     align-items: center;
     justify-content: center;
