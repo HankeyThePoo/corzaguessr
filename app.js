@@ -1933,11 +1933,7 @@ function buildViewModel(state, context) {
 	};
 	else if (run.mode === "seek" && run.engaged) {
 		const roundNumber = run.answers.length + (run.phase.kind === "selecting" ? 1 : 0);
-		currentSlot = run.phase.kind === "revealed" && resolvedSeekAnswer ? {
-			id: roundNumber,
-			primary: seekDistanceFeedback(resolvedSeekAnswer),
-			tone: "neutral"
-		} : {
+		currentSlot = {
 			id: roundNumber,
 			primary: `ROUND ${roundNumber}`,
 			tone: "prompt"
