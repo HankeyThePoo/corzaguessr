@@ -1218,7 +1218,7 @@
   & .progress-summary h4,
   & .discovery-title > span {
     font-family: inherit;
-    font-size: var(--text-button);
+    font-size: var(--text-body);
     font-weight: 800;
     line-height: 1.2;
     text-align: center;
@@ -1315,7 +1315,7 @@
     justify-content: center;
     min-height: var(--discovery-row-height);
     padding: calc(var(--space) * 2) calc(var(--space) * 3);
-    font-size: var(--text-body);
+    font-size: var(--text-button);
     line-height: var(--line-height);
     text-align: center;
     text-transform: uppercase;
