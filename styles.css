@@ -62,7 +62,7 @@
 
   color: var(--off-white);
   font-size: var(--text-base);
-  font-family: "Monument Extended", Inter, system-ui, sans-serif;
+  font-family: "Neue Montreal", Inter, system-ui, sans-serif;
 
   padding:
     calc(var(--space) * 4)
