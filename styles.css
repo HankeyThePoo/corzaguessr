@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;800&family=Space+Grotesk:wght@400;700&display=swap");
+
 #corzaguessr {
   --off-white: #F7F7F7;
   --near-black: #101010;
@@ -62,7 +64,7 @@
 
   color: var(--off-white);
   font-size: var(--text-base);
-  font-family: "Neue Montreal", Inter, system-ui, sans-serif;
+  font-family: "Space Grotesk", Inter, system-ui, sans-serif;
 
   padding:
     calc(var(--space) * 4)
