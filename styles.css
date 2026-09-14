@@ -1485,7 +1485,6 @@
     overflow: hidden;
     -webkit-box-orient: vertical;
     font-size: var(--text-base);
-    opacity: var(--opacity-secondary);
     -webkit-line-clamp: 2;
   }
 
