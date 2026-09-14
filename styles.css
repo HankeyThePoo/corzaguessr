@@ -21,24 +21,20 @@
     rgb(from var(--gradient-middle) r g b / 12%) 50%,
     rgb(from var(--gradient-end) r g b / 12%)
   );
-  --surface-glass: rgb(from var(--off-white) r g b / 2%);
-  --surface-interactive: rgb(from var(--off-white) r g b / 20%);
+  --glass-layer: rgb(from var(--off-white) r g b / 2%);
+  --white-layer: rgb(from var(--off-white) r g b / 20%);
   --dark-layer: rgb(from var(--near-black) r g b / 40%);
-  --line: rgb(from var(--off-white) r g b / 20%);
   --line-width: 1px;
   --gradient-border-width: 2px;
-  --control-glow: rgb(from var(--off-white) r g b / 15%);
   --glass-blur: 20px;
   --shadow-surface: 0 6px 18px var(--dark-layer);
   --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
   --radius: 8px;
   --space: 4px;
+  --text-hero: 3rem;
   --text-display: 2rem;
-  --text-emphasis: 1.35rem;
-  --text-body: 0.88rem;
-  --text-label: 0.75rem;
-  --text-meta: 0.6rem;
-  --text-score: 3rem;
+  --text-emphasis: 1.375rem;
+  --text-body: 0.875rem;
   --line-height: 20px;
   --tracking-control: 0.04em;
   --tracking-wide: 0.08em;
@@ -92,7 +88,7 @@
     padding: calc(var(--space) * 3) calc(var(--space) * 4);
     margin: 0 0 calc(var(--space) * 4);
     text-align: center;
-    font-size: var(--text-label);
+    font-size: var(--text-body);
     line-height: 1.5;
   }
 
@@ -154,16 +150,16 @@
   & input,
   & .ruleset,
   & .slot {
-    border: var(--line-width) solid var(--line);
+    border: var(--line-width) solid var(--white-layer);
     border-radius: var(--radius);
     background: var(--dark-layer);
   }
 
   & .progress-best,
   & .discovery-item {
-    border: var(--line-width) solid var(--line);
+    border: var(--line-width) solid var(--white-layer);
     border-radius: var(--radius);
-    background: var(--surface-glass);
+    background: var(--glass-layer);
   }
 
   & .modes,
@@ -185,9 +181,9 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    border: var(--line-width) solid var(--line);
+    border: var(--line-width) solid var(--white-layer);
     border-radius: inherit;
-    background: var(--surface-glass);
+    background: var(--glass-layer);
     backdrop-filter: blur(var(--glass-blur));
     box-shadow: var(--shadow-surface);
     pointer-events: none;
@@ -317,7 +313,7 @@
     border-radius: var(--radius);
     background: transparent;
     color: var(--off-white);
-    box-shadow: inset 0 0 0 var(--line-width) var(--line);
+    box-shadow: inset 0 0 0 var(--line-width) var(--white-layer);
     cursor: pointer;
     font-size: var(--text-body);
     font-weight: 800;
@@ -366,7 +362,7 @@
     margin: 0;
     padding: 0 calc(var(--space) * 2.5);
     border-radius: 0;
-    box-shadow: inset calc(-1 * var(--line-width)) 0 var(--line);
+    box-shadow: inset calc(-1 * var(--line-width)) 0 var(--white-layer);
     transition: opacity var(--duration-fast) ease;
   }
 
@@ -503,7 +499,7 @@
     width: 6px;
     height: calc(5px + var(--volume-step) * 2.5px);
     border-radius: 2px 2px 1px 1px;
-    background: var(--surface-interactive);
+    background: var(--white-layer);
     transition:
       background var(--duration-fast) ease,
       box-shadow var(--duration-fast) ease;
@@ -527,7 +523,7 @@
 
   & .volume-bar.active {
     background: var(--off-white);
-    box-shadow: 0 0 8px var(--control-glow);
+    box-shadow: 0 0 8px var(--white-layer);
   }
 
   & .volume-control.muted .volume-bar:first-child {
@@ -588,7 +584,7 @@
     overflow: hidden;
     border-radius: var(--radius);
     background: var(--dark-layer);
-    box-shadow: inset 0 0 0 var(--gradient-border-width) var(--line);
+    box-shadow: inset 0 0 0 var(--gradient-border-width) var(--white-layer);
   }
 
   &.mode-selected .timeline {
@@ -679,7 +675,7 @@
     inset: var(--gradient-border-width) auto;
     z-index: 0;
     width: var(--gradient-border-width);
-    background: var(--line);
+    background: var(--white-layer);
     opacity: 1;
     transition: opacity var(--duration-standard) ease-out;
   }
@@ -748,8 +744,8 @@
 
   &.keyboard-input .timeline:has(.position-range:focus) {
     box-shadow:
-      inset 0 0 0 var(--gradient-border-width) var(--line),
-      0 0 0 var(--gradient-border-width) var(--control-glow);
+      inset 0 0 0 var(--gradient-border-width) var(--white-layer),
+      0 0 0 var(--gradient-border-width) var(--white-layer);
   }
 
   & .auto {
@@ -841,7 +837,7 @@
     max-height: min(40dvh, 280px);
     overflow-y: auto;
     scrollbar-width: none;
-    border: var(--line-width) solid var(--line);
+    border: var(--line-width) solid var(--white-layer);
     border-radius: var(--radius);
     background: var(--near-black);
     box-shadow: var(--shadow-surface);
@@ -862,7 +858,7 @@
   }
 
   & .suggest .active {
-    background: var(--surface-interactive);
+    background: var(--white-layer);
   }
 
   & .suggest button:focus-visible {
@@ -1054,7 +1050,7 @@
     align-content: start;
     gap: calc(var(--space) * 2);
     padding-top: calc(var(--space) * 3);
-    border-top: var(--line-width) solid var(--line);
+    border-top: var(--line-width) solid var(--white-layer);
   }
 
   & .help-mode h4,
@@ -1064,7 +1060,7 @@
 
   & .help-mode h4 {
     color: var(--off-white);
-    font-size: var(--text-label);
+    font-size: var(--text-body);
     letter-spacing: var(--tracking-wide);
   }
 
@@ -1113,7 +1109,7 @@
     width: 100%;
     max-width: calc(var(--button-width) * 4);
     justify-self: center;
-    border-block: var(--line-width) solid var(--line);
+    border-block: var(--line-width) solid var(--white-layer);
   }
 
   & .result-run .result-value,
@@ -1122,7 +1118,7 @@
   }
 
   & .result-label {
-    font-size: var(--text-label);
+    font-size: var(--text-body);
     letter-spacing: var(--tracking-wide);
     opacity: var(--opacity-muted);
   }
@@ -1145,7 +1141,7 @@
   }
 
   & .result-metric-primary {
-    font-size: var(--text-score);
+    font-size: var(--text-hero);
     line-height: 1;
   }
 
@@ -1205,7 +1201,7 @@
     gap: calc(var(--space) * 4);
     margin-top: 0;
     padding-top: calc(var(--space) * 4);
-    border-top: var(--line-width) solid var(--line);
+    border-top: var(--line-width) solid var(--white-layer);
   }
 
   & .progress-summary h4,
@@ -1241,7 +1237,7 @@
   }
 
   & .progress-best-mode {
-    font-size: var(--text-meta);
+    font-size: var(--text-body);
     font-weight: 800;
     letter-spacing: var(--tracking-wide);
     opacity: var(--opacity-muted);
@@ -1253,7 +1249,7 @@
   }
 
   & .progress-best small {
-    font-size: var(--text-meta);
+    font-size: var(--text-body);
     line-height: 1.2;
     opacity: var(--opacity-muted);
   }
@@ -1285,7 +1281,7 @@
   & .discovery-panel > .actions {
     margin-top: 0;
     padding-top: calc(var(--space) * 4);
-    border-top: var(--line-width) solid var(--line);
+    border-top: var(--line-width) solid var(--white-layer);
   }
 
   & .discovery-items {
@@ -1351,7 +1347,7 @@
     inset: 0;
     background:
       linear-gradient(90deg, var(--dark-layer), var(--dark-layer)),
-      linear-gradient(180deg, var(--surface-glass), var(--dark-layer));
+      linear-gradient(180deg, var(--glass-layer), var(--dark-layer));
     transition: opacity var(--duration-fast) ease;
   }
 
@@ -1441,10 +1437,10 @@
     overflow: hidden;
     place-items: center;
     border-radius: var(--radius);
-    background: var(--surface-glass);
+    background: var(--glass-layer);
     box-shadow:
       var(--shadow-surface),
-      0 0 0 var(--line-width) var(--surface-interactive);
+      0 0 0 var(--line-width) var(--white-layer);
   }
 
   & .discovery-cover.missing::after {
@@ -1481,7 +1477,7 @@
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    font-size: var(--text-label);
+    font-size: var(--text-body);
     font-weight: 800;
     letter-spacing: var(--tracking-wide);
     opacity: var(--opacity-muted);
@@ -1499,7 +1495,7 @@
 
   & .discovery-release-date {
     max-width: calc(100% - var(--discovery-links-width) - var(--space) * 4);
-    font-size: var(--text-label);
+    font-size: var(--text-body);
     opacity: var(--opacity-muted);
   }
 
@@ -1565,7 +1561,7 @@
     background-clip: text;
     color: transparent;
     -webkit-text-fill-color: transparent;
-    font-size: var(--text-meta);
+    font-size: var(--text-body);
     font-weight: 800;
     letter-spacing: var(--tracking-wide);
     white-space: nowrap;
@@ -1654,7 +1650,7 @@
     }
 
     & .progress-best strong {
-      font-size: var(--text-label);
+      font-size: var(--text-body);
     }
 
     & .discovery-item-known,
