@@ -965,7 +965,7 @@
     background: rgb(from var(--wrong) r g b / 10%);
   }
 
-  & .blink {
+  & .slot.blink .slot-primary {
     animation: corzaguessr-blink 2s infinite;
   }
 
