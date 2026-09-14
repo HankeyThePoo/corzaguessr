@@ -42,7 +42,7 @@
   --text-hero: calc(var(--text-base) * 3);
   --line-height: calc(var(--text-base) * 1.2);
 
-  --opacity-secondary: 70%;
+  --opacity-secondary: 80%;
   --glass-blur: 20px;
   --shadow-surface: 0 6px 18px var(--dark-layer);
   --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
