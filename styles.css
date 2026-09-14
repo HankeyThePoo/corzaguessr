@@ -23,15 +23,13 @@
   );
   --surface-glass: rgb(from var(--off-white) r g b / 2%);
   --surface-interactive: rgb(from var(--off-white) r g b / 20%);
-  --surface-dark: rgb(from var(--near-black) r g b / 40%);
+  --dark-layer: rgb(from var(--near-black) r g b / 40%);
   --line: rgb(from var(--off-white) r g b / 20%);
   --line-width: 1px;
   --gradient-border-width: 2px;
-  --scrim: rgb(from var(--near-black) r g b / 50%);
-  --artwork-scrim: rgb(from var(--near-black) r g b / 30%);
   --control-glow: rgb(from var(--off-white) r g b / 15%);
   --glass-blur: 20px;
-  --shadow-surface: 0 6px 18px rgb(from var(--near-black) r g b / 30%);
+  --shadow-surface: 0 6px 18px var(--dark-layer);
   --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
   --radius: 8px;
   --space: 4px;
@@ -158,7 +156,7 @@
   & .slot {
     border: var(--line-width) solid var(--line);
     border-radius: var(--radius);
-    background: var(--surface-dark);
+    background: var(--dark-layer);
   }
 
   & .progress-best,
@@ -355,7 +353,7 @@
   }
 
   & .discovery-button[aria-expanded="true"]::before {
-    background: var(--gradient-background), var(--surface-dark);
+    background: var(--gradient-background), var(--dark-layer);
   }
 
   & .discovery-button[aria-expanded="true"]::after {
@@ -392,7 +390,7 @@
 
   & .mode-navigation .mode[aria-pressed="true"] {
     --mode-fill-opacity: 12%;
-    background: var(--surface-dark);
+    background: var(--dark-layer);
     z-index: 1;
     cursor: default;
     opacity: 1;
@@ -411,7 +409,7 @@
   }
 
   & button.action:not(:disabled) {
-    background: var(--gradient-background), var(--surface-dark);
+    background: var(--gradient-background), var(--dark-layer);
   }
 
   & .play:not(:disabled) {
@@ -589,7 +587,7 @@
     height: var(--control-height);
     overflow: hidden;
     border-radius: var(--radius);
-    background: var(--surface-dark);
+    background: var(--dark-layer);
     box-shadow: inset 0 0 0 var(--gradient-border-width) var(--line);
   }
 
@@ -979,7 +977,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: var(--scrim);
+    background: var(--dark-layer);
     opacity: 0;
     pointer-events: none;
   }
@@ -1352,8 +1350,8 @@
   & .discovery-item-known::after {
     inset: 0;
     background:
-      linear-gradient(90deg, var(--scrim), var(--artwork-scrim)),
-      linear-gradient(180deg, var(--surface-glass), var(--artwork-scrim));
+      linear-gradient(90deg, var(--dark-layer), var(--dark-layer)),
+      linear-gradient(180deg, var(--surface-glass), var(--dark-layer));
     transition: opacity var(--duration-fast) ease;
   }
 
