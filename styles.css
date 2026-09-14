@@ -62,6 +62,7 @@
 
   color: var(--off-white);
   font-size: var(--text-base);
+  font-family: "Monument Extended", system-ui, sans-serif;
 
   padding:
     calc(var(--space) * 4)
