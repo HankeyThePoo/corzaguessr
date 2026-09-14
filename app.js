@@ -1569,12 +1569,11 @@ var uiText = {
 	selectedTrackReplace: "THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO TRY ANOTHER.",
 	selectedTrackReplacing: "THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.",
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
-	seekComplete: "RUN COMPLETE",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
 };
-function seekFeedback(attempt) {
+function seekDistanceFeedback(attempt) {
 	const distance = Math.abs(attempt.guessedSecond - attempt.actualSecond);
-	return [`${distance} SECOND${distance === 1 ? "" : "S"} AWAY`, `${seekAttemptPoints(attempt)} POINTS`];
+	return distance === 0 ? "BULLSEYE" : `YOU WERE ${distance} SECOND${distance === 1 ? "" : "S"} AWAY`;
 }
 var months = [
 	"January",
@@ -1727,7 +1726,7 @@ function announceResult(outcome, modules) {
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
 	if (result.mode === "blitz") return "TIME IS UP";
-	if (result.mode === "seek") return uiText.seekComplete;
+	if (result.mode === "seek") return "RUN COMPLETE";
 	if (result.mode === "gauntlet") return gauntletCompleted(result) ? "YOU SURVIVED" : "TIME IS UP";
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
@@ -1899,7 +1898,7 @@ function buildViewModel(state, context) {
 	else if (resume) rulesText = preview ? "PREVIEW ROUND · PRESS PLAY TO CONTINUE OR GIVE UP · STREAK SAFE" : "PRESS PLAY TO CONTINUE OR GIVE UP THE CURRENT ROUND";
 	else if (preview) rulesText = "PREVIEW ROUND · STREAK SAFE";
 	else if (run.mode === "seek") {
-		if (run.phase.kind === "revealed" && resolvedSeekAnswer) rulesText = seekFeedback(resolvedSeekAnswer).join(" · ");
+		if (run.phase.kind === "revealed" && resolvedSeekAnswer) rulesText = seekDistanceFeedback(resolvedSeekAnswer);
 		else if (run.phase.kind === "revealing") rulesText = "REVEALING POSITION...";
 		else if (round) rulesText = "PLACE YOUR GUESS ON THE TIMELINE";
 	} else if (mode === "daily") {
@@ -1915,7 +1914,7 @@ function buildViewModel(state, context) {
 			milestones.add(attempts.length - i);
 		}
 	}
-	const historySlots = run.mode === "seek" ? seekHistorySlots(run.answers, run.phase.kind) : mode === null ? [] : (isTimedMode(mode) ? attempts.slice(0, 19) : attempts).map((historyAttempt, index) => {
+	const historySlots = run.mode === "seek" ? seekHistorySlots(run.answers, run.phase.kind === "selecting" || run.finished !== null) : mode === null ? [] : (isTimedMode(mode) ? attempts.slice(0, 19) : attempts).map((historyAttempt, index) => {
 		const ordinal = attempts.length - index;
 		return resolvedHistorySlot(mode, historyAttempt, ordinal, catalog, milestones.has(ordinal));
 	});
@@ -1933,11 +1932,10 @@ function buildViewModel(state, context) {
 		tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
 	};
 	else if (run.mode === "seek" && run.engaged) {
-		const finalReveal = run.phase.kind === "revealed" && run.answers.length === modeRules.seek.roundCount;
 		const roundNumber = run.answers.length + (run.phase.kind === "selecting" ? 1 : 0);
-		currentSlot = finalReveal ? {
+		currentSlot = run.phase.kind === "revealed" && resolvedSeekAnswer ? {
 			id: roundNumber,
-			primary: uiText.seekComplete,
+			primary: seekDistanceFeedback(resolvedSeekAnswer),
 			tone: "neutral"
 		} : {
 			id: roundNumber,
@@ -1970,7 +1968,7 @@ function buildViewModel(state, context) {
 		actionEnabled: actions.action,
 		playbackIcon: context.playbackRequested ? isTimedMode(mode) ? "pause" : "stop" : "play",
 		snippetSeconds: duration,
-		actionText: forfeit ? "GIVE UP" : run.mode === "seek" ? seekAction ? run.answers.length >= modeRules.seek.roundCount ? "RESULTS" : "NEXT" : "GUESS" : actionLabel(mode, attempt),
+		actionText: forfeit ? "GIVE UP" : run.mode === "seek" ? seekAction ? "ADVANCE" : "GUESS" : actionLabel(mode, attempt),
 		currentSlot,
 		historySlots,
 		unavailableGuessIds,
@@ -2028,8 +2026,7 @@ function resolvedHistorySlot(mode, attempt, ordinal, catalog, gauntletMilestone)
 	}
 	throw new Error("Seek answers do not use puzzle/timed attempt history");
 }
-function seekHistorySlots(answers, phase) {
-	const currentAnswerCommitted = phase === "selecting" || phase === "revealed" && answers.length === modeRules.seek.roundCount;
+function seekHistorySlots(answers, currentAnswerCommitted) {
 	const committedAnswers = currentAnswerCommitted ? answers : answers.slice(1);
 	const latestCommittedRound = currentAnswerCommitted ? answers.length : answers.length - 1;
 	return committedAnswers.map((answer, index) => {
@@ -2311,7 +2308,7 @@ var Application = class {
 						...run,
 						phase: { kind: "revealed" }
 					};
-					this.announce(`${seekFeedback(attempt).join(". ")}.`);
+					this.announce(`${seekDistanceFeedback(attempt)}.`);
 					this.pendingFocus = "focusAttemptAction";
 				}
 				return;
@@ -4150,7 +4147,7 @@ var TimelineView = class {
 	timeAdjustmentMotions = [];
 	positionFrame = 0;
 	positionRevealKey = "";
-	positionResetMotions = [];
+	positionResetFrame = 0;
 	renderedPosition = null;
 	pendingPosition = null;
 	constructor(elements, durations, reducedMotion, scheduler = browserAnimationScheduler) {
@@ -4172,11 +4169,11 @@ var TimelineView = class {
 			this.applyPosition(null, onRevealComplete);
 			return;
 		}
-		if (this.positionResetMotions.length && !this.pendingPosition) {
+		if (this.positionResetFrame && !this.pendingPosition) {
 			this.cancelPositionReset();
 			this.renderedPosition = null;
 		}
-		if (this.positionResetMotions.length) {
+		if (this.positionResetFrame) {
 			this.pendingPosition = {
 				state,
 				onRevealComplete
@@ -4273,30 +4270,60 @@ var TimelineView = class {
 	beginPositionReset(onComplete) {
 		this.cancelPositionReveal();
 		this.elements.positionRange.disabled = true;
-		if (this.positionResetMotions.length) return;
-		const targets = [
-			this.elements.positionGuess,
-			this.elements.positionActual,
-			this.elements.positionDistance
-		].filter((element) => !element.hidden);
-		if (!targets.length) {
+		if (this.positionResetFrame) return;
+		const state = this.renderedPosition;
+		if (!state || state.phase !== "revealed" || state.selectedSecond === null || state.actualSecond === null || this.reducedMotion.matches || this.durations.reset <= 0) {
+			this.finishPositionReset();
 			if (onComplete) queueMicrotask(onComplete);
 			return;
 		}
-		const duration = this.reducedMotion.matches ? 0 : this.durations.reset;
-		const motions = targets.map((element) => element.animate({ opacity: [getComputedStyle(element).opacity, "0"] }, {
-			duration,
-			easing: "ease-out",
-			fill: "forwards"
-		}));
-		this.positionResetMotions = motions;
-		if (!onComplete) return;
-		const finish = () => {
-			if (this.positionResetMotions !== motions) return;
-			this.cancelPositionReset();
-			onComplete();
+		const guess = state.selectedSecond;
+		const actual = state.actualSecond;
+		const maximum = Math.max(0, state.maximumSecond);
+		const left = Math.min(guess, actual);
+		const right = Math.max(guess, actual);
+		const wipeFraction = right === 0 ? 0 : (right - left) / right;
+		if (right === 0) {
+			this.finishPositionReset();
+			if (onComplete) queueMicrotask(onComplete);
+			return;
+		}
+		let startedAt = null;
+		let frame = 0;
+		const animate = (now) => {
+			if (this.positionResetFrame !== frame) return;
+			startedAt ??= now;
+			const progress = Math.min(1, (now - startedAt) / this.durations.reset);
+			let guessSecond;
+			let actualSecond;
+			if (progress < wipeFraction) {
+				const wipeProgress = wipeFraction === 0 ? 1 : progress / wipeFraction;
+				const movingSecond = right - (right - left) * wipeProgress;
+				guessSecond = guess >= actual ? movingSecond : left;
+				actualSecond = actual >= guess ? movingSecond : left;
+				this.showPositionDistance(guessSecond, actualSecond, maximum);
+			} else {
+				const rewindProgress = wipeFraction === 1 ? 1 : (progress - wipeFraction) / (1 - wipeFraction);
+				const movingSecond = left * (1 - rewindProgress);
+				guessSecond = movingSecond;
+				actualSecond = movingSecond;
+				this.hidePositionDistance();
+			}
+			this.setPositionMarker(this.elements.positionGuess, guessSecond, maximum);
+			this.setPositionMarker(this.elements.positionActual, actualSecond, maximum);
+			this.elements.now.textContent = formatClock(guessSecond);
+			this.elements.end.textContent = formatClock(actualSecond);
+			if (progress < 1) {
+				frame = this.scheduler.requestFrame(animate);
+				this.positionResetFrame = frame;
+				return;
+			}
+			this.positionResetFrame = 0;
+			this.finishPositionReset();
+			onComplete?.();
 		};
-		Promise.all(motions.map((motion) => motion.finished)).then(finish, () => {});
+		frame = this.scheduler.requestFrame(animate);
+		this.positionResetFrame = frame;
 	}
 	beginReset(text, value, rewindPlayback = false) {
 		const previousScale = this.progressScale();
@@ -4428,8 +4455,18 @@ var TimelineView = class {
 		if (clearKey) this.positionRevealKey = "";
 	}
 	cancelPositionReset() {
-		for (const motion of this.positionResetMotions) motion.cancel();
-		this.positionResetMotions = [];
+		if (this.positionResetFrame) this.scheduler.cancelFrame(this.positionResetFrame);
+		this.positionResetFrame = 0;
+	}
+	finishPositionReset() {
+		this.renderedPosition = null;
+		this.elements.positionRange.value = "0";
+		this.elements.positionRange.setAttribute("aria-valuetext", "NO POSITION SELECTED");
+		this.setPositionMarker(this.elements.positionGuess, null, 0);
+		this.setPositionMarker(this.elements.positionActual, null, 0);
+		this.hidePositionDistance();
+		this.elements.now.textContent = "0:00";
+		this.elements.end.textContent = "0:00";
 	}
 	progressScale() {
 		const computed = getComputedStyle(this.elements.fill).transform;
@@ -4653,8 +4690,14 @@ var GameView = class {
 		}
 		if (state.result || !this.modal.resultLayoutActive) this.resultView.render(state.result);
 		this.renderClock(state.clock);
-		this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
-		if (openingOverlay === "result") this.modal.openResult(state.result?.announcement);
+		const finishingSeek = state.mode === "seek" && state.overlay === "result";
+		if (!finishingSeek) this.timeline.renderPosition(state.positionTimeline, (roundId) => this.handlers?.positionRevealComplete(roundId));
+		if (openingOverlay === "result") if (finishingSeek) {
+			const finishingRunId = runId;
+			this.timeline.beginPositionReset(() => {
+				if (this.runId === finishingRunId && this.state?.overlay === "result") this.modal.openResult(state.result?.announcement);
+			});
+		} else this.modal.openResult(state.result?.announcement);
 		else if (openingOverlay === "discovery") {
 			this.discovery.collapseAll();
 			this.modal.openDiscovery();
