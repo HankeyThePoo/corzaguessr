@@ -1379,7 +1379,8 @@ function classicRoundKind(track, date) {
 function blitzEncounteredTrackIds(attempts, catalog) {
 	const catalogIds = new Set(catalog.map((track) => track.id));
 	const encountered = /* @__PURE__ */ new Set();
-	for (const attempt of [...attempts].reverse()) {
+	for (let index = attempts.length - 1; index >= 0; index--) {
+		const attempt = attempts[index];
 		if (!catalogIds.has(attempt.roundTrackId)) continue;
 		encountered.add(attempt.roundTrackId);
 		if (encountered.size === catalogIds.size) encountered.clear();
@@ -1536,7 +1537,7 @@ function buildClockViewModel(input) {
 		case "countdown": {
 			const initial = modeRules[mode].initialTimeMs;
 			return {
-				currentText: formatClock(clock.remainingMs / 1e3),
+				currentText: formatClock(Math.ceil(clock.remainingMs / 1e3)),
 				endText: formatClock(initial / 1e3),
 				progress: initial ? clock.remainingMs / initial : 0
 			};
@@ -3524,11 +3525,14 @@ var DiscoveryListView = class {
 	bind(startGauntlet) {
 		this.startGauntlet = startGauntlet;
 	}
-	collapseAll() {
-		if (this.expandedTrackId === null) return;
+	resetExpansion() {
+		for (const motion of this.heightMotions.values()) motion.cancel();
+		this.heightMotions.clear();
 		const expandedTrackId = this.expandedTrackId;
 		this.expandedTrackId = null;
-		this.updateItem(expandedTrackId, false);
+		if (expandedTrackId === null) return;
+		const item = this.items.querySelector(`.discovery-item[data-track-id="${expandedTrackId}"]`);
+		if (item) this.applyExpandedState(item, false);
 	}
 	render(tracks, discoveries) {
 		const signature = [...discoveries].sort((a, b) => a - b).join(",");
@@ -4694,10 +4698,8 @@ var GameView = class {
 				if (this.runId === finishingRunId && this.state?.overlay === "result") this.modal.openResult(state.result?.announcement);
 			});
 		} else this.modal.openResult(state.result?.announcement);
-		else if (openingOverlay === "discovery") {
-			this.discovery.collapseAll();
-			this.modal.openDiscovery();
-		} else if (openingOverlay === "help") this.modal.openHelp();
+		else if (openingOverlay === "discovery") this.modal.openDiscovery();
+		else if (openingOverlay === "help") this.modal.openHelp();
 	}
 	renderClock(clock) {
 		this.elements.endtime.textContent = clock.endText;
@@ -4735,7 +4737,10 @@ var GameView = class {
 		}, resetBoard ? () => this.beginBoardReset(resetBoard) : void 0);
 	}
 	beginDiscoveryClose(onClosed) {
-		this.modal.closeDiscovery(() => onClosed?.());
+		this.modal.closeDiscovery(() => {
+			this.discovery.resetExpansion();
+			onClosed?.();
+		});
 	}
 	beginHelpClose(onClosed) {
 		this.modal.closeHelp(() => onClosed?.());
