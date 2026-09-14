@@ -1337,7 +1337,6 @@
     min-height: 0;
     padding: 0;
     overflow: hidden;
-    transition: height var(--duration-standard) ease;
   }
 
   & .discovery-item-known::before,
@@ -1672,7 +1671,6 @@
     & .discovery-item-known.expanded {
       height: auto;
       min-height: var(--discovery-row-height);
-      transition: none;
     }
 
     & .discovery-item-known.expanded {
