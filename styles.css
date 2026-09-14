@@ -36,21 +36,17 @@
   --text-emphasis: 1.375rem;
   --text-body: 0.75rem;
   --line-height: 20px;
-  --tracking-control: 0.04em;
-  --tracking-wide: 0.08em;
-  --opacity-muted: 70%;
+  --opacity-secondary: 70%;
   --duration-fast: 200ms;
   --duration-standard: 400ms;
   --duration-long: 600ms;
   --control-height: 46px;
   --button-width: 128px;
   --play-size: 68px;
-  --time-width: 3.2ch;
   --modal-max-height: 650px;
   --volume-height: 30px;
   --volume-width: 76px;
-  --interaction-brightness: 1.16;
-  --timeline-accent-opacity: 20%;
+  --hover-brightness: 1.2;
   color: var(--off-white);
   padding:
     calc(var(--space) * 4)
@@ -276,6 +272,7 @@
   }
 
   & .controls {
+    --time-width: 3.2ch;
     display: grid;
     grid-template-columns: var(--time-width) auto var(--time-width);
     align-items: center;
@@ -317,7 +314,6 @@
     cursor: pointer;
     font-size: var(--text-body);
     font-weight: 800;
-    letter-spacing: var(--tracking-control);
     text-transform: uppercase;
     transition:
       filter var(--duration-fast) ease,
@@ -573,10 +569,11 @@
   }
 
   & .volume-control:focus-within {
-    filter: brightness(var(--interaction-brightness));
+    filter: brightness(var(--hover-brightness));
   }
 
   & .timeline {
+    --timeline-accent-opacity: 20%;
     --timeline-progress: var(--off-white);
     position: relative;
     isolation: isolate;
@@ -1025,7 +1022,6 @@
     font-size: var(--text-emphasis);
     font-weight: 800;
     line-height: 1.2;
-    letter-spacing: var(--tracking-wide);
   }
 
   & .help-content {
@@ -1061,7 +1057,6 @@
   & .help-mode h4 {
     color: var(--off-white);
     font-size: var(--text-body);
-    letter-spacing: var(--tracking-wide);
   }
 
   & .help-mode p {
@@ -1078,7 +1073,6 @@
     font-size: var(--text-emphasis);
     font-weight: 800;
     line-height: 1.2;
-    letter-spacing: var(--tracking-wide);
     -webkit-text-fill-color: transparent;
   }
 
@@ -1119,8 +1113,7 @@
 
   & .result-label {
     font-size: var(--text-body);
-    letter-spacing: var(--tracking-wide);
-    opacity: var(--opacity-muted);
+    opacity: var(--opacity-secondary);
   }
 
   & .result-value {
@@ -1210,7 +1203,6 @@
     font-size: var(--text-body);
     font-weight: 800;
     line-height: 1.2;
-    letter-spacing: var(--tracking-wide);
     text-align: center;
   }
 
@@ -1239,8 +1231,7 @@
   & .progress-best-mode {
     font-size: var(--text-body);
     font-weight: 800;
-    letter-spacing: var(--tracking-wide);
-    opacity: var(--opacity-muted);
+    opacity: var(--opacity-secondary);
   }
 
   & .progress-best strong {
@@ -1251,7 +1242,7 @@
   & .progress-best small {
     font-size: var(--text-body);
     line-height: 1.2;
-    opacity: var(--opacity-muted);
+    opacity: var(--opacity-secondary);
   }
 
   & .discovery-title {
@@ -1479,8 +1470,7 @@
     -webkit-box-orient: vertical;
     font-size: var(--text-body);
     font-weight: 800;
-    letter-spacing: var(--tracking-wide);
-    opacity: var(--opacity-muted);
+    opacity: var(--opacity-secondary);
     -webkit-line-clamp: 2;
   }
 
@@ -1496,7 +1486,7 @@
   & .discovery-release-date {
     max-width: calc(100% - var(--discovery-links-width) - var(--space) * 4);
     font-size: var(--text-body);
-    opacity: var(--opacity-muted);
+    opacity: var(--opacity-secondary);
   }
 
   & .discovery-listen-links {
@@ -1563,7 +1553,6 @@
     -webkit-text-fill-color: transparent;
     font-size: var(--text-body);
     font-weight: 800;
-    letter-spacing: var(--tracking-wide);
     white-space: nowrap;
   }
 
@@ -1580,13 +1569,13 @@
 
     &:not(.keyboard-input) button.action:not(:disabled):hover,
     &:not(.keyboard-input) .play:not(:disabled):hover {
-      filter: brightness(var(--interaction-brightness));
+      filter: brightness(var(--hover-brightness));
     }
 
     & .volume-control:hover,
     & .help-button:hover,
     & .discovery-listen-links a:hover {
-      filter: brightness(var(--interaction-brightness));
+      filter: brightness(var(--hover-brightness));
     }
 
   }
