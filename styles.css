@@ -35,13 +35,14 @@
   --line-width: 1px;
   --gradient-border-width: 2px;
 
-  --text-base: 16px;
-  --text-body: calc(var(--text-base) * 0.75);
-  --text-button: calc(var(--text-base) * 0.9375);
-  --text-emphasis: calc(var(--text-base) * 1.375);
-  --text-display: calc(var(--text-base) * 2);
-  --text-hero: calc(var(--text-base) * 3);
-  --line-height: calc(var(--text-base) * 1.25);
+  --text-unit: 10px;
+  --text-base: calc(var(--text-unit) * 1.6);
+  --text-body: calc(var(--text-unit) * 1.2);
+  --text-button: calc(var(--text-unit) * 1.5);
+  --text-emphasis: calc(var(--text-unit) * 2.2);
+  --text-display: calc(var(--text-unit) * 3.2);
+  --text-hero: calc(var(--text-unit) * 4.8);
+  --line-height: calc(var(--text-unit) * 2);
 
   --opacity-secondary: 70%;
   --glass-blur: 20px;
