@@ -661,7 +661,6 @@
     pointer-events: none;
     transform: scaleX(0);
     transform-origin: left;
-    will-change: opacity;
   }
 
   & .time-change {
@@ -680,7 +679,6 @@
     font-weight: 800;
     line-height: 1;
     text-shadow: var(--shadow-text);
-    transform: translateY(0) scale(0.85);
   }
 
   & .tick {
@@ -891,7 +889,6 @@
     text-align: center;
     text-transform: uppercase;
     white-space: nowrap;
-    translate: 0 0;
   }
 
   & .slot-primary {
