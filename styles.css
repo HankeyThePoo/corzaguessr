@@ -1485,6 +1485,7 @@
     overflow: hidden;
     -webkit-box-orient: vertical;
     font-size: var(--text-base);
+    font-weight: 800;
     -webkit-line-clamp: 2;
   }
 
