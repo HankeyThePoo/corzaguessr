@@ -1218,7 +1218,7 @@
   & .progress-summary h4,
   & .discovery-title > span {
     font-family: inherit;
-    font-size: var(--text-body);
+    font-size: var(--text-button);
     font-weight: 800;
     line-height: 1.2;
     text-align: center;
