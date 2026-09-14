@@ -299,7 +299,7 @@
   }
 
   & .time {
-    line-height: 24px;
+    line-height: calc(var(--text-base) * 1.5);
     white-space: nowrap;
   }
 
