@@ -36,18 +36,14 @@
   --radius: 8px;
   --space: 4px;
   --text-display: 2rem;
-  --text-clock: 1.35rem;
-  --text-feedback: 1.35rem;
+  --text-emphasis: 1.35rem;
   --text-body: 0.88rem;
-  --text-small: 0.8rem;
   --text-label: 0.75rem;
   --text-meta: 0.6rem;
   --text-score: 3rem;
   --line-height: 20px;
-  --line-height-clock: 24px;
   --tracking-control: 0.04em;
-  --tracking-label: 0.08em;
-  --tracking-heading: 0.1em;
+  --tracking-wide: 0.08em;
   --opacity-muted: 70%;
   --duration-fast: 200ms;
   --duration-standard: 400ms;
@@ -55,7 +51,6 @@
   --control-height: 46px;
   --button-width: 128px;
   --play-size: 68px;
-  --play-icon-size: 34px;
   --time-width: 3.2ch;
   --modal-max-height: 650px;
   --volume-height: 30px;
@@ -292,12 +287,12 @@
     align-items: center;
     justify-content: center;
     gap: calc(var(--space) * 4);
-    font-size: var(--text-clock);
+    font-size: var(--text-emphasis);
     font-weight: 800;
   }
 
   & .time {
-    line-height: var(--line-height-clock);
+    line-height: 24px;
     white-space: nowrap;
   }
 
@@ -450,8 +445,8 @@
   }
 
   & .play svg {
-    width: var(--play-icon-size);
-    height: var(--play-icon-size);
+    width: calc(var(--play-size) * 0.5);
+    height: calc(var(--play-size) * 0.5);
     fill: var(--off-white);
   }
 
@@ -675,7 +670,7 @@
   & .time-change span {
     opacity: 0;
     color: var(--off-white);
-    font-size: var(--text-feedback);
+    font-size: var(--text-emphasis);
     font-weight: 800;
     line-height: 1;
     text-shadow: var(--shadow-text);
@@ -1033,10 +1028,10 @@
 
   & .help-title {
     color: var(--off-white);
-    font-size: var(--text-clock);
+    font-size: var(--text-emphasis);
     font-weight: 800;
     line-height: 1.2;
-    letter-spacing: var(--tracking-heading);
+    letter-spacing: var(--tracking-wide);
   }
 
   & .help-content {
@@ -1072,7 +1067,7 @@
   & .help-mode h4 {
     color: var(--off-white);
     font-size: var(--text-label);
-    letter-spacing: var(--tracking-label);
+    letter-spacing: var(--tracking-wide);
   }
 
   & .help-mode p {
@@ -1086,10 +1081,10 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    font-size: var(--text-clock);
+    font-size: var(--text-emphasis);
     font-weight: 800;
     line-height: 1.2;
-    letter-spacing: var(--tracking-heading);
+    letter-spacing: var(--tracking-wide);
     -webkit-text-fill-color: transparent;
   }
 
@@ -1130,7 +1125,7 @@
 
   & .result-label {
     font-size: var(--text-label);
-    letter-spacing: var(--tracking-label);
+    letter-spacing: var(--tracking-wide);
     opacity: var(--opacity-muted);
   }
 
@@ -1221,7 +1216,7 @@
     font-size: var(--text-body);
     font-weight: 800;
     line-height: 1.2;
-    letter-spacing: var(--tracking-heading);
+    letter-spacing: var(--tracking-wide);
     text-align: center;
   }
 
@@ -1250,7 +1245,7 @@
   & .progress-best-mode {
     font-size: var(--text-meta);
     font-weight: 800;
-    letter-spacing: var(--tracking-label);
+    letter-spacing: var(--tracking-wide);
     opacity: var(--opacity-muted);
   }
 
@@ -1490,7 +1485,7 @@
     -webkit-box-orient: vertical;
     font-size: var(--text-label);
     font-weight: 800;
-    letter-spacing: var(--tracking-label);
+    letter-spacing: var(--tracking-wide);
     opacity: var(--opacity-muted);
     -webkit-line-clamp: 2;
   }
@@ -1574,7 +1569,7 @@
     -webkit-text-fill-color: transparent;
     font-size: var(--text-meta);
     font-weight: 800;
-    letter-spacing: var(--tracking-label);
+    letter-spacing: var(--tracking-wide);
     white-space: nowrap;
   }
 
@@ -1661,7 +1656,7 @@
     }
 
     & .progress-best strong {
-      font-size: var(--text-small);
+      font-size: var(--text-label);
     }
 
     & .discovery-item-known,
