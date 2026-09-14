@@ -9,51 +9,66 @@
   --reward: #ffda5e;
   --warning: #f97316;
   --mute: #ef4444;
+
   --gradient: linear-gradient(
     135deg,
     var(--gradient-start),
     var(--gradient-middle) 50%,
     var(--gradient-end)
   );
+
   --gradient-background: linear-gradient(
     135deg,
     rgb(from var(--gradient-start) r g b / 12%),
     rgb(from var(--gradient-middle) r g b / 12%) 50%,
     rgb(from var(--gradient-end) r g b / 12%)
   );
+
   --glass-layer: rgb(from var(--off-white) r g b / 2%);
   --white-layer: rgb(from var(--off-white) r g b / 20%);
   --dark-layer: rgb(from var(--near-black) r g b / 40%);
+
   --line-width: 1px;
   --gradient-border-width: 2px;
   --glass-blur: 20px;
   --shadow-surface: 0 6px 18px var(--dark-layer);
   --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
+
   --radius: 8px;
   --space: 4px;
-  --text-hero: 48px;
-  --text-display: 32px;
-  --text-emphasis: 22px;
-  --text-button: 15px;
-  --text-body: 12px;
-  --line-height: 20px;
+
+  --text-base: 16px;
+  --text-body: calc(var(--text-base) * 0.75);
+  --text-button: calc(var(--text-base) * 0.9375);
+  --text-emphasis: calc(var(--text-base) * 1.375);
+  --text-display: calc(var(--text-base) * 2);
+  --text-hero: calc(var(--text-base) * 3);
+  --line-height: calc(var(--text-base) * 1.25);
+
   --opacity-secondary: 70%;
+
   --duration-fast: 200ms;
   --duration-standard: 400ms;
   --duration-long: 600ms;
+
   --control-height: 46px;
   --button-width: 128px;
   --play-size: 68px;
   --modal-max-height: 650px;
   --volume-height: 30px;
   --volume-width: 76px;
+
   --hover-brightness: 1.2;
+
   color: var(--off-white);
+  font-size: var(--text-base);
+  font-family: "Monument Extended", Inter, system-ui, sans-serif;
+
   padding:
     calc(var(--space) * 4)
     calc(var(--space) * 3)
     calc(var(--space) * 12);
-  font-family: "Monument Extended", Inter, system-ui, sans-serif;
+
   scrollbar-width: none;
 
   &::-webkit-scrollbar,
