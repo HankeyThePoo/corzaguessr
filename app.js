@@ -2990,7 +2990,7 @@ var AttemptHistoryView = class {
 	applySnapshot(snapshot, reveal = false) {
 		this.runId = snapshot.runId;
 		this.renderSlots(snapshot, !reveal);
-		if (reveal) this.revealAttempts();
+		if (reveal) this.enterAttempts();
 	}
 	renderSlots(snapshot, deal) {
 		const current = snapshot.currentSlot ? toRenderedSlot(snapshot.currentSlot, `${snapshot.runId}:current`) : null;
@@ -3098,25 +3098,48 @@ var AttemptHistoryView = class {
 			if (pending) this.applySnapshot(pending, pending.currentSlot !== null || pending.historySlots.length > 0);
 		});
 	}
-	revealAttempts() {
+	enterAttempts() {
 		const container = this.elements.container;
-		const duration = this.durations.collapse;
 		this.cancelCollapse();
-		if (this.reducedMotion.matches || duration <= 0) {
+		if (this.reducedMotion.matches || this.durations.deal <= 0) {
 			container.style.height = "";
 			return;
 		}
-		const targetHeight = container.getBoundingClientRect().height;
+		const containerBounds = container.getBoundingClientRect();
+		const current = this.elements.current.hidden ? null : this.elements.current;
+		const currentBounds = current?.getBoundingClientRect() ?? null;
+		const history = [...this.elements.list.children];
+		const historyAnchor = currentBounds?.top ?? containerBounds.top;
+		const positions = [...current && currentBounds ? [{
+			element: current,
+			startTop: containerBounds.top,
+			finalTop: currentBounds.top
+		}] : [], ...history.map((element) => ({
+			element,
+			startTop: historyAnchor,
+			finalTop: element.getBoundingClientRect().top
+		}))];
+		const targetHeight = containerBounds.height;
 		container.style.height = `${targetHeight}px`;
+		container.style.overflow = "visible";
+		for (const { element, startTop, finalTop } of positions) {
+			const delta = startTop - finalTop;
+			if (Math.abs(delta) < .5) continue;
+			this.trackEntryMotion(element.animate({ translate: [`0 ${delta}px`, "0 0"] }, {
+				duration: this.durations.deal,
+				easing: "cubic-bezier(.2,.8,.2,1)"
+			}));
+		}
 		const motion = container.animate({ height: ["0px", `${targetHeight}px`] }, {
-			duration,
-			easing: "ease"
+			duration: this.durations.deal,
+			easing: "cubic-bezier(.2,.8,.2,1)"
 		});
 		this.collapseMotion = motion;
 		motion.finished.then(() => {
 			if (this.collapseMotion !== motion) return;
 			this.collapseMotion = null;
 			container.style.height = "";
+			container.style.overflow = "";
 		}, () => {});
 	}
 	startCollapse(container, fading, duration, onFinished) {
@@ -3152,7 +3175,10 @@ var AttemptHistoryView = class {
 		}, () => {});
 	}
 	cancelCollapse() {
-		if (this.collapseMotion) this.elements.container.style.height = "";
+		if (this.collapseMotion) {
+			this.elements.container.style.height = "";
+			this.elements.container.style.overflow = "";
+		}
 		this.collapseMotion?.cancel();
 		this.collapseMotion = null;
 	}
