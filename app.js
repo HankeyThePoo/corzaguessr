@@ -1322,7 +1322,9 @@ function isRunFinished(state) {
 	return run.mode === null ? false : run.mode === "daily" ? run.finished : run.finished !== null;
 }
 function correctTrackIds(attempts) {
-	return new Set(attempts.flatMap((a) => a.outcome === "correct" ? [a.trackId] : []));
+	const ids = /* @__PURE__ */ new Set();
+	for (const attempt of attempts) if (attempt.outcome === "correct") ids.add(attempt.trackId);
+	return ids;
 }
 function createRun(mode, date, state) {
 	switch (mode) {
@@ -1377,7 +1379,8 @@ function classicRoundKind(track, date) {
 	return isReleasedBy(track, date) ? "standard" : "preview";
 }
 function blitzEncounteredTrackIds(attempts, catalog) {
-	const catalogIds = new Set(catalog.map((track) => track.id));
+	const catalogIds = /* @__PURE__ */ new Set();
+	for (const track of catalog) catalogIds.add(track.id);
 	const encountered = /* @__PURE__ */ new Set();
 	for (let index = attempts.length - 1; index >= 0; index--) {
 		const attempt = attempts[index];
@@ -1665,10 +1668,12 @@ function blitzAnswer(previous, answer, roundTrackId) {
 }
 function gauntletAnswer(previous, answer, catalogCount) {
 	const attempts = [answer, ...previous];
+	const completedTrackIds = /* @__PURE__ */ new Set();
+	for (const attempt of attempts) if (attempt.outcome === "correct") completedTrackIds.add(attempt.trackId);
 	return {
 		attempts,
 		complete: gauntletCompleted({
-			completedTracks: new Set(attempts.filter((a) => a.outcome === "correct").map((a) => a.trackId)).size,
+			completedTracks: completedTrackIds.size,
 			catalogTrackCount: catalogCount
 		}),
 		adjustmentMs: modeRules.gauntlet.timeAdjustmentsMs[answer.outcome]
@@ -1841,7 +1846,8 @@ function buildResult(state) {
 			};
 		case "seek": {
 			if (!run.finished) throw new Error("A completed Seek requires completion context");
-			const roundPoints = [...run.answers].reverse().map(seekAttemptPoints);
+			const roundPoints = [];
+			for (let index = run.answers.length - 1; index >= 0; index--) roundPoints.push(seekAttemptPoints(run.answers[index]));
 			return {
 				mode: "seek",
 				newPersonalBest: run.finished.newPersonalBest,
