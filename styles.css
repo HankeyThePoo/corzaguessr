@@ -1484,7 +1484,7 @@
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    font-size: var(--text-small);
+    font-size: var(--text-base);
     font-weight: 800;
     opacity: var(--opacity-secondary);
     -webkit-line-clamp: 2;
@@ -1494,14 +1494,14 @@
     display: block;
     max-width: 100%;
     overflow: hidden;
-    font-size: var(--text-small);
+    font-size: var(--text-base);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   & .discovery-release-date {
     max-width: calc(100% - var(--discovery-links-width) - var(--space) * 4);
-    font-size: var(--text-small);
+    font-size: var(--text-base);
     opacity: var(--opacity-secondary);
   }
 
