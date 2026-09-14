@@ -49,8 +49,8 @@
   --tracking-label: 0.08em;
   --tracking-heading: 0.1em;
   --opacity-muted: 70%;
-  --duration-fast: 150ms;
-  --duration-standard: 350ms;
+  --duration-fast: 200ms;
+  --duration-standard: 400ms;
   --duration-long: 600ms;
   --control-height: 46px;
   --button-width: 128px;
