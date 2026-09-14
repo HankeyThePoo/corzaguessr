@@ -1501,7 +1501,7 @@
 
   & .discovery-release-date {
     max-width: calc(100% - var(--discovery-links-width) - var(--space) * 4);
-    font-size: var(--text-base);
+    font-size: var(--text-small);
     opacity: var(--opacity-secondary);
   }
 
