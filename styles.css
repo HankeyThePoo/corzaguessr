@@ -1271,7 +1271,7 @@
   }
 
   & .discovery-title small {
-    font-size: var(--text-body);
+    font-size: var(--text-base);
     line-height: 1.2;
   }
 
