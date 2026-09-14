@@ -4506,7 +4506,7 @@ var GameView = class {
 		}, {
 			wiggle: this.durations.long,
 			collapse: this.durations.standard,
-			deal: 200
+			deal: this.durations.standard
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
 			timeline: this.elements.timeline,
