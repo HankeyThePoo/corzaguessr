@@ -31,10 +31,11 @@
   --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
   --radius: 8px;
   --space: 4px;
-  --text-hero: 3rem;
-  --text-display: 2rem;
-  --text-emphasis: 1.375rem;
-  --text-body: 0.75rem;
+  --text-hero: 48px;
+  --text-display: 32px;
+  --text-emphasis: 22px;
+  --text-button: 15px;
+  --text-body: 12px;
   --line-height: 20px;
   --opacity-secondary: 70%;
   --duration-fast: 200ms;
@@ -302,7 +303,6 @@
   & .button,
   & .play,
   & .mode {
-  font-size: 15px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -313,6 +313,7 @@
     color: var(--off-white);
     box-shadow: inset 0 0 0 var(--line-width) var(--white-layer);
     cursor: pointer;
+    font-size: var(--text-button);
     font-weight: 800;
     text-transform: uppercase;
     transition:
