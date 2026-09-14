@@ -1306,7 +1306,7 @@
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    scroll-snap-type: y mandatory;
+    scroll-snap-type: y proximity;
   }
 
   & .discovery-item {
