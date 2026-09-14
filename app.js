@@ -1569,6 +1569,7 @@ var uiText = {
 	selectedTrackReplace: "THE SELECTED TRACK COULD NOT BE PLAYED. PRESS PLAY TO TRY ANOTHER.",
 	selectedTrackReplacing: "THE SELECTED TRACK COULD NOT BE PLAYED. TRYING ANOTHER.",
 	trackUnavailable: "TRACK IS UNAVAILABLE.",
+	seekComplete: "RUN COMPLETE",
 	progress: "VIEW YOUR RECORDS AND THE TRACKS YOU'VE DISCOVERED"
 };
 function seekFeedback(attempt) {
@@ -1726,7 +1727,7 @@ function announceResult(outcome, modules) {
 function resultOutcome(result, attempts) {
 	if (result.mode === "daily" || result.mode === "classic") return puzzleResultMessage(result, attempts);
 	if (result.mode === "blitz") return "TIME IS UP";
-	if (result.mode === "seek") return "RUN COMPLETE";
+	if (result.mode === "seek") return uiText.seekComplete;
 	if (result.mode === "gauntlet") return gauntletCompleted(result) ? "YOU SURVIVED" : "TIME IS UP";
 	throw new Error(`Unsupported result mode: ${String(result.mode)}`);
 }
@@ -1932,8 +1933,13 @@ function buildViewModel(state, context) {
 		tone: attempt === puzzleAttemptCount - 1 ? "final-prompt" : "prompt"
 	};
 	else if (run.mode === "seek" && run.engaged) {
+		const finalReveal = run.phase.kind === "revealed" && run.answers.length === modeRules.seek.roundCount;
 		const roundNumber = run.answers.length + (run.phase.kind === "selecting" ? 1 : 0);
-		currentSlot = {
+		currentSlot = finalReveal ? {
+			id: roundNumber,
+			primary: uiText.seekComplete,
+			tone: "neutral"
+		} : {
 			id: roundNumber,
 			primary: `ROUND ${roundNumber}`,
 			tone: "prompt"
@@ -2023,10 +2029,11 @@ function resolvedHistorySlot(mode, attempt, ordinal, catalog, gauntletMilestone)
 	throw new Error("Seek answers do not use puzzle/timed attempt history");
 }
 function seekHistorySlots(answers, phase) {
-	const resolvedAnswers = phase === "revealing" ? answers.slice(1) : answers;
-	const latestResolvedRound = phase === "revealing" ? answers.length - 1 : answers.length;
-	return resolvedAnswers.map((answer, index) => {
-		const round = latestResolvedRound - index;
+	const currentAnswerCommitted = phase === "selecting" || phase === "revealed" && answers.length === modeRules.seek.roundCount;
+	const committedAnswers = currentAnswerCommitted ? answers : answers.slice(1);
+	const latestCommittedRound = currentAnswerCommitted ? answers.length : answers.length - 1;
+	return committedAnswers.map((answer, index) => {
+		const round = latestCommittedRound - index;
 		const points = seekAttemptPoints(answer);
 		const grade = seekGradePresentation(seekGrade(points));
 		return {
