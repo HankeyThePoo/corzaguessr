@@ -3481,14 +3481,19 @@ var DiscoveryListView = class {
 	count;
 	items;
 	coverUrl;
+	duration;
+	reducedMotion;
 	expandedTrackId = null;
+	heightMotions = /* @__PURE__ */ new Map();
 	startGauntlet = null;
 	tracks = null;
 	discoveriesSignature = "";
-	constructor(count, items, coverUrl) {
+	constructor(count, items, coverUrl, duration, reducedMotion) {
 		this.count = count;
 		this.items = items;
 		this.coverUrl = coverUrl;
+		this.duration = duration;
+		this.reducedMotion = reducedMotion;
 	}
 	bind(startGauntlet) {
 		this.startGauntlet = startGauntlet;
@@ -3630,11 +3635,34 @@ var DiscoveryListView = class {
 		if (previousId !== null) this.updateItem(previousId, false);
 		const opening = this.expandedTrackId === trackId;
 		this.updateItem(trackId, opening);
-		if (opening) requestAnimationFrame(() => this.revealExpandedItem(trackId));
 	}
 	updateItem(trackId, expanded) {
 		const item = this.items.querySelector(`.discovery-item[data-track-id="${trackId}"]`);
-		if (item) this.applyExpandedState(item, expanded);
+		if (item) this.animateExpandedState(item, trackId, expanded);
+	}
+	animateExpandedState(item, trackId, expanded) {
+		const fromHeight = item.getBoundingClientRect().height;
+		this.heightMotions.get(item)?.cancel();
+		this.heightMotions.delete(item);
+		this.applyExpandedState(item, expanded);
+		const toHeight = item.getBoundingClientRect().height;
+		if (this.reducedMotion.matches || fromHeight === toHeight) {
+			if (expanded) this.scrollExpandedItemIntoView(trackId, item);
+			return;
+		}
+		const motion = item.animate({ height: [`${fromHeight}px`, `${toHeight}px`] }, {
+			duration: this.duration,
+			easing: "ease"
+		});
+		this.heightMotions.set(item, motion);
+		const observer = expanded ? new ResizeObserver(() => this.scrollExpandedItemIntoView(trackId, item)) : null;
+		observer?.observe(item);
+		const finish = () => {
+			observer?.disconnect();
+			if (this.heightMotions.get(item) === motion) this.heightMotions.delete(item);
+			if (expanded) this.scrollExpandedItemIntoView(trackId, item);
+		};
+		motion.finished.then(finish, finish);
 	}
 	applyExpandedState(item, expanded) {
 		item.classList.toggle("expanded", expanded);
@@ -3651,25 +3679,6 @@ var DiscoveryListView = class {
 			listenLinks.inert = !expanded;
 			listenLinks.setAttribute("aria-hidden", String(!expanded));
 		}
-	}
-	revealExpandedItem(trackId) {
-		if (this.expandedTrackId !== trackId) return;
-		const item = this.items.querySelector(`.discovery-item[data-track-id="${trackId}"]`);
-		if (!item) return;
-		const heightTransition = typeof item.getAnimations === "function" ? item.getAnimations().find((animation) => "transitionProperty" in animation && animation.transitionProperty === "height") : void 0;
-		if (heightTransition) {
-			const observer = new ResizeObserver(() => {
-				this.scrollExpandedItemIntoView(trackId, item);
-			});
-			observer.observe(item);
-			const finish = () => {
-				observer.disconnect();
-				this.scrollExpandedItemIntoView(trackId, item);
-			};
-			heightTransition.finished.then(finish, finish);
-			return;
-		}
-		this.scrollExpandedItemIntoView(trackId, item);
 	}
 	scrollExpandedItemIntoView(trackId, item) {
 		if (this.expandedTrackId !== trackId || !item.classList.contains("expanded")) return;
@@ -4517,7 +4526,7 @@ var GameView = class {
 			positionReveal: this.durations.long
 		}, this.reducedMotion);
 		this.volume = new VolumeControl(this.elements.volumeControl, this.elements.volumeRange, initialVolume);
-		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl);
+		this.discovery = new DiscoveryListView(this.elements.discoveryCount, this.elements.discoveryItems, coverUrl, this.durations.standard, this.reducedMotion);
 		this.progressSummary = new ProgressSummaryView(this.elements.progressBests);
 	}
 	bind(handlers) {
