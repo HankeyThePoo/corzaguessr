@@ -35,14 +35,12 @@
   --line-width: 1px;
   --gradient-border-width: 2px;
 
-  --text-unit: 10px;
-  --text-base: calc(var(--text-unit) * 1.6);
-  --text-body: calc(var(--text-unit) * 1.2);
-  --text-button: calc(var(--text-unit) * 1.5);
-  --text-emphasis: calc(var(--text-unit) * 2.2);
-  --text-display: calc(var(--text-unit) * 3.2);
-  --text-hero: calc(var(--text-unit) * 4.8);
-  --line-height: calc(var(--text-unit) * 2);
+  --text-small: 12px;
+  --text-base: 15px;
+  --text-large: calc(var(--text-small) * 2);
+  --text-display: calc(var(--text-base) * 2);
+  --text-hero: calc(var(--text-base) * 3);
+  --line-height: calc(var(--text-base) * 1.2);
 
   --opacity-secondary: 70%;
   --glass-blur: 20px;
@@ -102,7 +100,7 @@
     padding: calc(var(--space) * 3) calc(var(--space) * 4);
     margin: 0 0 calc(var(--space) * 4);
     text-align: center;
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     line-height: 1.5;
   }
 
@@ -296,7 +294,7 @@
     align-items: center;
     justify-content: center;
     gap: calc(var(--space) * 4);
-    font-size: var(--text-emphasis);
+    font-size: var(--text-large);
     font-weight: 800;
   }
 
@@ -330,7 +328,7 @@
     color: var(--off-white);
     box-shadow: inset 0 0 0 var(--line-width) var(--white-layer);
     cursor: pointer;
-    font-size: var(--text-button);
+    font-size: var(--text-base);
     font-weight: 800;
     text-transform: uppercase;
     transition:
@@ -679,7 +677,7 @@
   & .time-change span {
     opacity: 0;
     color: var(--off-white);
-    font-size: var(--text-emphasis);
+    font-size: var(--text-large);
     font-weight: 800;
     line-height: 1;
     text-shadow: var(--shadow-text);
@@ -1037,7 +1035,7 @@
 
   & .help-title {
     color: var(--off-white);
-    font-size: var(--text-emphasis);
+    font-size: var(--text-large);
     font-weight: 800;
     line-height: 1.2;
   }
@@ -1074,11 +1072,11 @@
 
   & .help-mode h4 {
     color: var(--off-white);
-    font-size: var(--text-body);
+    font-size: var(--text-small);
   }
 
   & .help-mode p {
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     line-height: 1.5;
   }
 
@@ -1088,7 +1086,7 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    font-size: var(--text-emphasis);
+    font-size: var(--text-large);
     font-weight: 800;
     line-height: 1.2;
     -webkit-text-fill-color: transparent;
@@ -1130,7 +1128,7 @@
   }
 
   & .result-label {
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     opacity: var(--opacity-secondary);
   }
 
@@ -1139,7 +1137,7 @@
     justify-items: center;
     gap: calc(var(--space) * 2);
     width: 100%;
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     line-height: var(--line-height);
   }
 
@@ -1248,17 +1246,17 @@
   }
 
   & .progress-best-mode {
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     font-weight: 800;
     opacity: var(--opacity-secondary);
   }
 
   & .progress-best strong {
-    font-size: var(--text-body);
+    font-size: var(--text-small);
   }
 
   & .progress-best small {
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     opacity: var(--opacity-secondary);
   }
 
@@ -1267,7 +1265,7 @@
     gap: var(--space);
     margin: 0;
     text-align: center;
-    font-size: var(--text-body);
+    font-size: var(--text-small);
   }
 
   & .discovery-title small {
@@ -1315,7 +1313,7 @@
     justify-content: center;
     min-height: var(--discovery-row-height);
     padding: calc(var(--space) * 2) calc(var(--space) * 3);
-    font-size: var(--text-button);
+    font-size: var(--text-base);
     line-height: var(--line-height);
     text-align: center;
     text-transform: uppercase;
@@ -1485,7 +1483,7 @@
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     font-weight: 800;
     opacity: var(--opacity-secondary);
     -webkit-line-clamp: 2;
@@ -1495,14 +1493,14 @@
     display: block;
     max-width: 100%;
     overflow: hidden;
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   & .discovery-release-date {
     max-width: calc(100% - var(--discovery-links-width) - var(--space) * 4);
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     opacity: var(--opacity-secondary);
   }
 
@@ -1568,7 +1566,7 @@
     background-clip: text;
     color: transparent;
     -webkit-text-fill-color: transparent;
-    font-size: var(--text-body);
+    font-size: var(--text-small);
     font-weight: 800;
     white-space: nowrap;
   }
@@ -1656,7 +1654,7 @@
     }
 
     & .progress-best strong {
-      font-size: var(--text-body);
+      font-size: var(--text-small);
     }
 
     & .discovery-item-known,
