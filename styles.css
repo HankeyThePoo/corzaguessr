@@ -1146,6 +1146,7 @@
   }
 
   & .result-track-title {
+    font-size: var(--text-base);
     white-space: nowrap;
   }
 
