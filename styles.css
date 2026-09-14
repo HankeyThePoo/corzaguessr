@@ -1,9 +1,11 @@
 #corzaguessr {
   --off-white: #F7F7F7;
   --near-black: #101010;
+
   --gradient-start: #49f1fa;
   --gradient-middle: #7bb0f7;
   --gradient-end: #8d64f5;
+
   --correct: #10b981;
   --wrong: #ef4444;
   --reward: #ffda5e;
@@ -28,14 +30,10 @@
   --white-layer: rgb(from var(--off-white) r g b / 20%);
   --dark-layer: rgb(from var(--near-black) r g b / 40%);
 
+  --space: 4px;
+  --radius: 8px;
   --line-width: 1px;
   --gradient-border-width: 2px;
-  --glass-blur: 20px;
-  --shadow-surface: 0 6px 18px var(--dark-layer);
-  --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
-
-  --radius: 8px;
-  --space: 4px;
 
   --text-base: 16px;
   --text-body: calc(var(--text-base) * 0.75);
@@ -46,6 +44,9 @@
   --line-height: calc(var(--text-base) * 1.25);
 
   --opacity-secondary: 70%;
+  --glass-blur: 20px;
+  --shadow-surface: 0 6px 18px var(--dark-layer);
+  --shadow-text: 0 2px 8px rgb(from var(--near-black) r g b / 90%);
 
   --duration-fast: 200ms;
   --duration-standard: 400ms;
@@ -54,9 +55,9 @@
   --control-height: 46px;
   --button-width: 128px;
   --play-size: 68px;
-  --modal-max-height: 650px;
-  --volume-height: 30px;
   --volume-width: 76px;
+  --volume-height: 30px;
+  --modal-max-height: 650px;
 
   --hover-brightness: 1.2;
 
