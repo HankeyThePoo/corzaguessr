@@ -3513,6 +3513,7 @@ var DiscoveryListView = class {
 	duration;
 	reducedMotion;
 	expandedTrackId = null;
+	expandedFromScrollTop = null;
 	heightMotions = /* @__PURE__ */ new Map();
 	startGauntlet = null;
 	tracks = null;
@@ -3532,6 +3533,7 @@ var DiscoveryListView = class {
 		this.heightMotions.clear();
 		const expandedTrackId = this.expandedTrackId;
 		this.expandedTrackId = null;
+		this.expandedFromScrollTop = null;
 		if (expandedTrackId === null) return;
 		const item = this.items.querySelector(`.discovery-item[data-track-id="${expandedTrackId}"]`);
 		if (item) this.applyExpandedState(item, false);
@@ -3555,7 +3557,10 @@ var DiscoveryListView = class {
 			this.count.append(gauntlet);
 		}
 		this.count.setAttribute("aria-label", `${discovered} of ${total}, ${percentage} percent${complete ? ", Discovery complete" : ""}`);
-		if (this.expandedTrackId !== null && !discoveries.has(this.expandedTrackId)) this.expandedTrackId = null;
+		if (this.expandedTrackId !== null && !discoveries.has(this.expandedTrackId)) {
+			this.expandedTrackId = null;
+			this.expandedFromScrollTop = null;
+		}
 		this.items.replaceChildren(...ordered.map((track) => discoveries.has(track.id) ? this.createDiscoveredItem(track) : this.createUndiscoveredItem(track)));
 	}
 	createDiscoveredItem(track) {
@@ -3663,23 +3668,27 @@ var DiscoveryListView = class {
 	}
 	toggle(trackId) {
 		const previousId = this.expandedTrackId;
-		this.expandedTrackId = previousId === trackId ? null : trackId;
-		if (previousId !== null) this.updateItem(previousId, false);
-		const opening = this.expandedTrackId === trackId;
-		this.updateItem(trackId, opening);
+		const closing = previousId === trackId;
+		const restoreScrollTop = closing ? this.expandedFromScrollTop : null;
+		this.expandedTrackId = closing ? null : trackId;
+		if (previousId !== null) this.updateItem(previousId, false, restoreScrollTop);
+		this.expandedFromScrollTop = closing ? null : this.items.scrollTop;
+		if (!closing) this.updateItem(trackId, true);
 	}
-	updateItem(trackId, expanded) {
+	updateItem(trackId, expanded, restoreScrollTop = null) {
 		const item = this.items.querySelector(`.discovery-item[data-track-id="${trackId}"]`);
-		if (item) this.animateExpandedState(item, trackId, expanded);
+		if (item) this.animateExpandedState(item, trackId, expanded, restoreScrollTop);
 	}
-	animateExpandedState(item, trackId, expanded) {
+	animateExpandedState(item, trackId, expanded, restoreScrollTop) {
 		const fromHeight = item.getBoundingClientRect().height;
+		const scrollAtCollapse = this.items.scrollTop;
 		this.heightMotions.get(item)?.cancel();
 		this.heightMotions.delete(item);
 		this.applyExpandedState(item, expanded);
 		const toHeight = item.getBoundingClientRect().height;
 		if (this.reducedMotion.matches || fromHeight === toHeight) {
 			if (expanded) this.scrollExpandedItemIntoView(trackId, item);
+			else if (restoreScrollTop !== null) this.items.scrollTop = restoreScrollTop;
 			return;
 		}
 		const motion = item.animate({ height: [`${fromHeight}px`, `${toHeight}px`] }, {
@@ -3687,12 +3696,22 @@ var DiscoveryListView = class {
 			easing: "ease"
 		});
 		this.heightMotions.set(item, motion);
-		const observer = expanded ? new ResizeObserver(() => this.scrollExpandedItemIntoView(trackId, item)) : null;
+		const syncScroll = () => {
+			if (this.heightMotions.get(item) !== motion) return;
+			if (expanded) this.scrollExpandedItemIntoView(trackId, item);
+			else if (restoreScrollTop !== null) {
+				const remaining = (item.getBoundingClientRect().height - toHeight) / (fromHeight - toHeight);
+				this.items.scrollTop = restoreScrollTop + (scrollAtCollapse - restoreScrollTop) * remaining;
+			}
+		};
+		const observer = expanded || restoreScrollTop !== null ? new ResizeObserver(syncScroll) : null;
 		observer?.observe(item);
 		const finish = () => {
 			observer?.disconnect();
-			if (this.heightMotions.get(item) === motion) this.heightMotions.delete(item);
+			if (this.heightMotions.get(item) !== motion) return;
+			this.heightMotions.delete(item);
 			if (expanded) this.scrollExpandedItemIntoView(trackId, item);
+			else if (restoreScrollTop !== null) this.items.scrollTop = restoreScrollTop;
 		};
 		motion.finished.then(finish, finish);
 	}
