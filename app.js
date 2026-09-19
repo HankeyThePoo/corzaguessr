@@ -409,7 +409,7 @@ function validateCatalogManifest(value) {
 var puzzleAttemptCountV1 = 6;
 var maxPuzzleSnippetSecondsV1 = 32;
 var seekMaxScoreV1 = 5e3;
-var saveKey = "corzaguessr:rewrite:save";
+var saveKey = "corzaguessr:save";
 function defaults() {
 	return {
 		discoveries: /* @__PURE__ */ new Set(),
@@ -590,14 +590,12 @@ var SaveWriter = class {
 		}
 	}
 	write(data) {
-		if (this.status === "unsupported-version" || this.status === "read-failed" || !this.canWrite() || !this.storage) return false;
+		if (this.status === "unsupported-version" || this.status === "read-failed" || !this.canWrite() || !this.storage) return;
 		try {
 			this.storage.setItem(saveKey, JSON.stringify(serialize(data)));
 			this.status = "ok";
-			return true;
 		} catch {
 			this.status = "write-failed";
-			return false;
 		}
 	}
 };
@@ -1690,7 +1688,7 @@ function seekAnswer(round, second) {
 		actualSecond: Math.round(round.clipStart)
 	};
 }
-function buildResultViewModel(result, persistenceFailed, attempts = []) {
+function buildResultViewModel(result, saveNotice, attempts = []) {
 	if (!result) return null;
 	const outcome = resultOutcome(result, attempts);
 	const modules = resultModules(result);
@@ -1700,7 +1698,7 @@ function buildResultViewModel(result, persistenceFailed, attempts = []) {
 		outcome,
 		primaryLabel: "CLOSE",
 		modules,
-		announcement: persistenceFailed ? `${announcement} PROGRESS COULD NOT BE SAVED IN THIS BROWSER.` : announcement,
+		announcement: saveNotice ? `${announcement} ${saveNotice}` : announcement,
 		secondary: {
 			label: "SHARE",
 			ariaLabel: `SHARE ${result.mode.toUpperCase()} RESULT`
@@ -1988,7 +1986,7 @@ function buildViewModel(state, context) {
 			actualSecond: seekPosition.actualSecond,
 			interactionEnabled: actions.position
 		} : null,
-		result: buildResultViewModel(result, !!context.saveNotice, attempts),
+		result: buildResultViewModel(result, context.saveNotice ?? "", attempts),
 		dailyProgress: structuredClone(player.daily),
 		playerRecords: structuredClone(player.records),
 		dailyDate: date,
@@ -2474,10 +2472,9 @@ var Application = class {
 			case "countdown": return;
 			case "volume":
 				this.audio.setVolume(event.value / 100);
-				if (event.committed && Number.isInteger(event.value) && event.value >= 0 && event.value <= 100) {
+				if (event.committed && Number.isInteger(event.value) && event.value >= 0 && event.value <= 100 && event.value !== state.player.volume) {
 					state.player.volume = event.value;
-					const persistenceAlreadyFailed = Boolean(this.options.storage.notice);
-					if (!this.options.storage.write(state.player) && !persistenceAlreadyFailed) this.announce("VOLUME PREFERENCE COULD NOT BE SAVED IN THIS BROWSER.");
+					this.save();
 				}
 				return;
 			case "share-result": {
@@ -2923,7 +2920,7 @@ var Application = class {
 		}), 1e3);
 	}
 	save() {
-		if (!this.options.storage.write(this.currentState.player) && this.currentState.overlay.kind !== "result") this.announce("PROGRESS COULD NOT BE SAVED IN THIS BROWSER.");
+		this.options.storage.write(this.currentState.player);
 	}
 	viewModel() {
 		return buildViewModel(this.currentState, {
