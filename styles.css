@@ -354,17 +354,17 @@
     flex: 1;
   }
 
-  & .discovery-button {
+  & .progress-button {
     width: min(180px, 25%);
     margin: 0 auto;
     padding: 0 calc(var(--space) * 3);
   }
 
-  & .discovery-button[aria-expanded="true"]::before {
+  & .progress-button[aria-expanded="true"]::before {
     background: var(--gradient-background), var(--dark-layer);
   }
 
-  & .discovery-button[aria-expanded="true"]::after {
+  & .progress-button[aria-expanded="true"]::after {
     opacity: 1;
   }
 
@@ -970,7 +970,7 @@
 
   & .result-modal,
   & .help-modal,
-  & .discovery-modal {
+  & .progress-modal {
     display: flex;
     position: absolute;
     inset: 0;
@@ -1008,7 +1008,7 @@
 
   & .result-shell,
   & .help-shell,
-  & .discovery-shell {
+  & .progress-shell {
     position: relative;
     z-index: 1;
     width: min(96vw, 840px);
@@ -1183,22 +1183,22 @@
     border: 0;
   }
 
-  & .discovery-modal {
+  & .progress-modal {
     z-index: 2;
   }
 
-  & .discovery-modal:focus {
+  & .progress-modal:focus {
     outline: 0;
   }
 
-  &.discovery-open .discovery-modal {
+  &.progress-open .progress-modal {
     pointer-events: auto;
     visibility: visible;
   }
 
-  & .discovery-panel {
+  & .progress-panel {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: calc(var(--space) * 4);
     height: auto;
     max-height: min(78dvh, var(--modal-max-height));
@@ -1212,16 +1212,8 @@
     margin-top: 0;
   }
 
-  & .progress-title {
-    margin: 0;
-    font-size: var(--text-base);
-    font-weight: 800;
-    line-height: 1.2;
-    text-align: center;
-  }
-
-  & .progress-summary h4,
-  & .discovery-title h4 {
+  & .progress-summary h3,
+  & .discovery-title h3 {
     font-family: inherit;
     font-size: var(--text-base);
     font-weight: 800;
@@ -1290,7 +1282,7 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  & .discovery-panel > .actions {
+  & .progress-panel > .actions {
     margin-top: 0;
     padding-top: calc(var(--space) * 4);
     border-top: var(--line-width) solid var(--white-layer);
@@ -1629,21 +1621,21 @@
 
     & .result-modal,
     & .help-modal,
-    & .discovery-modal {
+    & .progress-modal {
       position: fixed;
       align-items: center;
       padding: calc(var(--space) * 2);
       border-radius: 0;
     }
 
-    & .discovery-panel {
+    & .progress-panel {
       height: min(80dvh, calc(100dvh - 120px));
       max-height: min(80dvh, calc(100dvh - 120px));
       gap: calc(var(--space) * 2);
     }
 
     & .discovery-title,
-    & .discovery-panel > .actions {
+    & .progress-panel > .actions {
       padding-top: calc(var(--space) * 2);
     }
 
@@ -1748,7 +1740,7 @@
       width: min(100%, 280px);
     }
 
-    & .discovery-button {
+    & .progress-button {
       width: min(calc(var(--button-width) + var(--space) * 2), 100%);
     }
 
@@ -1792,7 +1784,7 @@
 
     & .result-shell,
     & .help-shell,
-    & .discovery-shell {
+    & .progress-shell {
       width: calc(100% - var(--space) * 4);
     }
 
