@@ -404,6 +404,10 @@
     opacity: 1;
   }
 
+  & .mode-navigation[inert] .mode {
+    opacity: 0.55;
+  }
+
   & .mode-navigation .mode[aria-pressed="true"]::before {
     content: "";
     position: absolute;
