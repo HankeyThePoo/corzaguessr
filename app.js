@@ -4499,7 +4499,6 @@ var TimelineView = class {
 		this.progressMotion = null;
 	}
 };
-var barCount = 8;
 var VolumeControl = class {
 	container;
 	input;
@@ -4509,7 +4508,7 @@ var VolumeControl = class {
 		this.container = container;
 		this.input = input;
 		this.bars = [...container.querySelectorAll(".volume-bar")];
-		if (this.bars.length !== barCount) throw new Error(`Corzaguessr volume control requires ${barCount} bars.`);
+		if (this.bars.length !== 8) throw new Error(`Corzaguessr volume control requires 8 bars.`);
 		this.input.value = String(initialVolume);
 		this.render(initialVolume);
 		this.input.addEventListener("input", () => {
@@ -4525,7 +4524,7 @@ var VolumeControl = class {
 		this.handler = handler;
 	}
 	render(volume) {
-		const activeBars = volume === 0 ? 0 : Math.ceil(volume * barCount / 100);
+		const activeBars = volume === 0 ? 0 : Math.ceil(volume * 8 / 100);
 		this.container.classList.toggle("muted", volume === 0);
 		this.input.setAttribute("aria-valuetext", volume === 0 ? "Muted" : `${volume} percent`);
 		this.bars.forEach((bar, index) => {
@@ -4565,12 +4564,12 @@ var GameView = class {
 	constructor(root, initialVolume = 100, coverUrl = (id) => `covers/${formatTrackId(id)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
+		const styles = getComputedStyle(root);
 		root.classList.add("rules-visible");
-		root.innerHTML = markup();
+		root.innerHTML = markup(initialVolume);
 		this.elements = this.queryElements();
 		this.audioElements = this.elements.audioPlayers;
 		this.modeButtons = Object.fromEntries(regularModes.map((mode) => [mode, this.required(`[data-mode="${mode}"]`)]));
-		const styles = getComputedStyle(root);
 		this.durations = {
 			fast: duration(styles, "--duration-fast"),
 			standard: duration(styles, "--duration-standard"),
@@ -5049,7 +5048,9 @@ function duration(styles, name) {
 function snippetPercentage(seconds) {
 	return `${seconds / maxPuzzleSnippetSeconds * 100}%`;
 }
-function markup() {
+function markup(initialVolume) {
+	const activeVolumeBars = initialVolume === 0 ? 0 : Math.ceil(initialVolume * 8 / 100);
+	const volumeBars = Array.from({ length: 8 }, (_, index) => `<i class="volume-bar${index < activeVolumeBars ? " active" : ""}"></i>`).join("");
 	const snippetTicks = snippetDurations.slice(0, -1).map((seconds) => `<i class="tick" style="left:${snippetPercentage(seconds)}"></i>`).join("");
 	const modeButtons = regularModes.map((mode) => `<button type="button" class="mode" data-mode="${mode}" aria-pressed="false">${mode.toUpperCase()}</button>`).join("");
 	const helpSections = regularModes.map((mode) => {
@@ -5068,7 +5069,7 @@ function markup() {
 		`<div class="board">`,
 		`<div class="controls"><div class="time"><span class="now">0:00</span></div><button type="button" class="play" aria-label="PLAY" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons.play}"></path></svg></button><div class="time"><span class="endtime">0:01</span></div></div>`,
 		`<button type="button" class="help-button" aria-label="HOW TO PLAY" aria-haspopup="dialog" aria-controls="corzaguessr-help" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg></button>`,
-		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
+		`<div class="volume-control${initialVolume === 0 ? " muted" : ""}"><div class="volume-bars" aria-hidden="true">${volumeBars}</div><input class="volume-range" type="range" min="0" max="100" step="1" value="${initialVolume}" aria-label="VOLUME" aria-valuetext="${initialVolume === 0 ? "Muted" : `${initialVolume} percent`}"></div>`,
 		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
 		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row action-row"><button type="button" class="button action" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
