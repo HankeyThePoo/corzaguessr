@@ -2169,8 +2169,8 @@ var Application = class {
 				type: "seek-reveal-complete",
 				roundId
 			}),
-			openDiscovery: () => this.dispatch({ type: "open-discovery" }),
-			closeDiscovery: () => this.dispatch({ type: "close-discovery" }),
+			openProgress: () => this.dispatch({ type: "open-progress" }),
+			closeProgress: () => this.dispatch({ type: "close-progress" }),
 			openHelp: () => this.dispatch({ type: "open-help" }),
 			closeHelp: () => this.dispatch({ type: "close-help" }),
 			startGauntlet: () => this.dispatch({ type: "start-gauntlet" }),
@@ -2386,16 +2386,16 @@ var Application = class {
 					this.clearTrackLoading();
 				}
 				return;
-			case "open-discovery":
+			case "open-progress":
 				if (state.overlay.kind !== "none") return;
 				this.calendar.reconcile();
 				this.clock.pause();
 				this.clearTrackLoading();
 				this.audio.suspend();
-				state.overlay = { kind: "discovery" };
+				state.overlay = { kind: "progress" };
 				return;
-			case "close-discovery":
-				if (state.overlay.kind === "discovery") this.closeDiscovery("resume");
+			case "close-progress":
+				if (state.overlay.kind === "progress") this.closeProgress("resume");
 				return;
 			case "open-help":
 				if (state.overlay.kind !== "none") return;
@@ -2408,12 +2408,12 @@ var Application = class {
 				if (state.overlay.kind === "help") this.closeHelp();
 				return;
 			case "start-gauntlet":
-				if (state.overlay.kind === "discovery" && summarizeDiscovery(state.catalog, state.player.discoveries).complete) this.closeDiscovery("start-gauntlet");
+				if (state.overlay.kind === "progress" && summarizeDiscovery(state.catalog, state.player.discoveries).complete) this.closeProgress("start-gauntlet");
 				return;
 			case "close-result":
 				if (state.overlay.kind === "result") this.closeResult();
 				return;
-			case "discovery-closed": {
+			case "progress-closed": {
 				state.overlay = { kind: "none" };
 				if (event.outcome === "start-gauntlet") {
 					this.reset("gauntlet");
@@ -2870,9 +2870,9 @@ var Application = class {
 			outcome
 		}));
 	}
-	closeDiscovery(outcome) {
-		this.options.view.beginDiscoveryClose(() => this.dispatch({
-			type: "discovery-closed",
+	closeProgress(outcome) {
+		this.options.view.beginProgressClose(() => this.dispatch({
+			type: "progress-closed",
 			outcome
 		}));
 	}
@@ -3727,12 +3727,12 @@ function splitTrackTitle(value) {
 function nextPrimaryFocus(state, key) {
 	const modeIndex = state.current ? regularModes.findIndex((mode) => mode === state.current) : -1;
 	if (modeIndex >= 0) {
-		if (key === "ArrowUp") return available(state, "discovery");
+		if (key === "ArrowUp") return available(state, "progress");
 		if (key === "ArrowDown") return available(state, "play");
 		return modeInDirection(state, modeIndex, key === "ArrowLeft" ? -1 : 1);
 	}
 	const recommended = recommendedMode(state);
-	if (state.current === "discovery") {
+	if (state.current === "progress") {
 		if (key === "ArrowDown") return recommended;
 		if (key === "ArrowLeft") return regularModes.find((mode) => state.enabled.has(mode)) ?? null;
 		if (key === "ArrowRight") return [...regularModes].reverse().find((mode) => state.enabled.has(mode)) ?? null;
@@ -3792,8 +3792,8 @@ var ModalController = class {
 		this.openModal("result");
 		this.announce(announcement || "RESULT");
 	}
-	openDiscovery() {
-		this.openModal("discovery");
+	openProgress() {
+		this.openModal("progress");
 	}
 	openHelp() {
 		this.openModal("help");
@@ -3801,8 +3801,8 @@ var ModalController = class {
 	closeResult(onClosed = () => {}, onClosing = () => {}) {
 		this.closeModal("result", onClosed, onClosing);
 	}
-	closeDiscovery(onClosed) {
-		this.closeModal("discovery", onClosed);
+	closeProgress(onClosed) {
+		this.closeModal("progress", onClosed);
 	}
 	closeHelp(onClosed) {
 		this.closeModal("help", onClosed);
@@ -3815,11 +3815,11 @@ var ModalController = class {
 		this.lockScroll();
 		parts.classTarget.classList.add(parts.openClass);
 		parts.modal.setAttribute("aria-hidden", "false");
-		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "true");
+		if (kind === "progress") this.elements.progressButton.setAttribute("aria-expanded", "true");
 		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "true");
 		this.animateScrim(parts.scrim, 1);
 		const targetHeight = parts.panel.offsetHeight;
-		if (this.reducedMotion.matches && kind === "discovery") this.elements.discoveryClose.style.visibility = "visible";
+		if (this.reducedMotion.matches && kind === "progress") this.elements.progressClose.style.visibility = "visible";
 		parts.focusTarget.focus({ preventScroll: true });
 		if (this.reducedMotion.matches) {
 			parts.shell.style.height = "auto";
@@ -3846,14 +3846,14 @@ var ModalController = class {
 		this.cancelShellMotion();
 		this.animateScrim(parts.scrim, 0);
 		parts.shell.style.height = "0px";
-		if (kind === "discovery") this.elements.discoveryButton.setAttribute("aria-expanded", "false");
+		if (kind === "progress") this.elements.progressButton.setAttribute("aria-expanded", "false");
 		else if (kind === "help") this.elements.helpButton.setAttribute("aria-expanded", "false");
 		const finish = () => {
 			if (this.kind !== kind || !this.closing) return;
 			this.shellMotion = null;
 			parts.classTarget.classList.remove(parts.openClass);
 			parts.shell.style.height = "";
-			if (kind === "discovery") this.elements.discoveryClose.style.visibility = "";
+			if (kind === "progress") this.elements.progressClose.style.visibility = "";
 			this.kind = null;
 			this.closing = false;
 			this.unlockScroll();
@@ -3954,14 +3954,14 @@ var ModalController = class {
 				panel: this.elements.resultPanel,
 				focusTarget: this.elements.resultAction
 			};
-			case "discovery": return {
+			case "progress": return {
 				classTarget: this.root,
-				openClass: "discovery-open",
-				modal: this.elements.discoveryModal,
-				scrim: this.elements.discoveryScrim,
-				shell: this.elements.discoveryShell,
-				panel: this.elements.discoveryPanel,
-				focusTarget: this.elements.discoveryClose
+				openClass: "progress-open",
+				modal: this.elements.progressModal,
+				scrim: this.elements.progressScrim,
+				shell: this.elements.progressShell,
+				panel: this.elements.progressPanel,
+				focusTarget: this.elements.progressClose
 			};
 			case "help": return {
 				classTarget: this.elements.card,
@@ -4619,17 +4619,17 @@ var GameView = class {
 		this.elements.helpModal.addEventListener("click", (event) => {
 			if (!(event.target instanceof Element && event.target.closest(".help-panel"))) handlers.closeHelp();
 		});
-		this.elements.discoveryButton.addEventListener("click", handlers.openDiscovery);
-		this.elements.discoveryClose.addEventListener("click", handlers.closeDiscovery);
-		this.elements.discoveryModal.addEventListener("click", (event) => {
-			if (!(event.target instanceof Element && event.target.closest(".discovery-panel"))) handlers.closeDiscovery();
+		this.elements.progressButton.addEventListener("click", handlers.openProgress);
+		this.elements.progressClose.addEventListener("click", handlers.closeProgress);
+		this.elements.progressModal.addEventListener("click", (event) => {
+			if (!(event.target instanceof Element && event.target.closest(".progress-panel"))) handlers.closeProgress();
 		});
 		for (const mode of regularModes) {
 			const button = this.modeButtons[mode];
 			button.addEventListener("click", () => handlers.selectMode(mode));
 			this.bindPreview(button, mode);
 		}
-		this.bindPreview(this.elements.discoveryButton, "discovery");
+		this.bindPreview(this.elements.progressButton, "progress");
 		document.addEventListener("keydown", (event) => {
 			if (!this.root.isConnected) return;
 			if (this.state?.overlay || event.target instanceof Node && this.root.contains(event.target)) this.handleRootKeydown(event);
@@ -4687,7 +4687,7 @@ var GameView = class {
 		this.renderRules();
 		this.attempts.render(state.currentSlot, state.historySlots, runId);
 		this.autocomplete.setDependencies(state.tracks, state.unavailableGuessIds, state.mode === "daily" ? state.dailyDate : null);
-		if (state.overlay === "discovery") {
+		if (state.overlay === "progress") {
 			this.renderDiscovery(state);
 			this.progressSummary.render(state.playerRecords, state.dailyProgress, state.dailyDate);
 		}
@@ -4701,7 +4701,7 @@ var GameView = class {
 				if (this.runId === finishingRunId && this.state?.overlay === "result") this.modal.openResult(state.result?.announcement);
 			});
 		} else this.modal.openResult(state.result?.announcement);
-		else if (openingOverlay === "discovery") this.modal.openDiscovery();
+		else if (openingOverlay === "progress") this.modal.openProgress();
 		else if (openingOverlay === "help") this.modal.openHelp();
 	}
 	renderClock(clock) {
@@ -4739,8 +4739,8 @@ var GameView = class {
 			onClosed?.();
 		}, resetBoard ? () => this.beginBoardReset(resetBoard) : void 0);
 	}
-	beginDiscoveryClose(onClosed) {
-		this.modal.closeDiscovery(() => {
+	beginProgressClose(onClosed) {
+		this.modal.closeProgress(() => {
 			this.discovery.resetExpansion();
 			onClosed?.();
 		});
@@ -4770,7 +4770,7 @@ var GameView = class {
 		if (!this.elements.play.disabled && !this.elements.play.closest("[inert]")) this.elements.play.focus({ preventScroll: true });
 	}
 	focusProgress() {
-		this.elements.discoveryButton.focus({ preventScroll: true });
+		this.elements.progressButton.focus({ preventScroll: true });
 	}
 	focusHelp() {
 		this.elements.helpButton.focus({ preventScroll: true });
@@ -4789,7 +4789,7 @@ var GameView = class {
 	}
 	renderRules() {
 		if (!this.state) return;
-		const text = this.state.transportText || (!this.preview || this.preview === this.state.mode ? this.state.rulesText : this.preview === "discovery" ? uiText.progress : modeRules[this.preview].description);
+		const text = this.state.transportText || (!this.preview || this.preview === this.state.mode ? this.state.rulesText : this.preview === "progress" ? uiText.progress : modeRules[this.preview].description);
 		const scroll = !this.state.transportText && !this.reducedMotion.matches && !this.state.inputVisible;
 		const signature = JSON.stringify([text, scroll]);
 		if (signature === this.rulesSignature) return;
@@ -4850,7 +4850,7 @@ var GameView = class {
 		if (this.state.overlay) {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				if (this.state.overlay === "discovery") this.handlers.closeDiscovery();
+				if (this.state.overlay === "progress") this.handlers.closeProgress();
 				else if (this.state.overlay === "help") this.handlers.closeHelp();
 				else this.handlers.resultAction();
 				return;
@@ -4890,7 +4890,7 @@ var GameView = class {
 	}
 	movePrimaryFocus(key, pointerAnchor) {
 		const elements = {
-			discovery: this.elements.discoveryButton,
+			progress: this.elements.progressButton,
 			...this.modeButtons,
 			play: this.elements.play
 		};
@@ -5005,12 +5005,12 @@ var GameView = class {
 			resultPanel: this.required(".result-modal .corzaguessr-modal"),
 			resultTitle: this.required("#corzaguessr-result-title"),
 			resultMeta: this.required("#corzaguessr-result-meta"),
-			discoveryButton: this.required(".discovery-button"),
-			discoveryModal: this.required(".discovery-modal"),
-			discoveryScrim: this.required(".discovery-modal > .modal-scrim"),
-			discoveryShell: this.required(".discovery-shell"),
-			discoveryPanel: this.required(".discovery-panel"),
-			discoveryClose: this.required(".discovery-close"),
+			progressButton: this.required(".progress-button"),
+			progressModal: this.required(".progress-modal"),
+			progressScrim: this.required(".progress-modal > .modal-scrim"),
+			progressShell: this.required(".progress-shell"),
+			progressPanel: this.required(".progress-panel"),
+			progressClose: this.required(".progress-close"),
 			discoveryCount: this.required(".discovery-title small"),
 			discoveryItems: this.required(".discovery-items"),
 			progressBests: this.required(".progress-bests"),
@@ -5045,7 +5045,7 @@ function markup() {
 	return [
 		`<div class="wrap">`,
 		`<h1>CORZAGUESSR&#10022;</h1>`,
-		`<div class="row header-action"><button type="button" id="corzaguessr-progress" class="button discovery-button glass" aria-controls="corzaguessr-discovery" aria-expanded="false"><span>PROGRESS</span></button></div>
+		`<div class="row header-action"><button type="button" id="corzaguessr-progress" class="button progress-button glass" aria-controls="corzaguessr-progress-modal" aria-expanded="false"><span>PROGRESS</span></button></div>
     <div class="game-surface"><div class="modes mode-navigation glass" aria-label="GAME MODE">${modeButtons}</div>`,
 		`<div class="card glass">`,
 		`<div class="stack">`,
@@ -5060,7 +5060,7 @@ function markup() {
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="help-content">${helpSections}</div><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
-		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-progress-title"><h3 id="corzaguessr-progress-title" class="progress-title">PROGRESS</h3><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="discovery-title"><h4 id="corzaguessr-discovery-title">DISCOVERY</h4><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list" aria-labelledby="corzaguessr-discovery-title"></div><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
+		`<div id="corzaguessr-progress-modal" class="progress-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="progress-shell"><div class="progress-panel glass" role="dialog" aria-modal="true" aria-label="PROGRESS"><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h3 id="corzaguessr-records-title">RECORDS</h3><div class="progress-bests"></div></section><div class="discovery-title"><h3 id="corzaguessr-discovery-title">DISCOVERY</h3><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list" aria-labelledby="corzaguessr-discovery-title"></div><div class="actions"><button type="button" class="button progress-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
 		`<p class="mode-prompt" role="status" aria-hidden="false">${uiText.modePrompt}</p>`,
