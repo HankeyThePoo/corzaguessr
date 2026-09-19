@@ -1198,7 +1198,7 @@
 
   & .discovery-panel {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     gap: calc(var(--space) * 4);
     height: auto;
     max-height: min(78dvh, var(--modal-max-height));
@@ -1210,20 +1210,23 @@
     display: grid;
     gap: calc(var(--space) * 4);
     margin-top: 0;
-    padding-top: calc(var(--space) * 4);
-    border-top: var(--line-width) solid var(--white-layer);
   }
 
-  & .progress-summary h4,
-  & .discovery-title > span {
-    font-family: inherit;
+  & .progress-title {
+    margin: 0;
     font-size: var(--text-base);
     font-weight: 800;
     line-height: 1.2;
     text-align: center;
   }
 
-  & .progress-summary h4 {
+  & .progress-summary h4,
+  & .discovery-title h4 {
+    font-family: inherit;
+    font-size: var(--text-base);
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
     margin: 0;
   }
 
@@ -1265,6 +1268,8 @@
     display: grid;
     gap: var(--space);
     margin: 0;
+    padding-top: calc(var(--space) * 4);
+    border-top: var(--line-width) solid var(--white-layer);
     text-align: center;
     font-size: var(--text-small);
   }
@@ -1596,6 +1601,10 @@
   }
 
   @media (max-width: 600px) {
+    & .guess-lane input {
+      text-indent: 0;
+    }
+
     & .result-track-title {
       white-space: normal;
     }
@@ -1630,6 +1639,12 @@
     & .discovery-panel {
       height: min(80dvh, calc(100dvh - 120px));
       max-height: min(80dvh, calc(100dvh - 120px));
+      gap: calc(var(--space) * 2);
+    }
+
+    & .discovery-title,
+    & .discovery-panel > .actions {
+      padding-top: calc(var(--space) * 2);
     }
 
     & .discovery-items {
