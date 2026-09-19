@@ -1191,10 +1191,6 @@
     z-index: 2;
   }
 
-  & .progress-modal:focus {
-    outline: 0;
-  }
-
   &.progress-open .progress-modal {
     pointer-events: auto;
     visibility: visible;
