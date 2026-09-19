@@ -2387,12 +2387,8 @@ var Application = class {
 				}
 				return;
 			case "open-discovery":
-				this.calendar.reconcile();
-				if (state.overlay.kind === "discovery") {
-					this.closeDiscovery("resume");
-					return;
-				}
 				if (state.overlay.kind !== "none") return;
+				this.calendar.reconcile();
 				this.clock.pause();
 				this.clearTrackLoading();
 				this.audio.suspend();
@@ -4553,6 +4549,7 @@ var GameView = class {
 	constructor(root, initialVolume = 100, coverUrl = (id) => `covers/${formatTrackId(id)}.webp`) {
 		this.root = root;
 		this.inputModality = this.finePointer.matches ? "pointer-fine" : "pointer-coarse";
+		root.classList.add("rules-visible");
 		root.innerHTML = markup();
 		this.elements = this.queryElements();
 		this.audioElements = this.elements.audioPlayers;
@@ -4673,7 +4670,7 @@ var GameView = class {
 		this.autocomplete.setSuspended(!state.attemptEnabled);
 		const blockedBoard = awaiting || state.appStatus === "loading";
 		const overlay = state.overlay !== null;
-		this.elements.headerAction.inert = state.overlay !== null && state.overlay !== "discovery";
+		this.elements.headerAction.inert = overlay;
 		this.elements.modes.inert = overlay;
 		this.elements.board.inert = overlay;
 		this.elements.slots.inert = overlay || blockedBoard;
@@ -5057,13 +5054,13 @@ function markup() {
 		`<button type="button" class="help-button" aria-label="HOW TO PLAY" aria-haspopup="dialog" aria-controls="corzaguessr-help" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg></button>`,
 		`<div class="volume-control"><div class="volume-bars" aria-hidden="true"><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i><i class="volume-bar"></i></div><input class="volume-range" type="range" min="0" max="100" step="1" value="100" aria-label="VOLUME" aria-valuetext="100 percent"></div>`,
 		`<div class="timeline"><div class="snippet" style="width:${snippetPercentage(snippetDurations[0])}"></div><div class="fill"></div><div class="feedback"></div><div class="position-distance" hidden></div><div class="position-marker position-guess" hidden></div><div class="position-marker position-actual" hidden></div><input class="position-range" type="range" min="0" max="0" step="1" value="0" aria-label="SELECT SONG POSITION" aria-valuetext="NO POSITION SELECTED" disabled><div class="time-change"><span></span></div>${snippetTicks}</div>`,
-		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS? SEARCH FOR IT HERE!" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row action-row"><button type="button" class="button action" disabled>ADD 1S</button></div></div>`,
+		`<div class="guess-lane"><div class="auto"><label class="sr-only" for="corzaguessr-guess">SEARCH FOR A TRACK</label><input id="corzaguessr-guess" class="guess" placeholder="HAVE A GUESS" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="corzaguessr-suggestions" aria-expanded="false" disabled><div class="ruleset" aria-hidden="true"><div class="ruleset-track"><span class="ruleset-text">${uiText.modePrompt}</span><span class="ruleset-copy">${uiText.modePrompt}</span></div></div><div id="corzaguessr-suggestions" class="suggest" role="listbox"></div></div><div class="row action-row"><button type="button" class="button action" disabled>ADD 1S</button></div></div>`,
 		`</div>`,
 		`<div class="attempt-area" aria-live="polite" aria-relevant="additions text"><div class="slot current-slot" hidden></div><div class="slots"></div></div>`,
 		`</div>`,
 		`<div class="result-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="result-shell"><div class="corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-result-title" aria-describedby="corzaguessr-result-meta" tabindex="-1"><h3 id="corzaguessr-result-title" class="modal-title"></h3><div id="corzaguessr-result-meta" class="result-meta"></div><div class="actions"><button type="button" class="button result-action">CLOSE</button><button type="button" class="button result-secondary" hidden></button></div></div></div></div>`,
 		`<div id="corzaguessr-help" class="help-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="help-shell"><div class="help-panel corzaguessr-modal glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-help-title"><h3 id="corzaguessr-help-title" class="help-title">HOW TO PLAY</h3><div class="help-content">${helpSections}</div><div class="actions"><button type="button" class="button help-close">CLOSE</button></div></div></div></div>`,
-		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-discovery-title"><div class="discovery-title"><span id="corzaguessr-discovery-title">DISCOVERY</span><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list"></div><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
+		`<div id="corzaguessr-discovery" class="discovery-modal" aria-hidden="true"><div class="modal-scrim" aria-hidden="true"></div><div class="discovery-shell"><div class="discovery-panel glass" role="dialog" aria-modal="true" aria-labelledby="corzaguessr-progress-title"><h3 id="corzaguessr-progress-title" class="progress-title">PROGRESS</h3><section class="progress-summary" aria-labelledby="corzaguessr-records-title"><h4 id="corzaguessr-records-title">RECORDS</h4><div class="progress-bests"></div></section><div class="discovery-title"><h4 id="corzaguessr-discovery-title">DISCOVERY</h4><small>0 / 0 (0%)</small></div><div class="discovery-items" role="list" aria-labelledby="corzaguessr-discovery-title"></div><div class="actions"><button type="button" class="button discovery-close">CLOSE</button></div></div></div></div>`,
 		`</div>`,
 		`</div>`,
 		`<p class="mode-prompt" role="status" aria-hidden="false">${uiText.modePrompt}</p>`,
@@ -5166,18 +5163,18 @@ async function initialize(root) {
 		}
 		if (!document.hidden) application?.dispatch({ type: "visible" });
 	});
-	ownership = await claimSaveOwnership(navigator.locks);
-	if (pageLeft) {
-		ownership.release();
-		return;
-	}
-	const storage = new SaveWriter(void 0, () => ownership.writable, () => ownership.notice);
+	const storage = new SaveWriter(void 0, () => ownership?.writable ?? false, () => ownership?.notice ?? "");
 	const player = storage.load();
 	const moduleUrl = new URL(import.meta.url);
 	const catalogUrl = new URL("tracks.json", moduleUrl);
 	catalogUrl.search = moduleUrl.search;
 	const catalog = new CatalogSource(catalogUrl);
 	const view = new GameView(root, player.volume, (id) => catalog.assetUrl(`covers/${formatTrackId(id)}.webp`));
+	ownership = await claimSaveOwnership(navigator.locks);
+	if (pageLeft) {
+		ownership.release();
+		return;
+	}
 	if (storage.unsupportedVersion) ownership.release();
 	application = new Application({
 		view,
