@@ -4677,7 +4677,7 @@ var GameView = class {
 		for (const mode of regularModes) {
 			const button = this.modeButtons[mode];
 			const selected = mode === state.mode;
-			button.disabled = state.appStatus === "error" && !state.tracks.length || selected;
+			button.disabled = overlay || state.appStatus === "error" && !state.tracks.length || selected;
 			button.setAttribute("aria-pressed", String(selected));
 		}
 		this.elements.icon.setAttribute("d", icons[state.playbackIcon]);
