@@ -1096,12 +1096,14 @@ var GameClock = class {
 		this.schedule();
 	}
 	pause() {
+		const wasRunning = this.anchorMs !== null;
 		this.commit();
 		this.anchorMs = null;
 		this.generation += 1;
 		this.cancelScheduled();
 		const snapshot = this.snapshot();
 		this.callbacks.onTick(snapshot);
+		if (wasRunning && snapshot.remainingMs === 0) this.callbacks.onExpired(snapshot);
 		return snapshot;
 	}
 	restart(milliseconds) {
