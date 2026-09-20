@@ -218,27 +218,6 @@
     border-radius: var(--radius);
   }
 
-  & .card::after {
-    content: "";
-    position: absolute;
-    inset: var(--line-width);
-    z-index: 0;
-    border-radius: inherit;
-    background:
-      linear-gradient(104deg, transparent 46%, rgb(247 247 247 / 24%) 49% 50%, transparent 53%) 0 8% / 22px 38px no-repeat,
-      linear-gradient(78deg, transparent 47%, rgb(247 247 247 / 17%) 49% 50%, transparent 52%) 1% 27% / 17px 30px no-repeat,
-      linear-gradient(112deg, transparent 48%, rgb(247 247 247 / 22%) 49% 50%, transparent 52%) 0 59% / 20px 36px no-repeat,
-      linear-gradient(68deg, transparent 47%, rgb(247 247 247 / 15%) 49% 50%, transparent 53%) 2% 85% / 15px 28px no-repeat,
-      linear-gradient(73deg, transparent 47%, rgb(247 247 247 / 22%) 49% 50%, transparent 53%) 100% 15% / 21px 35px no-repeat,
-      linear-gradient(108deg, transparent 47%, rgb(247 247 247 / 18%) 49% 50%, transparent 52%) 99% 45% / 16px 31px no-repeat,
-      linear-gradient(81deg, transparent 48%, rgb(247 247 247 / 24%) 49% 50%, transparent 52%) 100% 78% / 20px 37px no-repeat,
-      radial-gradient(circle at 2% 21%, rgb(247 247 247 / 23%) 0 1px, transparent 2px),
-      radial-gradient(circle at 3% 61%, rgb(247 247 247 / 18%) 0 1px, transparent 2px),
-      radial-gradient(circle at 97% 34%, rgb(247 247 247 / 21%) 0 1px, transparent 2px),
-      radial-gradient(circle at 98% 88%, rgb(247 247 247 / 18%) 0 1px, transparent 2px);
-    pointer-events: none;
-  }
-
   & .stack,
   & .board {
     display: grid;
@@ -246,8 +225,6 @@
   }
 
   & .stack {
-    position: relative;
-    z-index: 1;
     gap: 0;
     isolation: isolate;
   }
