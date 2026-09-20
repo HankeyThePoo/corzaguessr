@@ -218,6 +218,23 @@
     border-radius: var(--radius);
   }
 
+  & .card::after {
+    content: "";
+    position: absolute;
+    inset: var(--line-width);
+    z-index: 0;
+    border-radius: inherit;
+    background:
+      linear-gradient(108deg, transparent, rgb(247 247 247 / 12%), transparent) 3% 19% / 54px 1px no-repeat,
+      linear-gradient(102deg, transparent, rgb(247 247 247 / 9%), transparent) 97% 62% / 42px 1px no-repeat,
+      radial-gradient(circle at 2% 34%, rgb(247 247 247 / 13%) 0 1px, transparent 2px),
+      radial-gradient(circle at 4% 72%, rgb(247 247 247 / 9%) 0 1px, transparent 2px),
+      radial-gradient(circle at 98% 24%, rgb(247 247 247 / 11%) 0 1px, transparent 2px),
+      radial-gradient(circle at 96% 81%, rgb(247 247 247 / 9%) 0 1px, transparent 2px),
+      linear-gradient(90deg, rgb(247 247 247 / 5%), transparent 7% 93%, rgb(247 247 247 / 4%));
+    pointer-events: none;
+  }
+
   & .stack,
   & .board {
     display: grid;
@@ -225,6 +242,8 @@
   }
 
   & .stack {
+    position: relative;
+    z-index: 1;
     gap: 0;
     isolation: isolate;
   }
