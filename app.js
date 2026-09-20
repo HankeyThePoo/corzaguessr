@@ -4597,7 +4597,6 @@ var GameView = class {
 			deal: this.durations.standard
 		}, this.reducedMotion);
 		this.timeline = new TimelineView({
-			timeline: this.elements.timeline,
 			now: this.elements.now,
 			fill: this.elements.fill,
 			feedback: this.elements.feedback,
@@ -5000,7 +4999,6 @@ var GameView = class {
 			endtime: this.required(".endtime"),
 			fill: this.required(".fill"),
 			feedback: this.required(".feedback"),
-			timeline: this.required(".timeline"),
 			timeChangeText: this.required(".time-change span"),
 			positionRange: this.required(".position-range"),
 			positionGuess: this.required(".position-guess"),
